@@ -2,7 +2,12 @@
 // Bulletproof Multi-Tenant Authentication & Transporter Resolution Engine 🛡️⚡
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { loadDB, saveDB, resetDB as resetStoreDB } from '../store/dbStore';
+import {
+  loadDB,
+  loadDBFromSupabase,
+  saveDB,
+  resetDB as resetStoreDB
+} from '../store/dbStore';
 
 const USER_SESSION_KEY = 'transflow_current_user';
 const AuthContext = createContext(null);
@@ -45,23 +50,24 @@ export const AuthProvider = ({ children }) => {
 
   // Listen to Window Storage, BroadcastChannel, & /api/db for real-time cross-browser sync (Chrome <-> Edge)
   useEffect(() => {
-    const fetchSharedServerDb = async () => {
-      try {
-        const res = await fetch('/api/db');
-        if (res.ok) {
-          const serverDb = await res.json();
-          if (serverDb && serverDb._updatedAt) {
-            const local = loadDB();
-            if (!local._updatedAt || serverDb._updatedAt > local._updatedAt) {
-              setDb({ ...serverDb });
-              localStorage.setItem('transflow_logistics_db_v1', JSON.stringify(serverDb));
-            }
-          }
-        }
-      } catch (e) {
-        // ignore
-      }
-    };
+const fetchSharedServerDb = async () => {
+  try {
+    const sharedDb = await loadDBFromSupabase();
+
+    if (sharedDb) {
+      setDb({ ...sharedDb });
+
+      localStorage.setItem(
+        'transflow_logistics_db_v1',
+        JSON.stringify(sharedDb)
+      );
+
+      console.log('✅ Shared database loaded from Supabase');
+    }
+  } catch (e) {
+    console.error('Supabase sync failed:', e);
+  }
+};
 
     fetchSharedServerDb();
 
