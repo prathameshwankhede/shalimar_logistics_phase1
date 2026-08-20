@@ -113,9 +113,7 @@ export const AuthProvider = ({ children }) => {
   }, [currentUser]);
 
   const refreshDB = () => {
-    const freshData = loadDB();
-    setDb({ ...freshData });
-    return freshData;
+    return db;
   };
 
   const addSecurityLog = (targetDb, action, username, role, status = 'AUTHENTICATED 🛡️') => {
@@ -152,11 +150,11 @@ export const AuthProvider = ({ children }) => {
   };
 
   const login = (username, password) => {
-    let currentDb = loadDB();
+    let currentDb = db;
     const cleanUser = (username || '').trim().toLowerCase();
     const cleanPass = (password || '').trim();
 
-    let found = currentDb.users.find((u) => {
+    let found = (currentDb.users || []).find((u) => {
       const matchUser = u.username.toLowerCase() === cleanUser;
       if (!matchUser) return false;
       if (u.role === 'admin' && (cleanPass === 'admin123' || cleanPass === 'admin' || u.password === cleanPass)) {
@@ -215,8 +213,8 @@ export const AuthProvider = ({ children }) => {
   };
 
   const quickSwitchUser = (username) => {
-    let currentDb = loadDB();
-    let found = currentDb.users.find((u) => u.username === username);
+    let currentDb = db;
+    let found = (currentDb.users || []).find((u) => u.username === username);
     if (found) {
       // 🛑 BLOCK SWITCHING TO INACTIVE TRANSPORTER
       if (found.role === 'transporter' || found.transporter_id) {
@@ -247,7 +245,7 @@ export const AuthProvider = ({ children }) => {
 
   const logout = () => {
     if (currentUser) {
-      let currentDb = loadDB();
+      let currentDb = db;
       const updatedWithLog = addSecurityLog(
         currentDb,
         `USER_LOGOUT`,
