@@ -1,6 +1,6 @@
 // src/store/dbStore.js
 // Restored Standard LocalStorage Database Store Engine with Complete ERP Master Directories (Company, Product, Cargo Masters) 💾🛡️
-
+import { supabase } from '../supabaseClient';
 const DB_KEY = 'transflow_logistics_db_v1';
 const USER_SESSION_KEY = 'transflow_current_user';
 
@@ -404,7 +404,34 @@ export const INITIAL_SEED_DATA = {
     }
   ]
 };
+export async function loadDBFromSupabase() {
+  try {
+    const { data, error } = await supabase
+      .from('app_database')
+      .select('data')
+      .eq('id', 'transflow-main')
+      .maybeSingle();
 
+    if (error) {
+      console.error('Supabase load failed:', error);
+      return null;
+    }
+
+    if (!data?.data) {
+      console.log('No data found in Supabase');
+      return null;
+    }
+
+    localStorage.setItem(DB_KEY, JSON.stringify(data.data));
+
+    console.log('✅ Data loaded from Supabase');
+
+    return data.data;
+  } catch (error) {
+    console.error('Supabase load error:', error);
+    return null;
+  }
+}
 export function loadDB() {
   try {
     const dataStr = localStorage.getItem(DB_KEY);
@@ -481,12 +508,26 @@ export async function saveToPermanentIndexedDB(data) {
   }
 }
 
-export function saveDB(data) {
+export async function saveDB(data) {
   try {
     // 🛡️ ZERO-DELETION ENGINE: Preserves 100% of all records forever
     const dataToSave = { ...data, _updatedAt: Date.now() };
     localStorage.setItem(DB_KEY, JSON.stringify(dataToSave));
     saveToPermanentIndexedDB(dataToSave);
+
+        const { error } = await supabase
+      .from('app_database')
+      .upsert({
+        id: 'transflow-main',
+        data: dataToSave,
+        updated_at: new Date().toISOString()
+      });
+
+    if (error) {
+      console.error('Supabase save failed:', error);
+    } else {
+      console.log('✅ Data saved to Supabase');
+    }
 
     if (typeof fetch !== 'undefined') {
       fetch('/api/db', {
