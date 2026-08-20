@@ -417,18 +417,57 @@ export async function loadDBFromSupabase() {
       return null;
     }
 
-    if (!data?.data) {
-      console.log('No data found in Supabase');
-      return null;
+    if (!data || !data.data) {
+      console.log('No data found in Supabase, initializing shared seed data...');
+      const seedToSave = { ...INITIAL_SEED_DATA, _updatedAt: Date.now() };
+      const { error: insertErr } = await supabase
+        .from('app_database')
+        .upsert(
+          {
+            id: 'transflow-main',
+            data: seedToSave,
+            updated_at: new Date().toISOString()
+          },
+          { onConflict: 'id' }
+        );
+
+      if (insertErr) {
+        console.error('Supabase save failed:', insertErr);
+      } else {
+        console.log('Supabase save successful');
+      }
+
+      localStorage.setItem(DB_KEY, JSON.stringify(seedToSave));
+      saveToPermanentIndexedDB(seedToSave);
+      console.log('Supabase load successful');
+      return seedToSave;
     }
 
-    localStorage.setItem(DB_KEY, JSON.stringify(data.data));
+    const supabaseDb = data.data;
 
-    console.log('✅ Data loaded from Supabase');
+    // Prevent an old localStorage copy from overwriting newer Supabase data
+    let localDb = null;
+    try {
+      const localStr = localStorage.getItem(DB_KEY);
+      if (localStr) localDb = JSON.parse(localStr);
+    } catch (e) {}
 
-    return data.data;
+    const localTime = localDb?._updatedAt || 0;
+    const supabaseTime = supabaseDb?._updatedAt || 0;
+
+    if (supabaseTime >= localTime || !localDb) {
+      localStorage.setItem(DB_KEY, JSON.stringify(supabaseDb));
+      saveToPermanentIndexedDB(supabaseDb);
+      console.log('Supabase load successful');
+      return supabaseDb;
+    } else {
+      console.log('Local cache has newer data, syncing to Supabase...');
+      await saveDB(localDb);
+      console.log('Supabase load successful');
+      return localDb;
+    }
   } catch (error) {
-    console.error('Supabase load error:', error);
+    console.error('Supabase load failed:', error);
     return null;
   }
 }
@@ -447,6 +486,7 @@ export function loadDB() {
     }
 
     return {
+      _updatedAt: parsed._updatedAt || Date.now(),
       company: parsed.company || INITIAL_SEED_DATA.company,
       do_master_settings: parsed.do_master_settings || INITIAL_SEED_DATA.do_master_settings,
       company_masters: Array.isArray(parsed.company_masters) ? parsed.company_masters : INITIAL_SEED_DATA.company_masters,
@@ -510,40 +550,40 @@ export async function saveToPermanentIndexedDB(data) {
 
 export async function saveDB(data) {
   try {
-    // 🛡️ ZERO-DELETION ENGINE: Preserves 100% of all records forever
-    const dataToSave = { ...data, _updatedAt: Date.now() };
+    const dataToSave = {
+      ...data,
+      _updatedAt: Date.now()
+    };
+
     localStorage.setItem(DB_KEY, JSON.stringify(dataToSave));
     saveToPermanentIndexedDB(dataToSave);
 
-        const { error } = await supabase
+    const { error } = await supabase
       .from('app_database')
-      .upsert({
-        id: 'transflow-main',
-        data: dataToSave,
-        updated_at: new Date().toISOString()
-      });
+      .upsert(
+        {
+          id: 'transflow-main',
+          data: dataToSave,
+          updated_at: new Date().toISOString()
+        },
+        { onConflict: 'id' }
+      );
 
     if (error) {
       console.error('Supabase save failed:', error);
     } else {
-      console.log('✅ Data saved to Supabase');
-    }
-
-    if (typeof fetch !== 'undefined') {
-      fetch('/api/db', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(dataToSave)
-      }).catch(() => {});
+      console.log('Supabase save successful');
     }
   } catch (err) {
-    console.warn('localStorage capacity reached, saving 100% complete data to permanent IndexedDB', err);
+    console.error('Supabase save failed:', err);
     saveToPermanentIndexedDB({ ...data, _updatedAt: Date.now() });
   }
 }
 
 export function resetDB() {
-  localStorage.setItem(DB_KEY, JSON.stringify(INITIAL_SEED_DATA));
+  const seedToSave = { ...INITIAL_SEED_DATA, _updatedAt: Date.now() };
+  localStorage.setItem(DB_KEY, JSON.stringify(seedToSave));
   localStorage.removeItem(USER_SESSION_KEY);
-  return { ...INITIAL_SEED_DATA };
+  saveDB(seedToSave);
+  return seedToSave;
 }

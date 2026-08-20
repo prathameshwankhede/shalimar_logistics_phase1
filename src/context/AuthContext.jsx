@@ -48,26 +48,26 @@ export const AuthProvider = ({ children }) => {
     return null;
   });
 
-  // Listen to Window Storage, BroadcastChannel, & /api/db for real-time cross-browser sync (Chrome <-> Edge)
+  // Listen to Window Storage, BroadcastChannel, & Supabase for real-time cross-device sync (Laptop <-> Mobile)
   useEffect(() => {
-const fetchSharedServerDb = async () => {
-  try {
-    const sharedDb = await loadDBFromSupabase();
+    let isMounted = true;
 
-    if (sharedDb) {
-      setDb({ ...sharedDb });
+    const fetchSharedServerDb = async () => {
+      try {
+        const sharedDb = await loadDBFromSupabase();
 
-      localStorage.setItem(
-        'transflow_logistics_db_v1',
-        JSON.stringify(sharedDb)
-      );
-
-      console.log('✅ Shared database loaded from Supabase');
-    }
-  } catch (e) {
-    console.error('Supabase sync failed:', e);
-  }
-};
+        if (sharedDb && isMounted) {
+          setDb((prevDb) => {
+            if (sharedDb._updatedAt && prevDb?._updatedAt && sharedDb._updatedAt <= prevDb._updatedAt) {
+              return prevDb;
+            }
+            return { ...sharedDb };
+          });
+        }
+      } catch (e) {
+        console.error('Supabase load failed:', e);
+      }
+    };
 
     fetchSharedServerDb();
 
@@ -80,18 +80,19 @@ const fetchSharedServerDb = async () => {
 
     let bc = null;
     if (typeof BroadcastChannel !== 'undefined') {
-      bc = new BroadcastChannel('transflow_live_sync_v1');
-      bc.onmessage = () => {
-        fetchSharedServerDb();
-        const freshData = loadDB();
-        setDb({ ...freshData });
-      };
+      try {
+        bc = new BroadcastChannel('transflow_live_sync_v1');
+        bc.onmessage = () => {
+          fetchSharedServerDb();
+        };
+      } catch (e) {}
     }
 
     const interval = setInterval(fetchSharedServerDb, 3000);
 
     window.addEventListener('storage', handleStorageChange);
     return () => {
+      isMounted = false;
       window.removeEventListener('storage', handleStorageChange);
       if (bc) bc.close();
       clearInterval(interval);
