@@ -1,8 +1,25 @@
 // src/store/dbStore.js
 // Restored Standard LocalStorage Database Store Engine with Complete ERP Master Directories (Company, Product, Cargo Masters) 💾🛡️
-import { supabase } from '../supabaseClient';
+import { supabase } from '../supabaseClient.js';
 const DB_KEY = 'transflow_logistics_db_v1';
 const USER_SESSION_KEY = 'transflow_current_user';
+
+function safeGetLocalStorage(key) {
+  try {
+    if (typeof localStorage !== 'undefined') {
+      return localStorage.getItem(key);
+    }
+  } catch (e) {}
+  return null;
+}
+
+function safeSetLocalStorage(key, value) {
+  try {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem(key, value);
+    }
+  } catch (e) {}
+}
 
 export const INITIAL_SEED_DATA = {
   _updatedAt: 1,
@@ -450,7 +467,7 @@ export async function loadDBFromSupabase() {
         console.log('Supabase save successful');
       }
 
-      localStorage.setItem(DB_KEY, JSON.stringify(seedToSave));
+      safeSetLocalStorage(DB_KEY, JSON.stringify(seedToSave));
       saveToPermanentIndexedDB(seedToSave);
       console.log('Supabase load successful');
       return seedToSave;
@@ -460,7 +477,7 @@ export async function loadDBFromSupabase() {
 
     let localDb = null;
     try {
-      const localStr = localStorage.getItem(DB_KEY);
+      const localStr = safeGetLocalStorage(DB_KEY);
       if (localStr) localDb = JSON.parse(localStr);
     } catch (e) {}
 
@@ -468,7 +485,7 @@ export async function loadDBFromSupabase() {
     const supabaseTime = supabaseDb?._updatedAt || 0;
 
     if (supabaseTime >= localTime || localTime <= 100 || !localDb) {
-      localStorage.setItem(DB_KEY, JSON.stringify(supabaseDb));
+      safeSetLocalStorage(DB_KEY, JSON.stringify(supabaseDb));
       saveToPermanentIndexedDB(supabaseDb);
       console.log('Supabase load successful');
       return supabaseDb;
@@ -486,17 +503,17 @@ export async function loadDBFromSupabase() {
 
 export function loadDB() {
   try {
-    const dataStr = localStorage.getItem(DB_KEY);
+    const dataStr = safeGetLocalStorage(DB_KEY);
     if (!dataStr) {
       const seedWithTimestamp = { ...INITIAL_SEED_DATA, _updatedAt: 1 };
-      localStorage.setItem(DB_KEY, JSON.stringify(seedWithTimestamp));
+      safeSetLocalStorage(DB_KEY, JSON.stringify(seedWithTimestamp));
       return { ...seedWithTimestamp };
     }
     const parsed = JSON.parse(dataStr);
 
     if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.rate_requests)) {
       const seedWithTimestamp = { ...INITIAL_SEED_DATA, _updatedAt: 1 };
-      localStorage.setItem(DB_KEY, JSON.stringify(seedWithTimestamp));
+      safeSetLocalStorage(DB_KEY, JSON.stringify(seedWithTimestamp));
       return { ...seedWithTimestamp };
     }
 
@@ -523,7 +540,7 @@ export function loadDB() {
   } catch (err) {
     console.error('Failed to load DB from localStorage, using seed data', err);
     const seedWithTimestamp = { ...INITIAL_SEED_DATA, _updatedAt: 1 };
-    localStorage.setItem(DB_KEY, JSON.stringify(seedWithTimestamp));
+    safeSetLocalStorage(DB_KEY, JSON.stringify(seedWithTimestamp));
     return { ...seedWithTimestamp };
   }
 }
@@ -572,7 +589,7 @@ export async function saveDB(data) {
       _updatedAt: Date.now()
     };
 
-    localStorage.setItem(DB_KEY, JSON.stringify(dataToSave));
+    safeSetLocalStorage(DB_KEY, JSON.stringify(dataToSave));
     saveToPermanentIndexedDB(dataToSave);
 
     if (!supabase) {
@@ -613,8 +630,10 @@ export async function saveDB(data) {
 
 export function resetDB() {
   const seedToSave = { ...INITIAL_SEED_DATA, _updatedAt: Date.now() };
-  localStorage.setItem(DB_KEY, JSON.stringify(seedToSave));
-  localStorage.removeItem(USER_SESSION_KEY);
+  safeSetLocalStorage(DB_KEY, JSON.stringify(seedToSave));
+  if (typeof localStorage !== 'undefined') {
+    localStorage.removeItem(USER_SESSION_KEY);
+  }
   saveDB(seedToSave);
   return seedToSave;
 }
