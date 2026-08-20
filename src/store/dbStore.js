@@ -5,6 +5,7 @@ const DB_KEY = 'transflow_logistics_db_v1';
 const USER_SESSION_KEY = 'transflow_current_user';
 
 export const INITIAL_SEED_DATA = {
+  _updatedAt: 1,
   company: {
     name: 'Shalimar Nutrients Pvt Ltd',
     short_name: 'Shalimar Nutrients',
@@ -404,7 +405,14 @@ export const INITIAL_SEED_DATA = {
     }
   ]
 };
+
 export async function loadDBFromSupabase() {
+  console.log('LOAD START');
+  if (!supabase) {
+    console.warn('Supabase not configured, returning local database fallback');
+    return loadDB();
+  }
+
   try {
     const { data, error } = await supabase
       .from('app_database')
@@ -414,13 +422,15 @@ export async function loadDBFromSupabase() {
 
     if (error) {
       console.error('Supabase load failed:', error);
-      return null;
+      return loadDB();
     }
 
     if (!data || !data.data) {
       console.log('No data found in Supabase, initializing shared seed data...');
       const seedToSave = { ...INITIAL_SEED_DATA, _updatedAt: Date.now() };
-      const { error: insertErr } = await supabase
+      
+      console.log('SUPABASE UPSERT START (INITIAL SEED)');
+      const { data: resData, error: insertErr } = await supabase
         .from('app_database')
         .upsert(
           {
@@ -429,7 +439,10 @@ export async function loadDBFromSupabase() {
             updated_at: new Date().toISOString()
           },
           { onConflict: 'id' }
-        );
+        )
+        .select();
+
+      console.log('SUPABASE UPSERT RESULT', { resData, error: insertErr });
 
       if (insertErr) {
         console.error('Supabase save failed:', insertErr);
@@ -445,7 +458,6 @@ export async function loadDBFromSupabase() {
 
     const supabaseDb = data.data;
 
-    // Prevent an old localStorage copy from overwriting newer Supabase data
     let localDb = null;
     try {
       const localStr = localStorage.getItem(DB_KEY);
@@ -455,38 +467,41 @@ export async function loadDBFromSupabase() {
     const localTime = localDb?._updatedAt || 0;
     const supabaseTime = supabaseDb?._updatedAt || 0;
 
-    if (supabaseTime >= localTime || !localDb) {
+    if (supabaseTime >= localTime || localTime <= 100 || !localDb) {
       localStorage.setItem(DB_KEY, JSON.stringify(supabaseDb));
       saveToPermanentIndexedDB(supabaseDb);
       console.log('Supabase load successful');
       return supabaseDb;
     } else {
-      console.log('Local cache has newer data, syncing to Supabase...');
+      console.log('Local cache has offline edits, syncing local cache to Supabase...');
       await saveDB(localDb);
       console.log('Supabase load successful');
       return localDb;
     }
   } catch (error) {
     console.error('Supabase load failed:', error);
-    return null;
+    return loadDB();
   }
 }
+
 export function loadDB() {
   try {
     const dataStr = localStorage.getItem(DB_KEY);
     if (!dataStr) {
-      localStorage.setItem(DB_KEY, JSON.stringify(INITIAL_SEED_DATA));
-      return { ...INITIAL_SEED_DATA };
+      const seedWithTimestamp = { ...INITIAL_SEED_DATA, _updatedAt: 1 };
+      localStorage.setItem(DB_KEY, JSON.stringify(seedWithTimestamp));
+      return { ...seedWithTimestamp };
     }
     const parsed = JSON.parse(dataStr);
 
     if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.rate_requests)) {
-      localStorage.setItem(DB_KEY, JSON.stringify(INITIAL_SEED_DATA));
-      return { ...INITIAL_SEED_DATA };
+      const seedWithTimestamp = { ...INITIAL_SEED_DATA, _updatedAt: 1 };
+      localStorage.setItem(DB_KEY, JSON.stringify(seedWithTimestamp));
+      return { ...seedWithTimestamp };
     }
 
     return {
-      _updatedAt: parsed._updatedAt || Date.now(),
+      _updatedAt: parsed._updatedAt || 1,
       company: parsed.company || INITIAL_SEED_DATA.company,
       do_master_settings: parsed.do_master_settings || INITIAL_SEED_DATA.do_master_settings,
       company_masters: Array.isArray(parsed.company_masters) ? parsed.company_masters : INITIAL_SEED_DATA.company_masters,
@@ -507,8 +522,9 @@ export function loadDB() {
     };
   } catch (err) {
     console.error('Failed to load DB from localStorage, using seed data', err);
-    localStorage.setItem(DB_KEY, JSON.stringify(INITIAL_SEED_DATA));
-    return { ...INITIAL_SEED_DATA };
+    const seedWithTimestamp = { ...INITIAL_SEED_DATA, _updatedAt: 1 };
+    localStorage.setItem(DB_KEY, JSON.stringify(seedWithTimestamp));
+    return { ...seedWithTimestamp };
   }
 }
 
@@ -549,6 +565,7 @@ export async function saveToPermanentIndexedDB(data) {
 }
 
 export async function saveDB(data) {
+  console.log('SAVE START');
   try {
     const dataToSave = {
       ...data,
@@ -558,7 +575,14 @@ export async function saveDB(data) {
     localStorage.setItem(DB_KEY, JSON.stringify(dataToSave));
     saveToPermanentIndexedDB(dataToSave);
 
-    const { error } = await supabase
+    if (!supabase) {
+      console.warn('Supabase client not configured, saved to local cache');
+      console.log('SAVE COMPLETE');
+      return dataToSave;
+    }
+
+    console.log('SUPABASE UPSERT START');
+    const { data: resData, error } = await supabase
       .from('app_database')
       .upsert(
         {
@@ -567,16 +591,23 @@ export async function saveDB(data) {
           updated_at: new Date().toISOString()
         },
         { onConflict: 'id' }
-      );
+      )
+      .select();
+
+    console.log('SUPABASE UPSERT RESULT', { resData, error });
 
     if (error) {
       console.error('Supabase save failed:', error);
     } else {
       console.log('Supabase save successful');
     }
+    return dataToSave;
   } catch (err) {
     console.error('Supabase save failed:', err);
     saveToPermanentIndexedDB({ ...data, _updatedAt: Date.now() });
+    return data;
+  } finally {
+    console.log('SAVE COMPLETE');
   }
 }
 

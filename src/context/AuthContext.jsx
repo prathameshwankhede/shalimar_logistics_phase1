@@ -132,9 +132,14 @@ export const AuthProvider = ({ children }) => {
     return { ...targetDb, security_audit_logs: logs };
   };
 
-  const updateDB = (newDb) => {
-    setDb({ ...newDb });
-    saveDB(newDb);
+  const updateDB = async (newDb) => {
+    const updatedData = { ...newDb, _updatedAt: Date.now() };
+    setDb({ ...updatedData });
+    try {
+      await saveDB(updatedData);
+    } catch (e) {
+      console.error('Supabase save failed in updateDB:', e);
+    }
     try {
       if (typeof BroadcastChannel !== 'undefined') {
         const bc = new BroadcastChannel('transflow_live_sync_v1');
