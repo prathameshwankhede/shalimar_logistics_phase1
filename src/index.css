@@ -745,3 +745,109 @@ body {
     margin: 6mm 8mm 6mm 8mm;
   }
 }
+
+/* ----------------------------------------------------
+   📱 100% RESPONSIVE MOBILE & TOUCH DEVICE STYLING (iOS & ANDROID)
+---------------------------------------------------- */
+html, body {
+  max-width: 100vw;
+  overflow-x: hidden;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+@media (max-width: 768px) {
+  body {
+    font-size: 13.5px;
+    padding: 6px !important;
+  }
+
+  .container, main, #root {
+    padding: 4px !important;
+    max-width: 100vw !important;
+    overflow-x: hidden;
+  }
+  
+  .glass-panel {
+    padding: 12px !important;
+    border-radius: 12px !important;
+    margin-bottom: 14px !important;
+  }
+
+  /* Make navbar header, titles, logo, & control bars stack & wrap cleanly */
+  nav, header, .custom-nav, div[style*="display: flex"] {
+    flex-wrap: wrap !important;
+    gap: 8px !important;
+  }
+
+  nav img {
+    height: 42px !important;
+  }
+
+  h1 {
+    font-size: 1.05rem !important;
+  }
+  h2 {
+    font-size: 0.98rem !important;
+  }
+  h3 {
+    font-size: 0.92rem !important;
+  }
+
+  /* Smooth touch horizontal scrolling for tables on mobile without squeezing */
+  .custom-table-container {
+    display: block !important;
+    width: 100% !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    border-radius: 10px !important;
+    margin-bottom: 12px !important;
+  }
+
+  .custom-table {
+    width: 100% !important;
+    min-width: 600px !important;
+  }
+
+  /* Full width modal popups on mobile screens */
+  .modal-overlay {
+    padding: 10px !important;
+    align-items: flex-start !important;
+    padding-top: 20px !important;
+  }
+
+  .modal-content {
+    width: 95vw !important;
+    max-width: 95vw !important;
+    padding: 16px !important;
+    margin: 0 auto !important;
+    max-height: 88vh !important;
+    overflow-y: auto !important;
+    border-radius: 14px !important;
+  }
+
+  /* Responsive Grid Stacking for Mobile Cards */
+  div[style*="gridTemplateColumns"] {
+    grid-template-columns: 1fr !important;
+    gap: 12px !important;
+  }
+
+  /* Responsive Inputs, Selects & Buttons */
+  .form-control, input, select, textarea {
+    font-size: 0.85rem !important;
+    height: auto !important;
+    min-height: 38px !important;
+    padding: 8px 10px !important;
+  }
+
+  .btn {
+    padding: 8px 12px !important;
+    font-size: 0.78rem !important;
+    min-height: 36px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+  }
+}
