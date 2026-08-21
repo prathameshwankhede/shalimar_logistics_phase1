@@ -39,7 +39,9 @@ import {
   Edit,
   FolderOpen,
   MessageSquare,
-  Send
+  Send,
+  Database,
+  Upload
 } from 'lucide-react';
 
 export const AdminDashboard = () => {
@@ -425,6 +427,68 @@ export const AdminDashboard = () => {
 
     updateDB(updatedDb);
     setEditingTransporterMaster(null);
+  };
+
+  const handleDownloadDatabaseBackup = () => {
+    const backupData = {
+      ...db,
+      _exportedAt: new Date().toISOString(),
+      _exportVersion: 'v1.0'
+    };
+    const jsonStr = JSON.stringify(backupData, null, 2);
+    const blob = new Blob([jsonStr], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `Transflow_Full_Database_Backup_${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    setArchiveNotice('📥 Complete System Database Backup (.json) downloaded successfully!');
+    setTimeout(() => setArchiveNotice(''), 4000);
+  };
+
+  const handleUploadDatabaseBackup = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const jsonContent = event.target?.result;
+        if (!jsonContent) return;
+        const parsed = JSON.parse(jsonContent);
+
+        if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.rate_requests || parsed.transporters)) {
+          alert('Invalid Database Backup file format. Backup file must be a valid Transflow JSON backup.');
+          return;
+        }
+
+        if (!window.confirm('⚠️ DATABASE RESTORE WARNING:\n\nAre you sure you want to restore the system database from this backup file?\n\nThis will replace current database tables with the backup contents and sync to Supabase Cloud.')) {
+          return;
+        }
+
+        const restoredDb = addSecurityLog(
+          {
+            ...parsed,
+            _updatedAt: Date.now()
+          },
+          'RESTORE_DATABASE_FROM_JSON_BACKUP',
+          currentUser?.username || 'admin',
+          'admin',
+          'DB_RESTORED 🛡️'
+        );
+
+        updateDB(restoredDb);
+        setArchiveNotice('🎉 Database successfully restored from JSON backup file & synced to Supabase Cloud!');
+        setTimeout(() => setArchiveNotice(''), 5000);
+      } catch (err) {
+        alert(`Failed to parse backup JSON file: ${err.message}`);
+      }
+    };
+    reader.readAsText(file);
   };
 
   const handleToggleTransporterStatus = (transporter) => {
@@ -2634,6 +2698,79 @@ export const AdminDashboard = () => {
           {/* TAB 3: CONSOLIDATED ERP MASTERS DIRECTORY (TRANSPORTERS, COMPANIES, PRODUCTS, CARGO, DO SETTINGS) */}
           {(activeTab === 'title_masters' || activeTab === 'transporters') && (
             <div className="glass-panel" style={{ padding: '24px' }}>
+              
+              {/* 🗄️ DATABASE BACKUP & CLOUD SYNC MANAGER CARD */}
+              <div style={{
+                background: 'linear-gradient(135deg, rgba(15, 23, 42, 0.9) 0%, rgba(30, 41, 59, 0.9) 100%)',
+                border: '2px solid #0284c7',
+                borderRadius: '18px',
+                padding: '22px',
+                marginBottom: '24px',
+                boxShadow: '0 10px 30px rgba(2, 132, 199, 0.2)'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '14px' }}>
+                  <div>
+                    <div style={{ fontSize: '0.78rem', fontWeight: '900', color: '#38bdf8', background: 'rgba(56, 189, 248, 0.15)', padding: '3px 10px', borderRadius: '6px', width: 'fit-content', border: '1px solid #0284c7', marginBottom: '6px' }}>
+                      🛡️ VERCEL / SUPABASE CLOUD DATABASE ENGINE
+                    </div>
+                    <h3 style={{ fontSize: '1.2rem', fontWeight: '900', color: '#ffffff', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <Database size={20} color="#34d399" /> 🗄️ Complete System Database Backup & Cloud Restore Center
+                    </h3>
+                    <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: '4px 0 0 0' }}>
+                      1-Click Instant JSON Database Backup Download & Cloud Restore for all 10 System Tables.
+                    </p>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                    <button
+                      type="button"
+                      onClick={handleDownloadDatabaseBackup}
+                      className="btn"
+                      style={{
+                        background: 'linear-gradient(135deg, #059669 0%, #10b981 100%)',
+                        color: '#ffffff',
+                        border: 'none',
+                        padding: '10px 18px',
+                        fontSize: '0.85rem',
+                        fontWeight: '900',
+                        borderRadius: '10px',
+                        cursor: 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        boxShadow: '0 4px 14px rgba(16, 185, 129, 0.4)'
+                      }}
+                    >
+                      <Download size={16} /> 📥 Download Full Database Backup (.json)
+                    </button>
+
+                    <label
+                      className="btn"
+                      style={{
+                        background: 'rgba(2, 132, 199, 0.2)',
+                        color: '#38bdf8',
+                        border: '1.5px solid #0284c7',
+                        padding: '10px 18px',
+                        fontSize: '0.85rem',
+                        fontWeight: '900',
+                        borderRadius: '10px',
+                        cursor: 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px'
+                      }}
+                    >
+                      <Upload size={16} /> 📤 Restore Backup (.json)
+                      <input
+                        type="file"
+                        accept=".json"
+                        onChange={handleUploadDatabaseBackup}
+                        style={{ display: 'none' }}
+                      />
+                    </label>
+                  </div>
+                </div>
+              </div>
               
               {/* 📑 Master Directories Filter Sub-Nav Bar */}
               <div style={{ display: 'flex', gap: '8px', marginBottom: '24px', flexWrap: 'wrap', background: 'rgba(255,255,255,0.03)', padding: '12px', borderRadius: '14px', border: '1px solid var(--border-color)' }}>
