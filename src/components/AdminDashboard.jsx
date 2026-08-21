@@ -776,8 +776,11 @@ export const AdminDashboard = () => {
   };
 
   const handleBulkBroadcastRequirements = (e) => {
-    e.preventDefault();
-    if (!bulkReqRows.length) return;
+    if (e && e.preventDefault) e.preventDefault();
+    if (!bulkReqRows || !bulkReqRows.length) {
+      alert('No rate request rows found.');
+      return;
+    }
 
     const currentBatchNum = getNextBatchNum();
     const batchCode = `SNPL/26-27/REQ-${currentBatchNum.toString().padStart(2, '0')}`;
@@ -797,15 +800,15 @@ export const AdminDashboard = () => {
         title: reqNo,
         batch_no: batchCode,
         sub_no: subNum,
-        origin_city: row.origin_city,
+        origin_city: row.origin_city || masterPickupCity || 'Nagpur (Shalimar Plant MIDC)',
         origin_pin: '440028',
-        dest_city: row.dest_city,
+        dest_city: row.dest_city || 'Solapur (Shalimar Refinery)',
         dest_pin: '413001',
         company_unit: row.company_unit || 'Shalimar Nutrients Pvt Ltd',
-        material_type: row.material_type,
+        material_type: row.material_type || 'Soybean Meal De-Oiled Cake (DOC)',
         required_qty: qtyVal,
         unit: 'MT',
-        target_date: row.target_date,
+        target_date: row.target_date || '2026-08-30',
         status: 'Open',
         created_at: new Date().toISOString(),
         notes: `Company Unit: ${row.company_unit || 'Shalimar Group'}. Batch ${batchCode} Item #${subNum}.`
@@ -813,7 +816,7 @@ export const AdminDashboard = () => {
     }
 
     if (newRequests.length === 0) {
-      alert('Please fill valid quantity for at least one row.');
+      alert('Please enter a valid Quantity in MT (e.g. 500) for at least one row.');
       return;
     }
 
@@ -830,7 +833,7 @@ export const AdminDashboard = () => {
 
     updateDB(updatedDb);
 
-    alert(`🎉 Successfully Broadcasted Batch ${batchCode} (${newRequests.length} Rate Requests: ${batchCode}/01 to ${batchCode}/${newRequests.length.toString().padStart(2, '0')}) to Transporters!`);
+    alert(`🎉 Successfully Broadcasted Batch ${batchCode} (${newRequests.length} Rate Request(s): ${batchCode}/01) to Transporters!`);
 
     // Reset Bulk Form with 1 fresh row initialized for NEXT Batch
     setBulkReqRows([createSingleReqRow(0)]);
