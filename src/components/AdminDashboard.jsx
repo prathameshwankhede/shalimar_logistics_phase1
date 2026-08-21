@@ -2577,14 +2577,25 @@ export const AdminDashboard = () => {
                               )}
                             </td>
                             <td style={{ textAlign: 'right' }}>
-                              <button
-                                type="button"
-                                onClick={() => setSelectedAuditReportModal(req)}
-                                className="btn btn-secondary"
-                                style={{ padding: '5px 12px', fontSize: '0.78rem', border: '1px solid #38bdf8', color: '#38bdf8' }}
-                              >
-                                📋 Full Trail
-                              </button>
+                              <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end' }}>
+                                <button
+                                  type="button"
+                                  onClick={() => setSelectedRequestForParticularReport(req)}
+                                  className="btn"
+                                  style={{ padding: '5px 10px', fontSize: '0.76rem', fontWeight: '800', border: '1px solid #059669', color: '#059669', background: 'rgba(5, 150, 105, 0.1)', display: 'inline-flex', alignItems: 'center', gap: '3px' }}
+                                  title="Print Particular Bid Audit Report"
+                                >
+                                  <FileText size={13} /> Particular Report
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setSelectedAuditReportModal(req)}
+                                  className="btn btn-secondary"
+                                  style={{ padding: '5px 10px', fontSize: '0.76rem', border: '1px solid #38bdf8', color: '#38bdf8' }}
+                                >
+                                  📋 Full Trail
+                                </button>
+                              </div>
                             </td>
                           </tr>
                         );
