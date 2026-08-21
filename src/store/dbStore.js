@@ -1,7 +1,7 @@
 // src/store/dbStore.js
 // Restored Standard LocalStorage Database Store Engine with Complete ERP Master Directories (Company, Product, Cargo Masters) 💾🛡️
 import { supabase } from '../supabaseClient.js';
-const DB_KEY = 'transflow_logistics_db_prod_v2';
+const DB_KEY = 'transflow_logistics_db_live_v3';
 const USER_SESSION_KEY = 'transflow_current_user';
 
 function safeGetLocalStorage(key) {
@@ -303,7 +303,7 @@ export async function loadDBFromSupabase() {
     const { data, error } = await supabase
       .from('app_database')
       .select('data')
-      .eq('id', 'transflow-production-v2')
+      .eq('id', 'transflow-live-prod-v3')
       .maybeSingle();
 
     if (error) {
@@ -313,14 +313,14 @@ export async function loadDBFromSupabase() {
 
     if (!data || !data.data) {
       console.log('No data found in Supabase, initializing shared seed data...');
-      const seedToSave = { ...INITIAL_SEED_DATA, _updatedAt: Date.now() + 1000000 };
+      const seedToSave = { ...INITIAL_SEED_DATA, _updatedAt: Date.now() };
       
       console.log('SUPABASE UPSERT START (INITIAL SEED)');
       const { data: resData, error: insertErr } = await supabase
         .from('app_database')
         .upsert(
           {
-            id: 'transflow-production-v2',
+            id: 'transflow-live-prod-v3',
             data: seedToSave,
             updated_at: new Date().toISOString()
           },
@@ -472,7 +472,7 @@ export async function saveDB(data) {
       .from('app_database')
       .upsert(
         {
-          id: 'transflow-production-v2',
+          id: 'transflow-live-prod-v3',
           data: dataToSave,
           updated_at: new Date().toISOString()
         },
