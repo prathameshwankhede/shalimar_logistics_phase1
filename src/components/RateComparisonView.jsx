@@ -3,10 +3,12 @@
 
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { Award, CheckCircle2, TrendingDown, Clock, Sparkles, MessageSquare, Snowflake, Send, X, AlertCircle, Lock } from 'lucide-react';
+import { Award, CheckCircle2, TrendingDown, Clock, Sparkles, MessageSquare, Snowflake, Send, X, AlertCircle, Lock, FileText, Printer } from 'lucide-react';
+import { ParticularBidReportModal } from './ParticularBidReportModal';
 
 export const RateComparisonView = ({ rateRequest, onBack }) => {
   const { db, updateDB, currentUser, addSecurityLog } = useAuth();
+  const [showParticularReportModal, setShowParticularReportModal] = useState(false);
   
   // Negotiation state
   const [activeCounterSub, setActiveCounterSub] = useState(null);
@@ -221,12 +223,33 @@ export const RateComparisonView = ({ rateRequest, onBack }) => {
             </p>
           </div>
 
-          <div style={{ textAlign: 'right' }}>
-            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Total Requirement</div>
-            <div style={{ fontSize: '1.6rem', fontWeight: '800', color: '#0284c7' }}>
-              {(Number(rateRequest?.required_qty) || 0).toLocaleString()} {rateRequest?.unit || 'MT'}
+          <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '8px' }}>
+            <button
+              type="button"
+              onClick={() => setShowParticularReportModal(true)}
+              className="btn btn-primary"
+              style={{
+                background: 'linear-gradient(135deg, #0284c7 0%, #059669 100%)',
+                color: '#ffffff',
+                fontWeight: '800',
+                padding: '8px 14px',
+                fontSize: '0.82rem',
+                borderRadius: '8px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                boxShadow: '0 4px 14px rgba(2, 132, 199, 0.3)'
+              }}
+            >
+              <Printer size={15} /> 📄 Particular Bid Audit Report
+            </button>
+            <div>
+              <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Total Requirement</div>
+              <div style={{ fontSize: '1.6rem', fontWeight: '800', color: '#0284c7' }}>
+                {(Number(rateRequest?.required_qty) || 0).toLocaleString()} {rateRequest?.unit || 'MT'}
+              </div>
+              <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Cargo: {rateRequest?.material_type}</div>
             </div>
-            <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Cargo: {rateRequest?.material_type}</div>
           </div>
         </div>
 
@@ -614,6 +637,15 @@ export const RateComparisonView = ({ rateRequest, onBack }) => {
             </form>
           </div>
         </div>
+      )}
+
+      {/* Particular Bid Audit Report Modal */}
+      {showParticularReportModal && (
+        <ParticularBidReportModal
+          rateRequest={rateRequest}
+          isOpen={showParticularReportModal}
+          onClose={() => setShowParticularReportModal(false)}
+        />
       )}
 
     </div>

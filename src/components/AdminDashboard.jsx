@@ -8,6 +8,7 @@ import { TransporterManagerModal } from './TransporterManagerModal';
 import { RateComparisonView } from './RateComparisonView';
 import { ContractModal } from './ContractModal';
 import { ERPPaymentModal } from './ERPPaymentModal';
+import { ParticularBidReportModal } from './ParticularBidReportModal';
 import { validateMobile, validatePincode, validateGSTIN, validatePAN, validateName, validateEmail } from '../utils/validationRules';
 import {
   PlusCircle,
@@ -62,6 +63,7 @@ export const AdminDashboard = () => {
     localStorage.setItem('transflow_admin_master_sub_tab', masterFilterTab);
   }, [masterFilterTab]);
   const [selectedRequestForComparison, setSelectedRequestForComparison] = useState(null);
+  const [selectedRequestForParticularReport, setSelectedRequestForParticularReport] = useState(null);
   
   const [isReqModalOpen, setIsReqModalOpen] = useState(false);
   const [isTransporterModalOpen, setIsTransporterModalOpen] = useState(false);
@@ -1999,7 +2001,16 @@ export const AdminDashboard = () => {
                                                   </td>
 
                                                   <td style={{ textAlign: 'right', padding: '12px 16px' }}>
-                                                    <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                                                    <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+                                                      <button
+                                                        type="button"
+                                                        onClick={() => setSelectedRequestForParticularReport(req)}
+                                                        className="btn"
+                                                        style={{ padding: '6px 12px', fontSize: '0.8rem', fontWeight: '800', borderRadius: '8px', border: '1px solid #059669', color: '#059669', background: 'rgba(5, 150, 105, 0.1)', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                                                        title="Print Particular Bid Audit Report & PDF"
+                                                      >
+                                                        <FileText size={14} /> Particular Report
+                                                      </button>
                                                       <button
                                                         onClick={() => setSelectedRequestForComparison(req)}
                                                         className="btn btn-primary"
@@ -2114,7 +2125,16 @@ export const AdminDashboard = () => {
                             </td>
 
                             <td style={{ textAlign: 'right' }}>
-                              <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                              <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+                                <button
+                                  type="button"
+                                  onClick={() => setSelectedRequestForParticularReport(req)}
+                                  className="btn"
+                                  style={{ padding: '6px 12px', fontSize: '0.8rem', fontWeight: '800', borderRadius: '8px', border: '1px solid #059669', color: '#059669', background: 'rgba(5, 150, 105, 0.1)', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                                  title="Print Particular Bid Audit Report & PDF"
+                                >
+                                  <FileText size={14} /> Particular Report
+                                </button>
                                 <button
                                   onClick={() => setSelectedRequestForComparison(req)}
                                   className="btn btn-primary"
@@ -4118,6 +4138,13 @@ export const AdminDashboard = () => {
       <TransporterManagerModal isOpen={isTransporterModalOpen} onClose={() => setIsTransporterModalOpen(false)} />
       <ContractModal contract={selectedContractForModal} onClose={() => setSelectedContractForModal(null)} />
       <ERPPaymentModal contract={selectedContractForERP} onClose={() => setSelectedContractForERP(null)} />
+      {selectedRequestForParticularReport && (
+        <ParticularBidReportModal
+          rateRequest={selectedRequestForParticularReport}
+          isOpen={Boolean(selectedRequestForParticularReport)}
+          onClose={() => setSelectedRequestForParticularReport(null)}
+        />
+      )}
     </div>
   );
 };
