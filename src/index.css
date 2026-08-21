@@ -758,10 +758,26 @@ html, body {
   box-sizing: border-box;
 }
 
+/* Mobile / Desktop Utility Display Classes */
+.mobile-only {
+  display: none !important;
+}
+.desktop-only {
+  display: block !important;
+}
+
 @media (max-width: 768px) {
+  .mobile-only {
+    display: block !important;
+  }
+  .desktop-only {
+    display: none !important;
+  }
+
   body {
     font-size: 13px;
     padding: 4px !important;
+    background-color: var(--bg-dark) !important;
   }
 
   .container, main, #root {
@@ -772,40 +788,43 @@ html, body {
   
   .glass-panel {
     padding: 12px !important;
-    border-radius: 12px !important;
+    border-radius: 14px !important;
     margin-bottom: 12px !important;
   }
 
-  /* Make top navigation and header banners wrap cleanly without breaking inner flex elements */
-  header, .navbar-header, .top-header-bar, .dashboard-header {
-    flex-direction: column !important;
-    align-items: flex-start !important;
-    gap: 10px !important;
-  }
-
-  /* Horizontal touch scrolling for tab navigation bars */
-  .tabs-bar, div[style*="display: flex"][style*="gap: 12px"] {
-    overflow-x: auto !important;
-    -webkit-overflow-scrolling: touch !important;
-    max-width: 100% !important;
-    padding-bottom: 6px !important;
+  /* Navigation Header Banner on Mobile */
+  nav, header, .navbar-header {
+    padding: 10px 12px !important;
+    flex-wrap: wrap !important;
+    gap: 8px !important;
+    justify-content: space-between !important;
   }
 
   nav img {
-    height: 38px !important;
+    height: 36px !important;
+  }
+
+  /* Touch Scrollable Tabs Bar */
+  div[style*="display: flex"][style*="gap: 12px"],
+  div[style*="display: flex"][style*="gap: 14px"] {
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    max-width: 100% !important;
+    padding-bottom: 4px !important;
+    flex-wrap: nowrap !important;
   }
 
   h1 {
     font-size: 1.1rem !important;
   }
   h2 {
-    font-size: 1.02rem !important;
+    font-size: 1rem !important;
   }
   h3 {
-    font-size: 0.95rem !important;
+    font-size: 0.92rem !important;
   }
 
-  /* Smooth touch horizontal scrolling for tables on mobile without squeezing */
+  /* Table horizontal touch scroll container */
   .custom-table-container, div[style*="overflowX: auto"], div[style*="overflow-x: auto"] {
     display: block !important;
     width: 100% !important;
@@ -820,25 +839,38 @@ html, body {
     min-width: 580px !important;
   }
 
-  /* Full width modal popups on mobile screens */
+  /* Mobile Full-Width Responsive Modals */
   .modal-overlay {
-    padding: 8px !important;
+    padding: 6px !important;
     align-items: flex-start !important;
-    padding-top: 14px !important;
+    padding-top: 10px !important;
   }
 
   .modal-content {
-    width: 96vw !important;
-    max-width: 96vw !important;
+    width: 98vw !important;
+    max-width: 98vw !important;
     padding: 14px !important;
     margin: 0 auto !important;
-    max-height: 90vh !important;
+    max-height: 92vh !important;
     overflow-y: auto !important;
-    overflow-x: auto !important;
     border-radius: 14px !important;
   }
 
-  /* Responsive Grid Stacking for Mobile Cards & Forms */
+  /* Stack button containers vertically on mobile for easy thumb tapping */
+  div[style*="justifyContent: flex-end"],
+  div[style*="justify-content: flex-end"] {
+    flex-direction: column !important;
+    width: 100% !important;
+    gap: 8px !important;
+  }
+
+  div[style*="justifyContent: flex-end"] .btn,
+  div[style*="justify-content: flex-end"] .btn {
+    width: 100% !important;
+    justify-content: center !important;
+  }
+
+  /* Grid layouts stack in single column on mobile screens */
   div[style*="gridTemplateColumns"] {
     grid-template-columns: 1fr !important;
     gap: 10px !important;
@@ -849,22 +881,25 @@ html, body {
     gap: 10px !important;
   }
 
-  /* Responsive Inputs, Selects & Buttons */
+  /* Touch Friendly Controls */
   .form-control, input, select, textarea {
-    font-size: 0.85rem !important;
+    font-size: 0.88rem !important;
     height: auto !important;
-    min-height: 40px !important;
-    padding: 8px 10px !important;
+    min-height: 42px !important;
+    padding: 8px 12px !important;
     width: 100% !important;
+    border-radius: 8px !important;
   }
 
   .btn {
-    padding: 8px 14px !important;
-    font-size: 0.8rem !important;
-    min-height: 40px !important;
+    padding: 10px 14px !important;
+    font-size: 0.82rem !important;
+    min-height: 42px !important;
     display: inline-flex !important;
     align-items: center !important;
     justify-content: center !important;
     touch-action: manipulation;
+    border-radius: 10px !important;
+    width: 100% !important;
   }
 }

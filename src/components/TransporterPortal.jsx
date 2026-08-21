@@ -36,7 +36,12 @@ export const TransporterPortal = () => {
   React.useEffect(() => {
     localStorage.setItem('transflow_transporter_active_tab', activeTab);
   }, [activeTab]);
-  const [biddingViewMode, setBiddingViewMode] = useState('express'); // 'express' (1-line), 'card' (detailed grid)
+  const [biddingViewMode, setBiddingViewMode] = useState(() => {
+    if (typeof window !== 'undefined' && window.innerWidth <= 768) {
+      return 'card';
+    }
+    return 'express';
+  }); // 'express' (1-line), 'card' (detailed grid)
   const [allocationFilter, setAllocationFilter] = useState('all'); // 'all', 'active', 'completed'
   const [selectedMonth, setSelectedMonth] = useState('2026-08'); // Month filter for statement
 
