@@ -491,6 +491,36 @@ export const AdminDashboard = () => {
     reader.readAsText(file);
   };
 
+  const handleResetDatabaseToFreshStart = () => {
+    if (!window.confirm('⚠️ WARNING: ARE YOU SURE YOU WANT TO CLEAR ALL OPERATIONAL DATA AND START FRESH?\n\nThis will permanently clear all test indents, bids, contracts, and truck dispatches from Supabase Cloud Database & Vercel.')) {
+      return;
+    }
+
+    const cleanFreshDb = {
+      ...db,
+      _updatedAt: Date.now(),
+      rate_requests: [],
+      rate_submissions: [],
+      allocations: [],
+      contracts: [],
+      truck_dispatches: [],
+      security_logs: [
+        {
+          id: `sec_${Date.now()}`,
+          action: 'SYSTEM_DATABASE_RESET_FRESH_START',
+          actor: currentUser?.username || 'admin',
+          role: 'admin',
+          timestamp: new Date().toISOString(),
+          details: 'System database cleared for fresh operational start 🚀'
+        }
+      ]
+    };
+
+    updateDB(cleanFreshDb);
+    setArchiveNotice('🎉 System Database cleared completely! Fresh clean start ready for real operations.');
+    setTimeout(() => setArchiveNotice(''), 5000);
+  };
+
   const handleToggleTransporterStatus = (transporter) => {
     const isCurrentlyActive = transporter.status !== 'Suspended' && transporter.status !== 'Deactivated';
     const newStatus = isCurrentlyActive ? 'Suspended' : 'Active';
@@ -2768,6 +2798,29 @@ export const AdminDashboard = () => {
                         style={{ display: 'none' }}
                       />
                     </label>
+
+                    <button
+                      type="button"
+                      onClick={handleResetDatabaseToFreshStart}
+                      className="btn btn-danger"
+                      style={{
+                        background: 'linear-gradient(135deg, #dc2626 0%, #ef4444 100%)',
+                        color: '#ffffff',
+                        border: 'none',
+                        padding: '10px 18px',
+                        fontSize: '0.85rem',
+                        fontWeight: '900',
+                        borderRadius: '10px',
+                        cursor: 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        boxShadow: '0 4px 14px rgba(239, 68, 68, 0.4)'
+                      }}
+                      title="Clear all test indents, bids, contracts, and truck dispatches to start fresh"
+                    >
+                      <Trash2 size={16} /> ⚠️ Clear All Data & Start Fresh
+                    </button>
                   </div>
                 </div>
               </div>
