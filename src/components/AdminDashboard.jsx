@@ -1679,19 +1679,22 @@ export const AdminDashboard = () => {
                       style={{
                         background: 'linear-gradient(135deg, #059669 0%, #10b981 100%)',
                         color: '#ffffff',
-                        boxShadow: '0 0 25px rgba(16, 185, 129, 0.5)',
-                        padding: '12px 32px',
-                        fontSize: '1rem',
+                        boxShadow: '0 0 25px rgba(16, 185, 129, 0.6), 0 0 50px rgba(16, 185, 129, 0.3)',
+                        padding: '14px 36px',
+                        fontSize: '1.05rem',
                         fontWeight: '900',
-                        borderRadius: '12px',
-                        border: 'none',
+                        borderRadius: '14px',
+                        border: '2px solid #34d399',
                         display: 'flex',
                         alignItems: 'center',
                         gap: '10px',
-                        cursor: 'pointer'
+                        cursor: 'pointer',
+                        transform: 'scale(1.02)',
+                        transition: 'all 0.25s ease'
                       }}
+                      title="Click here to save & broadcast these filled rate requests to Transporters"
                     >
-                      <Plus size={20} /> 🚀 ➕ Broadcast All {bulkReqRows.length} Rate Requests
+                      <Plus size={22} /> 🚀 Broadcast All {bulkReqRows.length} Rate Requests (1-Click)
                     </button>
                   </div>
                 </form>
