@@ -760,8 +760,8 @@ html, body {
 
 @media (max-width: 768px) {
   body {
-    font-size: 13.5px;
-    padding: 6px !important;
+    font-size: 13px;
+    padding: 4px !important;
   }
 
   .container, main, #root {
@@ -773,31 +773,40 @@ html, body {
   .glass-panel {
     padding: 12px !important;
     border-radius: 12px !important;
-    margin-bottom: 14px !important;
+    margin-bottom: 12px !important;
   }
 
-  /* Make navbar header, titles, logo, & control bars stack & wrap cleanly */
-  nav, header, .custom-nav, div[style*="display: flex"] {
-    flex-wrap: wrap !important;
-    gap: 8px !important;
+  /* Make top navigation and header banners wrap cleanly without breaking inner flex elements */
+  header, .navbar-header, .top-header-bar, .dashboard-header {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 10px !important;
+  }
+
+  /* Horizontal touch scrolling for tab navigation bars */
+  .tabs-bar, div[style*="display: flex"][style*="gap: 12px"] {
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    max-width: 100% !important;
+    padding-bottom: 6px !important;
   }
 
   nav img {
-    height: 42px !important;
+    height: 38px !important;
   }
 
   h1 {
-    font-size: 1.05rem !important;
+    font-size: 1.1rem !important;
   }
   h2 {
-    font-size: 0.98rem !important;
+    font-size: 1.02rem !important;
   }
   h3 {
-    font-size: 0.92rem !important;
+    font-size: 0.95rem !important;
   }
 
   /* Smooth touch horizontal scrolling for tables on mobile without squeezing */
-  .custom-table-container {
+  .custom-table-container, div[style*="overflowX: auto"], div[style*="overflow-x: auto"] {
     display: block !important;
     width: 100% !important;
     overflow-x: auto !important;
@@ -808,46 +817,54 @@ html, body {
 
   .custom-table {
     width: 100% !important;
-    min-width: 600px !important;
+    min-width: 580px !important;
   }
 
   /* Full width modal popups on mobile screens */
   .modal-overlay {
-    padding: 10px !important;
+    padding: 8px !important;
     align-items: flex-start !important;
-    padding-top: 20px !important;
+    padding-top: 14px !important;
   }
 
   .modal-content {
-    width: 95vw !important;
-    max-width: 95vw !important;
-    padding: 16px !important;
+    width: 96vw !important;
+    max-width: 96vw !important;
+    padding: 14px !important;
     margin: 0 auto !important;
-    max-height: 88vh !important;
+    max-height: 90vh !important;
     overflow-y: auto !important;
+    overflow-x: auto !important;
     border-radius: 14px !important;
   }
 
-  /* Responsive Grid Stacking for Mobile Cards */
+  /* Responsive Grid Stacking for Mobile Cards & Forms */
   div[style*="gridTemplateColumns"] {
     grid-template-columns: 1fr !important;
-    gap: 12px !important;
+    gap: 10px !important;
+  }
+
+  form[style*="gridTemplateColumns"] {
+    grid-template-columns: 1fr !important;
+    gap: 10px !important;
   }
 
   /* Responsive Inputs, Selects & Buttons */
   .form-control, input, select, textarea {
     font-size: 0.85rem !important;
     height: auto !important;
-    min-height: 38px !important;
+    min-height: 40px !important;
     padding: 8px 10px !important;
+    width: 100% !important;
   }
 
   .btn {
-    padding: 8px 12px !important;
-    font-size: 0.78rem !important;
-    min-height: 36px !important;
+    padding: 8px 14px !important;
+    font-size: 0.8rem !important;
+    min-height: 40px !important;
     display: inline-flex !important;
     align-items: center !important;
     justify-content: center !important;
+    touch-action: manipulation;
   }
 }
