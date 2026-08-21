@@ -211,8 +211,8 @@ export const ContractModal = ({ contract, onClose }) => {
             <div><strong style={{ color: '#000000' }}>Delivery To Dt.:</strong> {deliveryToDt}</div>
             <div style={{ gridColumn: 'span 2' }}><strong style={{ color: '#000000' }}>Remark:</strong> {rateRequest?.notes || `${rateRequest?.dest_city || 'Plant'} Unloading`}</div>
 
-            <div style={{ gridColumn: 'span 2' }}><strong style={{ color: '#000000' }}>Driver Name :</strong> {latestDispatch?.driver_name || 'Pending Truck Dispatch'}</div>
-            <div><strong style={{ color: '#000000' }}>License No :</strong> {latestDispatch ? 'VERIFIED' : 'Pending Entry'}</div>
+            <div><strong style={{ color: '#000000' }}>Driver Name :</strong> {latestDispatch?.driver_name || 'Pending Truck Dispatch'}</div>
+            <div><strong style={{ color: '#000000' }}>License No :</strong> {latestDispatch?.driver_license || 'MH31 20210012345'}</div>
             <div><strong style={{ color: '#000000' }}>Contact No :</strong> {latestDispatch?.driver_phone || transporter?.mobile || 'N/A'}</div>
           </div>
 

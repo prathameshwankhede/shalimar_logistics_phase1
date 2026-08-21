@@ -5,6 +5,7 @@ import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { ContractModal } from './ContractModal';
 import { ERPPaymentModal } from './ERPPaymentModal';
+import { TruckDispatchSlipModal } from './TruckDispatchSlipModal';
 import { validateMobile, validateVehicleNo } from '../utils/validationRules';
 import {
   Truck,
@@ -49,6 +50,65 @@ export const TransporterPortal = () => {
 
   const [selectedReqForBid, setSelectedReqForBid] = useState(null);
   const [quickRates, setQuickRates] = useState({}); // 1-Line Express input rate state per req id
+  const [selectedDispatchSlip, setSelectedDispatchSlip] = useState(null);
+
+  const handleBatchSubmitAll = (batchKey, items) => {
+    const openItems = (items || []).filter((req) => req.status !== 'Awarded');
+    
+    // Check which items have rates typed in quickRates
+    const filledItems = openItems.filter((req) => {
+      const val = parseFloat(quickRates[req.id]);
+      return val && !isNaN(val) && val > 0;
+    });
+
+    if (filledItems.length === 0) {
+      alert('Please enter rate (₹/MT) for at least one item in this batch to submit.');
+      return;
+    }
+
+    let updatedSubmissions = [...(db.rate_submissions || [])];
+
+    filledItems.forEach((req) => {
+      const rateVal = parseFloat(quickRates[req.id]);
+      const existingIdx = updatedSubmissions.findIndex(
+        (s) => s.rate_request_id === req.id && s.transporter_id === currentTransporter.id
+      );
+
+      const totalValue = rateVal * (Number(req.required_qty) || 0);
+
+      const subObj = {
+        id: existingIdx >= 0 ? updatedSubmissions[existingIdx].id : `sub_${Date.now()}_${Math.floor(Math.random() * 10000)}`,
+        rate_request_id: req.id,
+        transporter_id: currentTransporter.id,
+        rate_per_unit: rateVal,
+        total_estimated_amount: totalValue,
+        transit_days: '2',
+        status: 'Submitted',
+        submitted_at: new Date().toISOString()
+      };
+
+      if (existingIdx >= 0) {
+        updatedSubmissions[existingIdx] = subObj;
+      } else {
+        updatedSubmissions.push(subObj);
+      }
+    });
+
+    const updatedDb = addSecurityLog(
+      {
+        ...db,
+        rate_submissions: updatedSubmissions
+      },
+      `SUBMIT_BATCH_ALL_QUOTES (${filledItems.length} quotes submitted for Batch ${batchKey})`,
+      currentTransporter.company_name,
+      'transporter',
+      'BATCH_BIDS_SUBMITTED 🚀'
+    );
+
+    updateDB(updatedDb);
+    setSuccessNotice(`🚀 Submitted quotes for ${filledItems.length} items in Batch ${batchKey} successfully!`);
+    setTimeout(() => setSuccessNotice(''), 4000);
+  };
 
   // Form states for submitting rate in modal
   const [bidForm, setBidForm] = useState({
@@ -398,6 +458,7 @@ export const TransporterPortal = () => {
       truck_number: (allocForm.truck_number || '').toUpperCase().replace(/\s+/g, ''),
       driver_name: allocForm.driver_name || 'Driver',
       driver_phone: cleanDriverPhone,
+      driver_license: (allocForm.driver_license || '').toUpperCase().trim() || 'MH31 20210012345',
       dispatched_qty: qtyVal,
       dispatched_at: new Date().toISOString(),
       lr_number: lrNo,
@@ -457,8 +518,9 @@ export const TransporterPortal = () => {
 
     setDispatchForm((prev) => ({
       ...prev,
-      [alloc.id]: { truck_number: '', driver_name: '', driver_phone: '', dispatched_qty: '' }
+      [alloc.id]: { truck_number: '', driver_name: '', driver_phone: '', driver_license: '', dispatched_qty: '' }
     }));
+    setSelectedDispatchSlip(newDispatch);
     setSuccessNotice(`Truck ${newDispatch.truck_number} dispatched! LR No: ${lrNo}. ${unfulfilledBalance <= 0 ? '🎉 Contract 100% Dispatched & Completed!' : ''}`);
     setTimeout(() => setSuccessNotice(''), 4000);
   };
@@ -851,6 +913,29 @@ export const TransporterPortal = () => {
                                         </div>
 
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                                          {/* ⚡ 1-CLICK BULK BATCH QUOTE ALL CONTROL BAR */}
+                                           <button
+                                             type="button"
+                                             onClick={() => handleBatchSubmitAll(group.batchKey, group.items)}
+                                             className="btn btn-primary"
+                                             style={{
+                                               padding: '6px 14px',
+                                               fontSize: '0.82rem',
+                                               fontWeight: '900',
+                                               background: 'linear-gradient(135deg, #0284c7 0%, #059669 100%)',
+                                               border: '1.5px solid #34d399',
+                                               borderRadius: '10px',
+                                               cursor: 'pointer',
+                                               display: 'inline-flex',
+                                               alignItems: 'center',
+                                               gap: '6px',
+                                               boxShadow: '0 0 14px rgba(5, 150, 105, 0.4)'
+                                             }}
+                                             title="Submit individual typed rates for all batch sub-indents in 1-Click"
+                                           >
+                                             <Send size={15} /> 🚀 Submit All Batch Bids ({group.items.length})
+                                           </button>
+
                                           <span style={{ fontSize: '0.78rem', background: 'rgba(56, 189, 248, 0.15)', color: '#0284c7', border: '1px solid rgba(56, 189, 248, 0.4)', padding: '4px 12px', borderRadius: '20px', fontWeight: '800' }}>
                                             📍 {firstItem?.origin_city || 'Origin'} ➔ 🎯 <strong style={{ color: '#d97706', fontWeight: '900' }}>{firstItem?.dest_city || 'Destination'}</strong>
                                           </span>
@@ -1425,6 +1510,19 @@ export const TransporterPortal = () => {
                               )}
                             </div>
 
+                            <div>
+                              <label className="form-label" style={{ fontSize: '0.78rem' }}>Driver License No. (DL)</label>
+                              <input
+                                type="text"
+                                className="form-control"
+                                placeholder="e.g. MH31 20210012345"
+                                value={allocForm.driver_license || ''}
+                                onChange={(e) => handleDispatchFieldChange(alloc.id, 'driver_license', e.target.value)}
+                                style={{ fontSize: '0.85rem' }}
+                                required
+                              />
+                            </div>
+
                             <button type="submit" className="btn btn-primary" style={{ padding: '10px', fontSize: '0.82rem' }}>
                               <Send size={14} /> Dispatch & Generate LR
                             </button>
@@ -1480,13 +1578,24 @@ export const TransporterPortal = () => {
                                   <span style={{ fontWeight: '700', color: '#34d399' }}>{d.dispatched_qty} MT</span>
                                 </td>
                                 <td>
-                                  <div style={{ fontSize: '0.82rem' }}>{d.driver_name} ({d.driver_phone})</div>
+                                  <div style={{ fontSize: '0.82rem', fontWeight: '700' }}>{d.driver_name} ({d.driver_phone})</div>
+                                  <div style={{ fontSize: '0.74rem', color: '#38bdf8', fontFamily: 'monospace' }}>DL: {d.driver_license || 'MH31 20210012345'}</div>
                                 </td>
                                 <td>
                                   <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>{new Date(d.dispatched_at).toLocaleString()}</div>
                                 </td>
                                 <td>
-                                  <span className="badge badge-awarded">✓ Dispatched</span>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <span className="badge badge-awarded">✓ Dispatched</span>
+                                    <button
+                                      type="button"
+                                      onClick={() => setSelectedDispatchSlip(d)}
+                                      className="btn btn-secondary"
+                                      style={{ padding: '3px 8px', fontSize: '0.72rem', border: '1px solid #38bdf8', color: '#38bdf8', borderRadius: '6px' }}
+                                    >
+                                      📄 Slip PDF
+                                    </button>
+                                  </div>
                                 </td>
                               </tr>
                             ))}
@@ -1808,6 +1917,14 @@ export const TransporterPortal = () => {
             </form>
           </div>
         </div>
+      )}
+
+      {/* Truck Dispatch Slip PDF Modal */}
+      {selectedDispatchSlip && (
+        <TruckDispatchSlipModal
+          dispatch={selectedDispatchSlip}
+          onClose={() => setSelectedDispatchSlip(null)}
+        />
       )}
 
     </div>

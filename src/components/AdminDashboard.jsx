@@ -1871,6 +1871,28 @@ export const AdminDashboard = () => {
                                           </span>
                                           <button
                                             type="button"
+                                            onClick={() => setSelectedRequestForParticularReport(firstItem)}
+                                            className="btn"
+                                            style={{
+                                              background: '#059669',
+                                              color: '#ffffff',
+                                              border: '1.5px solid #34d399',
+                                              padding: '6px 16px',
+                                              fontSize: '0.82rem',
+                                              borderRadius: '12px',
+                                              fontWeight: '900',
+                                              cursor: 'pointer',
+                                              display: 'inline-flex',
+                                              alignItems: 'center',
+                                              gap: '6px',
+                                              boxShadow: '0 4px 14px rgba(5, 150, 105, 0.4)'
+                                            }}
+                                            title="Generate Single Combined Comparative Report for entire Batch"
+                                          >
+                                            <FileText size={15} /> 📄 Batch Comparative Report ({group.batchKey})
+                                          </button>
+                                          <button
+                                            type="button"
                                             onClick={() => toggleBatchExpand(group.batchKey)}
                                             className="btn btn-primary"
                                             style={{
@@ -2001,16 +2023,7 @@ export const AdminDashboard = () => {
                                                   </td>
 
                                                   <td style={{ textAlign: 'right', padding: '12px 16px' }}>
-                                                    <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
-                                                      <button
-                                                        type="button"
-                                                        onClick={() => setSelectedRequestForParticularReport(req)}
-                                                        className="btn"
-                                                        style={{ padding: '6px 12px', fontSize: '0.8rem', fontWeight: '800', borderRadius: '8px', border: '1px solid #059669', color: '#059669', background: 'rgba(5, 150, 105, 0.1)', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
-                                                        title="Print Particular Bid Audit Report & PDF"
-                                                      >
-                                                        <FileText size={14} /> Particular Report
-                                                      </button>
+                                                    <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
                                                       <button
                                                         onClick={() => setSelectedRequestForComparison(req)}
                                                         className="btn btn-primary"
@@ -2130,7 +2143,18 @@ export const AdminDashboard = () => {
                                   type="button"
                                   onClick={() => setSelectedRequestForParticularReport(req)}
                                   className="btn"
-                                  style={{ padding: '6px 12px', fontSize: '0.8rem', fontWeight: '800', borderRadius: '8px', border: '1px solid #059669', color: '#059669', background: 'rgba(5, 150, 105, 0.1)', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                                  style={{
+                                    padding: '6px 12px',
+                                    fontSize: '0.8rem',
+                                    fontWeight: '800',
+                                    borderRadius: '8px',
+                                    border: '1px solid #059669',
+                                    color: '#059669',
+                                    background: 'rgba(5, 150, 105, 0.1)',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '4px'
+                                  }}
                                   title="Print Particular Bid Audit Report & PDF"
                                 >
                                   <FileText size={14} /> Particular Report

@@ -1,9 +1,9 @@
 // src/components/ParticularBidReportModal.jsx
-// Premium Corporate Executive Audit Certificate & Particular Bid Report Generator 📑🖨️🛡️
+// Clean Batch & Requirement "COMPARATIVE FREIGHT RATE STATEMENT" (Only Batch Items) 📑📊✨
 
 import React from 'react';
 import { useAuth } from '../context/AuthContext';
-import { X, Printer, Download, Award, TrendingDown, ShieldCheck, CheckCircle2, Truck, FileText, Calendar, MapPin, Building, Lock } from 'lucide-react';
+import { X, Printer, Download, ShieldCheck, CheckCircle2 } from 'lucide-react';
 import { SHALIMAR_LOGO_BASE64 } from '../assets/logoBase64';
 
 export const ParticularBidReportModal = ({ rateRequest, isOpen, onClose }) => {
@@ -11,132 +11,163 @@ export const ParticularBidReportModal = ({ rateRequest, isOpen, onClose }) => {
 
   if (!isOpen || !rateRequest) return null;
 
-  // 1. Get all submissions for this particular bid
-  const submissions = (db.rate_submissions || []).filter((s) => s.rate_request_id === rateRequest.id);
+  // Organization Info from db
+  const companyInfo = db?.company || {
+    name: 'Shalimar Nutrients Pvt Ltd',
+    gstin: '27AAPCS1419M1ZV',
+    reg_office: 'Plot No. 12, Industrial Area, MIDC, Nagpur, Maharashtra - 440028'
+  };
 
-  // 2. Identify L1 lowest rate & financial savings for this particular bid
-  const validRates = submissions.map((s) => parseFloat(s.rate_per_unit)).filter((r) => !isNaN(r) && r > 0);
-  const lowestRate = validRates.length > 0 ? Math.min(...validRates) : null;
+  // 1. Detect Batch Code and find ALL sub-indents in the batch
+  const requestNoStr = rateRequest.request_no || '';
+  let batchKey = rateRequest.batch_code;
+  if (!batchKey && requestNoStr.includes('/')) {
+    const parts = requestNoStr.split('/');
+    if (parts.length > 3) {
+      batchKey = parts.slice(0, 3).join('/');
+    }
+  }
+
+  const allOrgRequests = (db.rate_requests || []);
   
-  const initialAvgRate = validRates.length > 0
-    ? Math.round(validRates.reduce((acc, curr) => acc + curr, 0) / validRates.length)
-    : (rateRequest.admin_counter_rate ? rateRequest.admin_counter_rate + 80 : 477);
+  // Fetch ALL sub-indents belonging to this batch
+  const batchSubItems = batchKey
+    ? allOrgRequests.filter((r) => r.batch_code === batchKey || (r.request_no && r.request_no.startsWith(batchKey)))
+    : [];
 
-  const finalApprovedRate = rateRequest.admin_counter_rate || lowestRate || 450;
-  const rateSavingsPerMT = Math.max(0, initialAvgRate - finalApprovedRate);
-  const totalFinancialSavings = rateSavingsPerMT * (Number(rateRequest.required_qty) || 1000);
+  const isBatchReport = batchSubItems.length > 1;
 
-  // 3. Identify allocation & contract for this particular bid
-  const allocation = (db.allocations || []).find((a) => a.rate_request_id === rateRequest.id);
-  const contract = (db.contracts || []).find((c) => c.allocation_id === allocation?.id || c.rate_request_id === rateRequest.id);
-  const awardedTransporter = allocation
-    ? (db.transporters || []).find((t) => t.id === allocation.transporter_id)
-    : null;
+  // Title for statement
+  const statementTitleCode = isBatchReport ? batchKey : rateRequest.request_no;
+  const statementTypeLabel = isBatchReport ? `BATCH NO. ${batchKey}` : `BID NO. ${rateRequest.request_no}`;
 
-  // 4. Identify truck dispatches for this particular bid
-  const dispatches = (db.truck_dispatches || []).filter(
-    (d) => d.allocation_id === allocation?.id || d.rate_request_id === rateRequest.id
-  );
+  // Calculate total batch tonnage & metrics
+  const displayItemsList = isBatchReport ? batchSubItems : [rateRequest];
+  const totalVolumeMT = displayItemsList.reduce((sum, r) => sum + (Number(r.required_qty) || 0), 0);
 
-  // Print Particular Bid Audit PDF
+  // 2. Get registered transporters or Transporter A, B, C, D
+  const orgTransporters = (db.transporters || []).filter((t) => t.status === 'Active' || t.status !== 'Inactive');
+  
+  const transporterColumns = [];
+  if (orgTransporters.length > 0) {
+    orgTransporters.forEach((t) => {
+      transporterColumns.push({
+        id: t.id,
+        name: t.company_name,
+        code: t.code || t.username || 'TR'
+      });
+    });
+  }
+  
+  const defaultLabels = ['TRANSPORTER A', 'TRANSPORTER B', 'TRANSPORTER C', 'TRANSPORTER D'];
+  while (transporterColumns.length < 4) {
+    const idx = transporterColumns.length;
+    transporterColumns.push({
+      id: `trans_fallback_${idx}`,
+      name: defaultLabels[idx] || `TRANSPORTER ${String.fromCharCode(65 + idx)}`,
+      code: `TR-${String.fromCharCode(65 + idx)}`
+    });
+  }
+
+  // 3. Build route rows list STRICTLY FOR THE ITEMS IN THIS BATCH / REQUIREMENT ONLY
+  const routeRows = displayItemsList.map((req) => ({
+    id: req.id,
+    reqNo: req.request_no,
+    locationName: `${req.dest_city} (${req.origin_city} ➔ ${req.dest_city})`,
+    destCity: req.dest_city,
+    qty: req.required_qty,
+    rateRequestObj: req
+  }));
+
+  const currentDateStr = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' });
+
+  // Print PDF Statement
   const handlePrint = () => {
     window.print();
   };
 
-  // Export CSV for this particular bid
+  // Export CSV for the clean batch statement
   const handleExportCSV = () => {
+    const headerTitle = `${statementTypeLabel} COMPAIRATIVE FREIGHT RATE STATEMENT ${currentDateStr}`;
+    const transporterHeaderNames = transporterColumns.map((t) => t.name.toUpperCase());
+
     const csvRows = [
-      ['PARTICULAR BID AUDIT REPORT', rateRequest.request_no],
-      ['Generated On', new Date().toLocaleString()],
-      ['Title', rateRequest.title],
-      ['Origin', rateRequest.origin_city],
-      ['Destination', rateRequest.dest_city],
-      ['Material', rateRequest.material_type],
-      ['Required Qty', `${rateRequest.required_qty} ${rateRequest.unit}`],
-      ['Target Date', rateRequest.target_date],
-      ['Status', rateRequest.status],
-      ['Initial Avg Rate (₹/MT)', initialAvgRate],
-      ['Final Approved Rate (₹/MT)', finalApprovedRate],
-      ['Rate Savings (₹/MT)', rateSavingsPerMT],
-      ['Total Savings (₹)', totalFinancialSavings],
-      [],
-      ['TRANSPORTER BIDS SUBMITTED'],
-      ['Transporter Name', 'Code', 'Quoted Rate (₹/MT)', 'Total Amount (₹)', 'Transit Days', 'Status', 'Submitted At']
+      [headerTitle, ...Array(transporterHeaderNames.length + 2).fill('')],
+      ['ROUTE / LOCATION', ...transporterHeaderNames, 'Minium Rate', 'Remark']
     ];
 
-    submissions.forEach((s) => {
-      const trans = (db.transporters || []).find((t) => t.id === s.transporter_id);
-      csvRows.push([
-        trans?.company_name || 'Transporter',
-        trans?.code || '-',
-        s.rate_per_unit,
-        s.total_estimated_amount || (s.rate_per_unit * rateRequest.required_qty),
-        s.transit_days || '-',
-        s.status,
-        new Date(s.submitted_at || Date.now()).toLocaleString()
-      ]);
-    });
+    routeRows.forEach((rowObj) => {
+      const reqObj = rowObj.rateRequestObj;
+      const reqSubs = reqObj ? (db.rate_submissions || []).filter((s) => s.rate_request_id === reqObj.id) : [];
+      
+      const rates = reqSubs.map((s) => parseFloat(s.rate_per_unit)).filter((r) => !isNaN(r) && r > 0);
+      const minRate = rates.length > 0 ? Math.min(...rates) : 0;
 
-    if (dispatches.length > 0) {
-      csvRows.push([]);
-      csvRows.push(['DISPATCHED TRUCKS LOG']);
-      csvRows.push(['Truck Number', 'Driver Name', 'Driver Phone', 'Dispatched Qty', 'LR Number', 'Dispatched At']);
-      dispatches.forEach((d) => {
-        csvRows.push([
-          d.truck_number,
-          d.driver_name,
-          d.driver_phone,
-          `${d.dispatched_qty} MT`,
-          d.lr_number,
-          new Date(d.dispatched_at || Date.now()).toLocaleString()
-        ]);
+      const rowData = [rowObj.locationName];
+
+      transporterColumns.forEach((tCol) => {
+        const sub = reqSubs.find((s) => s.transporter_id === tCol.id);
+        rowData.push(sub ? sub.rate_per_unit : '');
       });
-    }
+
+      rowData.push(minRate);
+
+      const alloc = reqObj ? (db.allocations || []).find((a) => a.rate_request_id === reqObj.id) : null;
+      const winner = alloc ? (db.transporters || []).find((tr) => tr.id === alloc.transporter_id) : null;
+      const remarkText = alloc
+        ? `L1 Awarded to ${winner?.company_name || 'Transporter'} @ ₹${alloc.agreed_rate}/MT`
+        : minRate > 0
+        ? `Lowest Quote: ₹${minRate}/MT`
+        : '';
+
+      rowData.push(remarkText);
+      csvRows.push(rowData);
+    });
 
     const csvContent = 'data:text/csv;charset=utf-8,' + csvRows.map((e) => e.join(',')).join('\n');
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');
     link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `Particular_Bid_Report_${rateRequest.request_no.replace(/\//g, '_')}.csv`);
+    link.setAttribute('download', `BATCH_STATEMENT_${statementTitleCode.replace(/\//g, '_')}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
   };
 
   return (
-    <div className="modal-overlay" style={{ background: 'rgba(15, 23, 42, 0.88)', zIndex: 9999, backdropFilter: 'blur(8px)' }}>
+    <div className="modal-overlay" style={{ background: 'rgba(15, 23, 42, 0.85)', zIndex: 9999, backdropFilter: 'blur(6px)' }}>
       <div
         className="modal-content printable-area"
         style={{
-          maxWidth: '960px',
-          width: '96%',
+          maxWidth: '1280px',
+          width: '98%',
           background: '#ffffff',
           color: '#0f172a',
-          borderRadius: '20px',
-          padding: '32px',
-          boxShadow: '0 30px 60px -12px rgba(0, 0, 0, 0.45)',
-          maxHeight: '92vh',
+          borderRadius: '16px',
+          padding: '28px',
+          boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.35)',
+          maxHeight: '94vh',
           overflowY: 'auto',
-          border: '1.5px solid #cbd5e1'
+          border: '1px solid #cbd5e1'
         }}
       >
-        {/* Modal Top Control Bar (Hidden during PDF Print) */}
-        <div className="no-print" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', borderBottom: '2px solid #e2e8f0', paddingBottom: '16px' }}>
+        {/* Modal Top Control Bar (Hidden during Print) */}
+        <div className="no-print" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '2px solid #e2e8f0', paddingBottom: '14px' }}>
           <div>
-            <span style={{ fontSize: '0.78rem', fontWeight: '900', color: '#0284c7', background: 'rgba(2, 132, 199, 0.12)', border: '1px solid rgba(2, 132, 199, 0.3)', padding: '4px 12px', borderRadius: '6px', letterSpacing: '0.04em' }}>
-              📜 EXECUTIVE CORPORATE AUDIT CERTIFICATE
+            <span style={{ fontSize: '0.78rem', fontWeight: '900', color: '#0284c7', background: '#e0f2fe', border: '1px solid #7dd3fc', padding: '4px 12px', borderRadius: '6px' }}>
+              {isBatchReport ? '📂 BATCH STATEMENT REPORT' : '📑 SINGLE BID STATEMENT REPORT'}
             </span>
-            <h3 style={{ fontSize: '1.25rem', fontWeight: '900', color: '#0f172a', margin: '6px 0 0 0' }}>
-              Particular Bid Audit: {rateRequest.request_no}
+            <h3 style={{ fontSize: '1.25rem', fontWeight: '900', color: '#0f172a', margin: '4px 0 0 0' }}>
+              {statementTypeLabel} COMPARATIVE FREIGHT STATEMENT
             </h3>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <button onClick={handleExportCSV} className="btn" style={{ background: '#059669', color: '#ffffff', border: 'none', padding: '9px 16px', fontSize: '0.82rem', fontWeight: '800', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', boxShadow: '0 4px 12px rgba(5, 150, 105, 0.25)' }}>
-              <Download size={16} /> Export CSV
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <button onClick={handleExportCSV} className="btn" style={{ background: '#059669', color: '#ffffff', border: 'none', padding: '9px 16px', fontSize: '0.82rem', fontWeight: '800', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <Download size={16} /> Export Batch CSV
             </button>
-            <button onClick={handlePrint} className="btn" style={{ background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)', color: '#ffffff', border: 'none', padding: '9px 18px', fontSize: '0.82rem', fontWeight: '800', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', boxShadow: '0 4px 14px rgba(2, 132, 199, 0.35)' }}>
-              <Printer size={16} /> Print Executive A4 PDF
+            <button onClick={handlePrint} className="btn" style={{ background: '#0284c7', color: '#ffffff', border: 'none', padding: '9px 18px', fontSize: '0.82rem', fontWeight: '800', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <Printer size={16} /> Print Batch PDF
             </button>
             <button onClick={onClose} style={{ background: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '8px 12px', cursor: 'pointer', color: '#475569', fontWeight: '800' }}>
               <X size={18} />
@@ -145,272 +176,166 @@ export const ParticularBidReportModal = ({ rateRequest, isOpen, onClose }) => {
         </div>
 
         {/* ----------------------------------------------------
-           📜 100% EXECUTIVE CORPORATE PRINTABLE AUDIT REPORT
+           📊 CLEAN BATCH FREIGHT STATEMENT SHEET (NO EXTRA LOCATIONS)
         ---------------------------------------------------- */}
         <div style={{ padding: '4px' }}>
           
-          {/* Executive Header Banner */}
-          <div style={{ background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)', color: '#ffffff', borderRadius: '14px', padding: '24px', marginBottom: '24px', border: '2px solid #0284c7', boxShadow: '0 10px 25px rgba(15, 23, 42, 0.15)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
-              
-              <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                <img
-                  src={SHALIMAR_LOGO_BASE64}
-                  alt="Shalimar Group Logo"
-                  style={{ height: '65px', width: 'auto', borderRadius: '8px', background: '#ffffff', padding: '4px', objectFit: 'contain' }}
-                />
-                <div>
-                  <h1 style={{ fontSize: '1.45rem', fontWeight: '900', color: '#ffffff', margin: 0, letterSpacing: '-0.02em' }}>
-                    SHALIMAR NUTRIENTS PVT LTD
-                  </h1>
-                  <p style={{ fontSize: '0.82rem', color: '#38bdf8', margin: '3px 0 0 0', fontWeight: '700', letterSpacing: '0.03em' }}>
-                    CORPORATE FREIGHT PROCUREMENT & REVERSE-AUCTION AUDIT CERTIFICATE
-                  </p>
-                  <p style={{ fontSize: '0.75rem', color: '#94a3b8', margin: '2px 0 0 0' }}>
-                    MIDC Industrial Processing Zone, Nagpur | GSTIN: 27AAPCS1419M1ZV
-                  </p>
+          {/* Header Title Bar */}
+          <div style={{ background: '#f0f7fc', border: '1.5px solid #bfe0fb', borderRadius: '12px', padding: '18px 24px', marginBottom: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+              <img
+                src={SHALIMAR_LOGO_BASE64}
+                alt="Shalimar Logo"
+                style={{ height: '52px', width: 'auto', borderRadius: '6px', background: '#ffffff', padding: '3px', border: '1px solid #cbd5e1', objectFit: 'contain' }}
+              />
+              <div>
+                <h2 style={{ fontSize: '1.25rem', fontWeight: '900', margin: 0, color: '#0f172a', letterSpacing: '-0.01em' }}>
+                  {statementTypeLabel} COMPAIRATIVE FREIGHT RATE STATEMENT {currentDateStr}
+                </h2>
+                <div style={{ fontSize: '0.82rem', color: '#0284c7', marginTop: '2px', fontWeight: '800' }}>
+                  {companyInfo.name} | Logistics Procurement Division
+                </div>
+                <div style={{ fontSize: '0.74rem', color: '#64748b', marginTop: '1px' }}>
+                  {companyInfo.reg_office}
                 </div>
               </div>
+            </div>
 
-              <div style={{ textAlign: 'right', borderLeft: '2px solid rgba(255, 255, 255, 0.15)', paddingLeft: '18px' }}>
-                <div style={{ background: 'rgba(56, 189, 248, 0.15)', color: '#38bdf8', border: '1px solid rgba(56, 189, 248, 0.4)', padding: '5px 14px', borderRadius: '6px', fontWeight: '900', fontSize: '0.85rem', fontFamily: 'monospace', letterSpacing: '0.05em' }}>
-                  REF: {rateRequest.request_no}
-                </div>
-                <div style={{ fontSize: '0.78rem', fontWeight: '700', color: '#f8fafc', marginTop: '6px' }}>
-                  Audit Date: {new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
-                </div>
-                <div style={{ fontSize: '0.72rem', color: '#34d399', fontWeight: '800', marginTop: '2px', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '4px' }}>
-                  <ShieldCheck size={12} /> VERIFIED & AUDITED
-                </div>
+            <div style={{ textAlign: 'right' }}>
+              <div style={{ background: '#e0f2fe', color: '#0369a1', border: '1px solid #7dd3fc', padding: '4px 14px', borderRadius: '6px', fontWeight: '900', fontSize: '0.85rem', fontFamily: 'monospace' }}>
+                {isBatchReport ? `BATCH REF: ${batchKey}` : `REQ REF: ${rateRequest.request_no}`}
               </div>
-
+              <div style={{ fontSize: '0.76rem', color: '#64748b', marginTop: '4px', fontWeight: '700' }}>
+                Sub-Indents: <strong>{displayItemsList.length} Routes</strong> | Total Volume: <strong style={{ color: '#059669' }}>{totalVolumeMT.toLocaleString()} MT Batch Total</strong>
+              </div>
             </div>
           </div>
 
-          {/* Particular Indent Specifications Grid */}
-          <div style={{ background: '#f8fafc', border: '1.5px solid #cbd5e1', borderRadius: '14px', padding: '20px', marginBottom: '24px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', borderBottom: '1.5px solid #e2e8f0', paddingBottom: '8px' }}>
-              <h4 style={{ fontSize: '0.98rem', fontWeight: '900', color: '#0284c7', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Building size={18} /> 📍 PARTICULAR INDENT & ROUTE SPECIFICATIONS
-              </h4>
-              <span style={{ background: rateRequest.status === 'Awarded' ? '#dcfce7' : '#fef3c7', color: rateRequest.status === 'Awarded' ? '#15803d' : '#b45309', border: `1px solid ${rateRequest.status === 'Awarded' ? '#86efac' : '#fde68a'}`, padding: '3px 10px', borderRadius: '6px', fontWeight: '900', fontSize: '0.78rem' }}>
-                STATUS: {rateRequest.status === 'Awarded' ? '✓ CONTRACT AWARDED' : rateRequest.status || 'ACTIVE'}
-              </span>
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '14px', fontSize: '0.84rem' }}>
-              <div style={{ background: '#ffffff', padding: '10px 14px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-                <span style={{ color: '#64748b', fontSize: '0.74rem', fontWeight: '700', textTransform: 'uppercase' }}>Indent Reference</span>
-                <div style={{ fontWeight: '900', color: '#0f172a', fontFamily: 'monospace', fontSize: '0.92rem', marginTop: '2px' }}>{rateRequest.request_no}</div>
-              </div>
-
-              <div style={{ background: '#ffffff', padding: '10px 14px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-                <span style={{ color: '#64748b', fontSize: '0.74rem', fontWeight: '700', textTransform: 'uppercase' }}>Origin Pickup Point</span>
-                <div style={{ fontWeight: '900', color: '#0f172a', marginTop: '2px' }}>📍 {rateRequest.origin_city}</div>
-                <div style={{ fontSize: '0.72rem', color: '#64748b' }}>PIN: {rateRequest.origin_pin || '400001'}</div>
-              </div>
-
-              <div style={{ background: '#ffffff', padding: '10px 14px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-                <span style={{ color: '#64748b', fontSize: '0.74rem', fontWeight: '700', textTransform: 'uppercase' }}>Destination Plant</span>
-                <div style={{ fontWeight: '900', color: '#0f172a', marginTop: '2px' }}>🎯 {rateRequest.dest_city}</div>
-                <div style={{ fontSize: '0.72rem', color: '#64748b' }}>PIN: {rateRequest.dest_pin || '440028'}</div>
-              </div>
-
-              <div style={{ background: '#ffffff', padding: '10px 14px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-                <span style={{ color: '#64748b', fontSize: '0.74rem', fontWeight: '700', textTransform: 'uppercase' }}>Material Commodity</span>
-                <div style={{ fontWeight: '900', color: '#0f172a', marginTop: '2px' }}>📦 {rateRequest.material_type}</div>
-              </div>
-
-              <div style={{ background: '#ffffff', padding: '10px 14px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-                <span style={{ color: '#64748b', fontSize: '0.74rem', fontWeight: '700', textTransform: 'uppercase' }}>Required Volume</span>
-                <div style={{ fontWeight: '900', color: '#0284c7', fontSize: '1.05rem', marginTop: '2px' }}>{(Number(rateRequest.required_qty) || 0).toLocaleString()} {rateRequest.unit || 'MT'}</div>
-              </div>
-
-              <div style={{ background: '#ffffff', padding: '10px 14px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-                <span style={{ color: '#64748b', fontSize: '0.74rem', fontWeight: '700', textTransform: 'uppercase' }}>Target Delivery Date</span>
-                <div style={{ fontWeight: '900', color: '#0f172a', marginTop: '2px' }}>📅 {rateRequest.target_date || 'Immediate'}</div>
-              </div>
-            </div>
-
-            {rateRequest.notes && (
-              <div style={{ marginTop: '12px', padding: '10px 14px', background: '#ffffff', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '0.8rem', color: '#334155' }}>
-                <strong style={{ color: '#0284c7' }}>Special Handling & Quality Terms:</strong> {rateRequest.notes}
-              </div>
-            )}
-          </div>
-
-          {/* Executive Financial Rate Reduction & Savings Summary Dashboard */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '14px', marginBottom: '24px' }}>
-            <div style={{ background: '#f8fafc', border: '1.5px solid #cbd5e1', padding: '16px', borderRadius: '12px' }}>
-              <div style={{ fontSize: '0.74rem', color: '#64748b', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.04em' }}>TOTAL BIDS RECEIVED</div>
-              <div style={{ fontSize: '1.45rem', fontWeight: '900', color: '#0f172a', marginTop: '4px' }}>{submissions.length} Bids</div>
-              <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '2px' }}>Registered Transporters</div>
-            </div>
-
-            <div style={{ background: '#fffbe6', border: '1.5px solid #fde68a', padding: '16px', borderRadius: '12px' }}>
-              <div style={{ fontSize: '0.74rem', color: '#b45309', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.04em' }}>INITIAL AVG QUOTE</div>
-              <div style={{ fontSize: '1.45rem', fontWeight: '900', color: '#d97706', marginTop: '4px' }}>₹{initialAvgRate} / MT</div>
-              <div style={{ fontSize: '0.72rem', color: '#b45309', marginTop: '2px' }}>Opening Bidding Benchmark</div>
-            </div>
-
-            <div style={{ background: '#f0fdf4', border: '1.5px solid #86efac', padding: '16px', borderRadius: '12px' }}>
-              <div style={{ fontSize: '0.74rem', color: '#15803d', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.04em' }}>APPROVED L1 TARGET RATE</div>
-              <div style={{ fontSize: '1.45rem', fontWeight: '900', color: '#059669', marginTop: '4px' }}>₹{finalApprovedRate} / MT</div>
-              <div style={{ fontSize: '0.72rem', color: '#15803d', marginTop: '2px' }}>Negotiated Rate Lock</div>
-            </div>
-
-            <div style={{ background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)', color: '#ffffff', padding: '16px', borderRadius: '12px', boxShadow: '0 8px 20px rgba(16, 185, 129, 0.3)' }}>
-              <div style={{ fontSize: '0.74rem', color: '#e6f4ea', fontWeight: '900', textTransform: 'uppercase', letterSpacing: '0.04em' }}>🔥 TOTAL FINANCIAL SAVED</div>
-              <div style={{ fontSize: '1.55rem', fontWeight: '900', color: '#ffffff', marginTop: '4px' }}>₹{totalFinancialSavings.toLocaleString()}</div>
-              <div style={{ fontSize: '0.74rem', color: '#dcfce7', fontWeight: '800', marginTop: '2px' }}>Saved ₹{rateSavingsPerMT}/MT on Bulk Volume</div>
-            </div>
-          </div>
-
-          {/* Transporter Bidding Evaluation Matrix Table */}
-          <div style={{ marginBottom: '24px' }}>
-            <h4 style={{ fontSize: '0.98rem', fontWeight: '900', color: '#0f172a', margin: '0 0 12px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <FileText size={18} color="#0284c7" /> 🚛 TRANSPORTER COMPETITIVE BID EVALUATION MATRIX
-            </h4>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem', border: '1.5px solid #cbd5e1', borderRadius: '10px', overflow: 'hidden' }}>
+          {/* CLEAN BATCH FREIGHT MATRIX TABLE */}
+          <div style={{ overflowX: 'auto', border: '1.5px solid #bfe0fb', borderRadius: '12px', marginBottom: '24px' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem', fontFamily: 'sans-serif' }}>
               <thead>
-                <tr style={{ background: '#0f172a', color: '#ffffff' }}>
-                  <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: '800' }}>Transporter Company Name</th>
-                  <th style={{ padding: '10px 14px', textAlign: 'center', fontWeight: '800' }}>Vendor Code</th>
-                  <th style={{ padding: '10px 14px', textAlign: 'right', fontWeight: '800' }}>Initial Quote (₹/MT)</th>
-                  <th style={{ padding: '10px 14px', textAlign: 'right', fontWeight: '800' }}>Total Contract Value (₹)</th>
-                  <th style={{ padding: '10px 14px', textAlign: 'center', fontWeight: '800' }}>Transit (Days)</th>
-                  <th style={{ padding: '10px 14px', textAlign: 'center', fontWeight: '800' }}>Target Rate (₹)</th>
-                  <th style={{ padding: '10px 14px', textAlign: 'center', fontWeight: '800' }}>Final Status</th>
+                <tr style={{ background: '#f0f7fc', color: '#0f172a', borderBottom: '2px solid #bfe0fb' }}>
+                  <th style={{ padding: '12px 14px', textAlign: 'left', fontWeight: '900', borderRight: '1px solid #e2e8f0', minWidth: '220px', textTransform: 'uppercase' }}>
+                    ROUTE / LOCATION
+                  </th>
+                  {transporterColumns.map((tCol, idx) => (
+                    <th key={tCol.id || idx} style={{ padding: '12px 14px', textAlign: 'center', fontWeight: '900', borderRight: '1px solid #e2e8f0', minWidth: '150px', color: '#0369a1' }}>
+                      {tCol.name.toUpperCase()}
+                      <div style={{ fontSize: '0.68rem', color: '#64748b', fontWeight: '700', fontFamily: 'monospace' }}>
+                        ({tCol.code})
+                      </div>
+                    </th>
+                  ))}
+                  <th style={{ padding: '12px 14px', textAlign: 'center', fontWeight: '900', background: '#dcfce7', color: '#15803d', borderRight: '1px solid #e2e8f0', minWidth: '120px' }}>
+                    Minium Rate
+                  </th>
+                  <th style={{ padding: '12px 14px', textAlign: 'left', fontWeight: '900', background: '#fef3c7', color: '#b45309', minWidth: '180px' }}>
+                    Remark
+                  </th>
                 </tr>
               </thead>
               <tbody>
-                {submissions.map((sub, idx) => {
-                  const trans = (db.transporters || []).find((t) => t.id === sub.transporter_id);
-                  const isLowest = sub.rate_per_unit === lowestRate;
-                  const isAwarded = sub.status === 'Awarded' || sub.status === 'Selected';
+                {routeRows.map((rowObj, rIdx) => {
+                  const reqObj = rowObj.rateRequestObj;
+                  const reqSubs = reqObj ? (db.rate_submissions || []).filter((s) => s.rate_request_id === reqObj.id) : [];
+
+                  const validRates = reqSubs.map((s) => parseFloat(s.rate_per_unit)).filter((r) => !isNaN(r) && r > 0);
+                  const minRate = validRates.length > 0 ? Math.min(...validRates) : 0;
+
+                  const alloc = reqObj ? (db.allocations || []).find((a) => a.rate_request_id === reqObj.id) : null;
+                  const winnerTrans = alloc ? (db.transporters || []).find((tr) => tr.id === alloc.transporter_id) : null;
 
                   return (
-                    <tr key={sub.id || idx} style={{ background: isAwarded ? '#f0fdf4' : idx % 2 === 0 ? '#ffffff' : '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
-                      <td style={{ padding: '12px 14px', fontWeight: '900', color: '#0f172a' }}>
-                        {trans?.company_name || 'Transporter'}
-                        {isLowest && (
-                          <span style={{ marginLeft: '8px', background: '#fef3c7', color: '#b45309', border: '1px solid #fde68a', padding: '2px 7px', borderRadius: '4px', fontSize: '0.7rem', fontWeight: '900' }}>
-                            🏆 L1 WINNER
+                    <tr key={rowObj.id || rIdx} style={{ background: rIdx % 2 === 0 ? '#ffffff' : '#f8fafc', borderBottom: '1px solid #cbd5e1' }}>
+                      
+                      {/* ROUTE / LOCATION */}
+                      <td style={{ padding: '10px 14px', fontWeight: '800', color: '#0f172a', borderRight: '1px solid #cbd5e1' }}>
+                        <div>
+                          {rowObj.locationName}
+                        </div>
+                        {rowObj.reqNo && rowObj.reqNo !== '-' && (
+                          <div style={{ fontSize: '0.7rem', color: '#0284c7', fontFamily: 'monospace', fontWeight: '700', marginTop: '2px' }}>
+                            Code: {rowObj.reqNo} {rowObj.qty ? `| ${rowObj.qty} MT` : ''}
+                          </div>
+                        )}
+                      </td>
+
+                      {/* TRANSPORTER REAL QUOTE RATES */}
+                      {transporterColumns.map((tCol) => {
+                        const sub = reqSubs.find((s) => s.transporter_id === tCol.id);
+                        const isMin = sub && parseFloat(sub.rate_per_unit) === minRate && minRate > 0;
+
+                        return (
+                          <td
+                            key={tCol.id}
+                            style={{
+                              padding: '10px 14px',
+                              textAlign: 'center',
+                              fontWeight: '900',
+                              fontSize: '0.9rem',
+                              borderRight: '1px solid #cbd5e1',
+                              background: isMin ? '#dcfce7' : 'transparent',
+                              color: isMin ? '#15803d' : sub ? '#0f172a' : '#cbd5e1'
+                            }}
+                          >
+                            {sub ? (
+                              <div>
+                                ₹{sub.rate_per_unit}
+                                {isMin && (
+                                  <div style={{ fontSize: '0.68rem', color: '#15803d', fontWeight: '900', marginTop: '1px' }}>
+                                    🏆 L1 LOWEST
+                                  </div>
+                                )}
+                              </div>
+                            ) : (
+                              <span style={{ color: '#cbd5e1', fontSize: '0.8rem' }}>-</span>
+                            )}
+                          </td>
+                        );
+                      })}
+
+                      {/* MINIMUM RATE */}
+                      <td style={{ padding: '10px 14px', textAlign: 'center', fontWeight: '900', fontSize: '0.95rem', color: '#15803d', background: '#dcfce7', borderRight: '1px solid #cbd5e1' }}>
+                        {minRate > 0 ? `₹${minRate}` : '0'}
+                      </td>
+
+                      {/* REMARK */}
+                      <td style={{ padding: '10px 14px', fontSize: '0.78rem', fontWeight: '800' }}>
+                        {alloc ? (
+                          <div style={{ color: '#15803d', display: 'flex', flexDirection: 'column' }}>
+                            <span>🏆 Awarded: {winnerTrans?.company_name || 'Transporter'}</span>
+                            <span style={{ fontSize: '0.72rem', color: '#0284c7', fontFamily: 'monospace' }}>
+                              Rate: ₹{alloc.agreed_rate}/MT
+                            </span>
+                          </div>
+                        ) : minRate > 0 ? (
+                          <span style={{ color: '#059669' }}>
+                            Lowest ₹{minRate}/MT
+                          </span>
+                        ) : (
+                          <span style={{ color: '#94a3b8' }}>
+                            -
                           </span>
                         )}
                       </td>
-                      <td style={{ padding: '12px 14px', textAlign: 'center', fontFamily: 'monospace', fontWeight: '800', color: '#0284c7' }}>
-                        {trans?.code || '-'}
-                      </td>
-                      <td style={{ padding: '12px 14px', textAlign: 'right', fontWeight: '900', color: isLowest ? '#059669' : '#0f172a', fontSize: '0.9rem' }}>
-                        ₹{(Number(sub.rate_per_unit) || 0).toLocaleString()}
-                      </td>
-                      <td style={{ padding: '12px 14px', textAlign: 'right', fontWeight: '800' }}>
-                        ₹{((Number(sub.rate_per_unit) || 0) * (Number(rateRequest.required_qty) || 1000)).toLocaleString()}
-                      </td>
-                      <td style={{ padding: '12px 14px', textAlign: 'center', fontWeight: '700' }}>
-                        {sub.transit_days || '-'} Days
-                      </td>
-                      <td style={{ padding: '12px 14px', textAlign: 'center', fontWeight: '900', color: '#0284c7' }}>
-                        {sub.counter_rate_per_unit ? `₹${sub.counter_rate_per_unit}` : '₹' + finalApprovedRate}
-                      </td>
-                      <td style={{ padding: '12px 14px', textAlign: 'center' }}>
-                        <span style={{
-                          padding: '3px 10px',
-                          borderRadius: '6px',
-                          fontWeight: '900',
-                          fontSize: '0.74rem',
-                          background: isAwarded ? '#dcfce7' : sub.status === 'Negotiating' ? '#fef3c7' : '#e2e8f0',
-                          color: isAwarded ? '#15803d' : sub.status === 'Negotiating' ? '#b45309' : '#475569',
-                          border: isAwarded ? '1px solid #86efac' : 'none'
-                        }}>
-                          {isAwarded ? '🏆 AWARDED' : sub.status || 'Submitted'}
-                        </span>
-                      </td>
+
                     </tr>
                   );
                 })}
-
-                {submissions.length === 0 && (
-                  <tr>
-                    <td colSpan="7" style={{ textAlign: 'center', padding: '24px', color: '#64748b' }}>
-                      No transporter bids submitted yet for this particular requirement.
-                    </td>
-                  </tr>
-                )}
               </tbody>
             </table>
           </div>
 
-          {/* Awarded Contract Details (If Awarded) */}
-          {allocation && (
-            <div style={{ background: '#f0fdf4', border: '2px solid #16a34a', borderRadius: '14px', padding: '18px 22px', marginBottom: '24px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '14px' }}>
-                <div>
-                  <h4 style={{ fontSize: '0.95rem', fontWeight: '900', color: '#15803d', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <Award size={20} /> APPROVED AWARDED VENDOR & SAP PO REFERENCE
-                  </h4>
-                  <div style={{ fontSize: '0.88rem', color: '#0f172a', fontWeight: '800', marginTop: '6px' }}>
-                    Awarded Transporter: <strong>{awardedTransporter?.company_name || 'XYZ Logistics & Freight'}</strong> ({awardedTransporter?.code || 'XYZ001'})
-                  </div>
-                </div>
-                <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontSize: '0.8rem', color: '#475569' }}>ERP Contract No: <strong style={{ color: '#0f172a', fontFamily: 'monospace' }}>{contract?.contract_number || allocation.id}</strong></div>
-                  <div style={{ fontSize: '0.8rem', color: '#475569', marginTop: '2px' }}>SAP PO Number: <strong style={{ color: '#0284c7', fontFamily: 'monospace' }}>{contract?.erp_po_number || 'SAP-SNPL-PO-99481'}</strong></div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Dispatched Vehicles Log (If Dispatched) */}
-          {dispatches.length > 0 && (
-            <div style={{ marginBottom: '24px' }}>
-              <h4 style={{ fontSize: '0.98rem', fontWeight: '900', color: '#0f172a', margin: '0 0 12px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Truck size={18} color="#0284c7" /> 🚚 DISPATCHED TRUCKS & LORRY RECEIPT (LR) AUDIT LOG ({dispatches.length} Vehicles)
-              </h4>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem', border: '1.5px solid #cbd5e1', borderRadius: '10px', overflow: 'hidden' }}>
-                <thead>
-                  <tr style={{ background: '#1e293b', color: '#ffffff' }}>
-                    <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: '800' }}>Truck Number</th>
-                    <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: '800' }}>Driver Name</th>
-                    <th style={{ padding: '8px 12px', textAlign: 'center', fontWeight: '800' }}>Driver Phone</th>
-                    <th style={{ padding: '8px 12px', textAlign: 'right', fontWeight: '800' }}>Dispatched Qty</th>
-                    <th style={{ padding: '8px 12px', textAlign: 'center', fontWeight: '800' }}>LR Reference No</th>
-                    <th style={{ padding: '8px 12px', textAlign: 'center', fontWeight: '800' }}>Dispatch Timestamp</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {dispatches.map((d, i) => (
-                    <tr key={d.id || i} style={{ background: i % 2 === 0 ? '#ffffff' : '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
-                      <td style={{ padding: '8px 12px', fontWeight: '900', color: '#0f172a', fontFamily: 'monospace' }}>{d.truck_number}</td>
-                      <td style={{ padding: '8px 12px', fontWeight: '700' }}>{d.driver_name}</td>
-                      <td style={{ padding: '8px 12px', textAlign: 'center', fontFamily: 'monospace' }}>{d.driver_phone}</td>
-                      <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: '900', color: '#059669' }}>{d.dispatched_qty} MT</td>
-                      <td style={{ padding: '8px 12px', textAlign: 'center', fontFamily: 'monospace', fontWeight: '900', color: '#0284c7' }}>{d.lr_number}</td>
-                      <td style={{ padding: '8px 12px', textAlign: 'center', fontSize: '0.75rem', color: '#64748b' }}>
-                        {new Date(d.dispatched_at || Date.now()).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-
-          {/* Official Executive Signatures & Verification Stamp */}
-          <div style={{ marginTop: '36px', paddingTop: '20px', borderTop: '2px solid #0f172a', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', fontSize: '0.8rem' }}>
-            <div>
-              <div style={{ color: '#15803d', fontWeight: '900', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.85rem' }}>
-                <ShieldCheck size={18} /> 256-Bit Encrypted Procurement Audit Verified
-              </div>
-              <div style={{ color: '#64748b', marginTop: '4px', fontFamily: 'monospace', fontSize: '0.75rem' }}>
-                Audit Hash: 0x98F4_SNPL_AUDIT_VERIFIED_{rateRequest.id}
-              </div>
+          {/* Statement Audit Seal Footer */}
+          <div style={{ background: '#f0f7fc', border: '1.5px solid #bfe0fb', borderRadius: '12px', padding: '14px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+            <div style={{ fontSize: '0.8rem', color: '#0369a1', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <ShieldCheck size={18} /> OFFICIAL {companyInfo.name.toUpperCase()} BATCH COMPARATIVE FREIGHT STATEMENT
             </div>
 
-            <div style={{ textAlign: 'center', borderTop: '1.5px solid #0f172a', width: '240px', paddingTop: '6px' }}>
-              <div style={{ fontWeight: '900', color: '#0f172a', fontSize: '0.88rem' }}>Authorized Executive Signatory</div>
-              <div style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: '600', marginTop: '2px' }}>Shalimar Logistics Procurement Head</div>
+            <div style={{ textAlign: 'right', borderTop: '1px solid #0284c7', paddingTop: '4px', width: '220px' }}>
+              <div style={{ fontWeight: '900', color: '#0f172a', fontSize: '0.85rem' }}>Authorized Procurement Head</div>
+              <div style={{ fontSize: '0.7rem', color: '#64748b' }}>{companyInfo.name}</div>
             </div>
           </div>
 
