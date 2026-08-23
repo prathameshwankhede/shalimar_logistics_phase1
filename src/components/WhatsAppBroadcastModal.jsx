@@ -45,15 +45,17 @@ export const WhatsAppBroadcastModal = ({ isOpen, onClose, batchData, transporter
         style={{ 
           maxWidth: '580px', 
           width: '100%', 
+          maxHeight: '92vh',
+          overflowY: 'auto',
           borderRadius: '24px', 
-          padding: '30px 32px',
+          padding: '24px 28px',
           border: '2px solid #22c55e',
-          boxShadow: '0 25px 60px rgba(34, 197, 94, 0.3)',
+          boxShadow: '0 25px 60px rgba(34, 197, 94, 0.4)',
           background: 'linear-gradient(135deg, rgba(15,23,42,0.98) 0%, rgba(20,83,45,0.98) 100%)'
         }}
       >
         {/* Modal Header */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '22px', borderBottom: '1.5px solid rgba(34, 197, 94, 0.3)', paddingBottom: '16px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '1.5px solid rgba(34, 197, 94, 0.3)', paddingBottom: '14px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <div style={{ background: '#22c55e', padding: '10px', borderRadius: '12px', boxShadow: '0 0 20px rgba(34, 197, 94, 0.5)' }}>
               <MessageSquare size={24} color="#ffffff" />
@@ -107,7 +109,21 @@ export const WhatsAppBroadcastModal = ({ isOpen, onClose, batchData, transporter
             </button>
           </div>
 
-          <div style={{ background: 'rgba(5, 46, 22, 0.9)', border: '1px solid #22c55e', borderRadius: '14px', padding: '16px', color: '#ffffff', fontSize: '0.85rem', whiteSpace: 'pre-wrap', fontFamily: 'sans-serif', lineHeight: '1.5', boxShadow: 'inset 0 2px 10px rgba(0,0,0,0.5)' }}>
+          <div style={{
+            background: '#022c22',
+            border: '1.5px solid #22c55e',
+            borderRadius: '14px',
+            padding: '18px 20px',
+            color: '#ffffff',
+            fontSize: '0.95rem',
+            fontWeight: '600',
+            whiteSpace: 'pre-wrap',
+            fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+            lineHeight: '1.7',
+            letterSpacing: '0.02em',
+            boxShadow: 'inset 0 2px 10px rgba(0,0,0,0.5)',
+            textShadow: '0 1px 2px rgba(0,0,0,0.6)'
+          }}>
             {defaultMessage}
           </div>
         </div>
