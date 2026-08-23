@@ -1003,6 +1003,7 @@ export const AdminDashboard = () => {
       }
     });
 
+    alert(`🎉 SUCCESS: Broadcasted ${newRequests.length} Rate Requirement(s) for Batch ${batchCode}!`);
     setArchiveNotice(`🚀 Batch ${batchCode} broadcasted with instant WhatsApp Alerts!`);
     setTimeout(() => setArchiveNotice(''), 5000);
   };
@@ -1874,11 +1875,10 @@ export const AdminDashboard = () => {
                           <input
                             type="number"
                             min="1"
-                            placeholder="Qty"
+                            placeholder="Qty (MT)"
                             className="form-control"
                             value={row.required_qty}
                             onChange={(e) => handleUpdateBulkRow(row.id, 'required_qty', e.target.value)}
-                            required
                             style={{ fontSize: '0.85rem', height: '42px', background: 'rgba(15, 23, 42, 0.9)', border: '1px solid rgba(192, 132, 252, 0.4)', color: '#ffffff', fontWeight: '800', borderRadius: '8px' }}
                           />
                         </div>
@@ -1894,7 +1894,6 @@ export const AdminDashboard = () => {
                             min={todayStr}
                             value={row.target_date}
                             onChange={(e) => handleUpdateBulkRow(row.id, 'target_date', e.target.value)}
-                            required
                             style={{ fontSize: '0.85rem', height: '42px', background: 'rgba(15, 23, 42, 0.9)', border: '1px solid rgba(56, 189, 248, 0.3)', color: '#ffffff', borderRadius: '8px' }}
                           />
                         </div>
@@ -1922,7 +1921,8 @@ export const AdminDashboard = () => {
                       <Activity size={18} color="#38bdf8" /> Ready to broadcast <strong style={{ color: '#ffffff', fontSize: '1rem' }}>{bulkReqRows.length} Freight Requirements</strong> in 1-Click to Transporters
                     </div>
                     <button
-                      type="submit"
+                      type="button"
+                      onClick={(e) => handleBulkBroadcastRequirements(e)}
                       className="btn"
                       style={{
                         background: 'linear-gradient(135deg, #059669 0%, #10b981 100%)',
