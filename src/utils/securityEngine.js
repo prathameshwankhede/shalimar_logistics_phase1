@@ -32,7 +32,7 @@ export function checkBruteForceLock(username) {
     const attemptsStr = localStorage.getItem(LOGIN_ATTEMPTS_KEY);
     if (!attemptsStr) return { locked: false };
     const attempts = JSON.parse(attemptsStr);
-    const userAttempt = attempts[username.toLowerCase()];
+    const userAttempt = attempts[(username || "").toLowerCase()];
 
     if (!userAttempt) return { locked: false };
 
@@ -44,7 +44,7 @@ export function checkBruteForceLock(username) {
         return { locked: true, remainingSec };
       } else {
         // Reset lock after 15 mins expired
-        delete attempts[username.toLowerCase()];
+        delete attempts[(username || "").toLowerCase()];
         localStorage.setItem(LOGIN_ATTEMPTS_KEY, JSON.stringify(attempts));
       }
     }
@@ -58,7 +58,7 @@ export function recordLoginAttempt(username, success) {
   try {
     const attemptsStr = localStorage.getItem(LOGIN_ATTEMPTS_KEY) || '{}';
     const attempts = JSON.parse(attemptsStr);
-    const key = username.toLowerCase();
+    const key = (username || "").toLowerCase();
 
     if (success) {
       delete attempts[key];

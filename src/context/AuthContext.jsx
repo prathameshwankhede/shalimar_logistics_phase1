@@ -155,7 +155,7 @@ export const AuthProvider = ({ children }) => {
     const cleanPass = (password || '').trim();
 
     let found = (currentDb.users || []).find((u) => {
-      const matchUser = u.username.toLowerCase() === cleanUser;
+      const matchUser = (u?.username || "").toLowerCase() === cleanUser;
       if (!matchUser) return false;
       if (u.role === 'admin' && (cleanPass === 'admin123' || cleanPass === 'admin' || u.password === cleanPass)) {
         return true;
@@ -190,7 +190,7 @@ export const AuthProvider = ({ children }) => {
 
       const updatedWithLog = addSecurityLog(
         currentDb,
-        `USER_LOGIN_SUCCESS (${found.role.toUpperCase()})`,
+        `USER_LOGIN_SUCCESS (${(found?.role || "").toUpperCase()})`,
         found.username,
         found.role,
         'ACCESS_GRANTED 🛡️'
@@ -230,7 +230,7 @@ export const AuthProvider = ({ children }) => {
 
       const updatedWithLog = addSecurityLog(
         currentDb,
-        `QUICK_SWITCH_ROLE (${found.role.toUpperCase()} - ${found.username})`,
+        `QUICK_SWITCH_ROLE (${(found?.role || "").toUpperCase()} - ${found.username})`,
         found.username,
         found.role,
         'SWITCHED 🛡️'
@@ -283,20 +283,20 @@ export const AuthProvider = ({ children }) => {
       currentTransporter = (db.transporters || []).find(
         (t) =>
           (currentUser.transporter_id && t.id === currentUser.transporter_id) ||
-          (currentUser.username && t.username && t.username.toLowerCase() === currentUser.username.toLowerCase()) ||
-          (currentUser.username && t.code && t.code.toLowerCase() === currentUser.username.toLowerCase()) ||
+          (currentUser.username && t.username && t.username.toLowerCase() === (currentUser?.username || "").toLowerCase()) ||
+          (currentUser.username && t.code && t.code.toLowerCase() === (currentUser?.username || "").toLowerCase()) ||
           (currentUser.id && t.id === currentUser.id)
       );
 
       // Auto-fallback synthesis if transporter user exists but profile array entry is missing
       if (!currentTransporter && currentUser.username) {
         currentTransporter = {
-          id: currentUser.transporter_id || `trans_${currentUser.username.toLowerCase()}`,
+          id: currentUser.transporter_id || `trans_${(currentUser?.username || "").toLowerCase()}`,
           company_name: currentUser.name || `${currentUser.username} Logistics Pvt Ltd`,
-          code: currentUser.username.toUpperCase(),
+          code: (currentUser?.username || "").toUpperCase(),
           contact_person: currentUser.name || 'Logistics Incharge',
           mobile: '+91 98230 11223',
-          email: `${currentUser.username.toLowerCase()}@transporter.com`,
+          email: `${(currentUser?.username || "").toLowerCase()}@transporter.com`,
           address: 'MIDC Transport Hub, Maharashtra',
           gst_pan: '27AAPCS1419M1ZV',
           username: currentUser.username,

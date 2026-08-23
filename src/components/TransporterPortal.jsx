@@ -258,7 +258,7 @@ export const TransporterPortal = () => {
       return;
     }
 
-    const newSubId = `sub_${currentTransporter.code.toLowerCase()}_${Date.now()}`;
+    const newSubId = `sub_${(currentTransporter?.code || "").toLowerCase()}_${Date.now()}`;
     const newSubmission = {
       id: newSubId,
       rate_request_id: req.id,
@@ -311,7 +311,7 @@ export const TransporterPortal = () => {
     const rateVal = parseFloat(bidForm.rate_per_unit);
     if (!rateVal || rateVal <= 0) return;
 
-    const newSubId = `sub_${currentTransporter.code.toLowerCase()}_${Date.now()}`;
+    const newSubId = `sub_${(currentTransporter?.code || "").toLowerCase()}_${Date.now()}`;
     const newSubmission = {
       id: newSubId,
       rate_request_id: selectedReqForBid.id,
@@ -849,7 +849,7 @@ export const TransporterPortal = () => {
                                 </td>
 
                                 <td>
-                                  <div style={{ fontWeight: '800', color: '#0284c7', fontSize: '0.95rem' }}>{totalBatchQty.toLocaleString()} MT Total</div>
+                                  <div style={{ fontWeight: '800', color: '#0284c7', fontSize: '0.95rem' }}>{(totalBatchQty || 0).toLocaleString()} MT Total</div>
                                   <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{group.items.length} x {firstItem.required_qty} MT ({firstItem.material_type})</div>
                                 </td>
 
@@ -1655,17 +1655,17 @@ export const TransporterPortal = () => {
 
             <div style={{ background: 'rgba(16, 185, 129, 0.12)', border: '1px solid rgba(16, 185, 129, 0.3)', padding: '16px', borderRadius: '12px' }}>
               <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>TOTAL TONNAGE DELIVERED</div>
-              <div style={{ fontSize: '1.4rem', fontWeight: '800', color: '#34d399' }}>{monthTotalDispatchedQty.toLocaleString()} MT</div>
+              <div style={{ fontSize: '1.4rem', fontWeight: '800', color: '#34d399' }}>{(monthTotalDispatchedQty || 0).toLocaleString()} MT</div>
             </div>
 
             <div style={{ background: 'rgba(245, 158, 11, 0.12)', border: '1px solid rgba(245, 158, 11, 0.3)', padding: '16px', borderRadius: '12px' }}>
               <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>GROSS FREIGHT BILLING</div>
-              <div style={{ fontSize: '1.4rem', fontWeight: '800', color: '#fbbf24' }}>₹{monthTotalFreightBilling.toLocaleString()}</div>
+              <div style={{ fontSize: '1.4rem', fontWeight: '800', color: '#fbbf24' }}>₹{(monthTotalFreightBilling || 0).toLocaleString()}</div>
             </div>
 
             <div style={{ background: 'rgba(99, 102, 241, 0.12)', border: '1px solid rgba(99, 102, 241, 0.3)', padding: '16px', borderRadius: '12px' }}>
               <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>ESTIMATED 5% GST</div>
-              <div style={{ fontSize: '1.4rem', fontWeight: '800', color: '#818cf8' }}>₹{Math.round(monthTotalFreightBilling * 0.05).toLocaleString()}</div>
+              <div style={{ fontSize: '1.4rem', fontWeight: '800', color: '#818cf8' }}>₹{Math.round((monthTotalFreightBilling || 0) * 0.05).toLocaleString()}</div>
             </div>
           </div>
 

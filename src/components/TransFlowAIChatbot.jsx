@@ -107,7 +107,7 @@ export const TransFlowAIChatbot = () => {
 
   // Smart AI Intent Parser & Live DB Resolver
   const generateBotResponse = (userQuery) => {
-    const q = userQuery.toLowerCase();
+    const q = (userQuery || "").toLowerCase();
 
     // 1. Open Requirements & Active Bidding Query
     if (q.includes('open') || q.includes('requirement') || q.includes('active') || q.includes('rate') || q.includes('route') || q.includes('bidding') || q.includes('bid')) {
@@ -126,7 +126,7 @@ export const TransFlowAIChatbot = () => {
     if (q.includes('pay') || q.includes('payment') || q.includes('money') || q.includes('paisa') || q.includes('advance') || q.includes('balance') || q.includes('bank')) {
       if (isAdmin) {
         const totalValue = (db.contracts || []).reduce((acc, c) => acc + (c.total_contract_value || 0), 0);
-        return `💳 **Consolidated Enterprise Payment Summary**:\n\n• **Total Contract Liability**: ₹${totalValue.toLocaleString()}\n• **Standard Terms**: 70% Advance on LR Truck Dispatch & 30% Balance Settlement post Unloading.\n• **ERP SAP PO Sync**: Active 🛡️`;
+        return `💳 **Consolidated Enterprise Payment Summary**:\n\n• **Total Contract Liability**: ₹${(totalValue || 0).toLocaleString()}\n• **Standard Terms**: 70% Advance on LR Truck Dispatch & 30% Balance Settlement post Unloading.\n• **ERP SAP PO Sync**: Active 🛡️`;
       }
 
       const myTransId = currentTransporter?.id;

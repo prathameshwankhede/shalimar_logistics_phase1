@@ -163,7 +163,7 @@ export const RateComparisonView = ({ rateRequest, onBack }) => {
     const newContract = {
       id: contractId,
       allocation_id: allocId,
-      contract_number: `CNT-SNPL-2026-${rateRequest.dest_city.substring(0, 3).toUpperCase()}-${Math.floor(1000 + Math.random() * 9000)}`,
+      contract_number: `CNT-SNPL-2026-${(rateRequest?.dest_city || "").substring(0, 3).toUpperCase()}-${Math.floor(1000 + Math.random() * 9000)}`,
       erp_po_number: `SAP-SNPL-PO-${Math.floor(10000 + Math.random() * 90000)}`,
       transporter_id: sub.transporter_id,
       payment_status: 'Advance Pending',

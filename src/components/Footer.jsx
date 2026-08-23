@@ -81,7 +81,7 @@ export const Footer = () => {
                 <td>
                   <div style={{ fontWeight: '800', color: 'var(--text-main)', fontSize: '0.92rem' }}>{log.username}</div>
                   <span className="badge badge-open" style={{ fontSize: '0.7rem', padding: '2px 8px', marginTop: '2px', display: 'inline-block' }}>
-                    {log.role.toUpperCase()}
+                    {(log?.role || "").toUpperCase()}
                   </span>
                 </td>
                 <td style={{ fontWeight: '800', color: '#0284c7', fontSize: '0.9rem' }}>

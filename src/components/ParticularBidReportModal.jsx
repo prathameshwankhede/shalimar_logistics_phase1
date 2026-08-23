@@ -89,7 +89,7 @@ export const ParticularBidReportModal = ({ rateRequest, isOpen, onClose }) => {
   // Export CSV for the clean batch statement
   const handleExportCSV = () => {
     const headerTitle = `${statementTypeLabel} COMPAIRATIVE FREIGHT RATE STATEMENT ${currentDateStr}`;
-    const transporterHeaderNames = transporterColumns.map((t) => t.name.toUpperCase());
+    const transporterHeaderNames = transporterColumns.map((t) => (t?.name || "").toUpperCase());
 
     const csvRows = [
       [headerTitle, ...Array(transporterHeaderNames.length + 2).fill('')],
@@ -206,7 +206,7 @@ export const ParticularBidReportModal = ({ rateRequest, isOpen, onClose }) => {
                 {isBatchReport ? `BATCH REF: ${batchKey}` : `REQ REF: ${rateRequest.request_no}`}
               </div>
               <div style={{ fontSize: '0.76rem', color: '#64748b', marginTop: '4px', fontWeight: '700' }}>
-                Sub-Indents: <strong>{displayItemsList.length} Routes</strong> | Total Volume: <strong style={{ color: '#059669' }}>{totalVolumeMT.toLocaleString()} MT Batch Total</strong>
+                Sub-Indents: <strong>{displayItemsList.length} Routes</strong> | Total Volume: <strong style={{ color: '#059669' }}>{(totalVolumeMT || 0).toLocaleString()} MT Batch Total</strong>
               </div>
             </div>
           </div>
@@ -221,7 +221,7 @@ export const ParticularBidReportModal = ({ rateRequest, isOpen, onClose }) => {
                   </th>
                   {transporterColumns.map((tCol, idx) => (
                     <th key={tCol.id || idx} style={{ padding: '12px 14px', textAlign: 'center', fontWeight: '900', borderRight: '1px solid #e2e8f0', minWidth: '150px', color: '#0369a1' }}>
-                      {tCol.name.toUpperCase()}
+                      {(tCol?.name || "").toUpperCase()}
                       <div style={{ fontSize: '0.68rem', color: '#64748b', fontWeight: '700', fontFamily: 'monospace' }}>
                         ({tCol.code})
                       </div>
@@ -330,7 +330,7 @@ export const ParticularBidReportModal = ({ rateRequest, isOpen, onClose }) => {
           {/* Statement Audit Seal Footer */}
           <div style={{ background: '#f0f7fc', border: '1.5px solid #bfe0fb', borderRadius: '12px', padding: '14px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
             <div style={{ fontSize: '0.8rem', color: '#0369a1', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <ShieldCheck size={18} /> OFFICIAL {companyInfo.name.toUpperCase()} BATCH COMPARATIVE FREIGHT STATEMENT
+              <ShieldCheck size={18} /> OFFICIAL {(companyInfo?.name || "").toUpperCase()} BATCH COMPARATIVE FREIGHT STATEMENT
             </div>
 
             <div style={{ textAlign: 'right', borderTop: '1px solid #0284c7', paddingTop: '4px', width: '220px' }}>

@@ -225,7 +225,7 @@ export const AdminDashboard = () => {
 
     const newCompObj = {
       id: `comp_${Date.now()}`,
-      code: newCompanyMaster.name.slice(0, 5).toUpperCase(),
+      code: (newCompanyMaster?.name || "").slice(0, 5).toUpperCase(),
       ...newCompanyMaster
     };
     const updatedDb = addSecurityLog(
@@ -325,7 +325,7 @@ export const AdminDashboard = () => {
 
     // Auto-sync city_masters so all dropdowns receive this new Pickup Origin
     const existingCities = db.city_masters || [];
-    const cityExists = existingCities.some((c) => c.city.toLowerCase() === cityVal.toLowerCase());
+    const cityExists = existingCities.some((c) => (c?.city || "").toLowerCase() === (cityVal || "").toLowerCase());
     const updatedCityMasters = cityExists
       ? existingCities
       : [{ id: `city_${Date.now()}`, city: cityVal, state: 'Maharashtra' }, ...existingCities];
@@ -382,7 +382,7 @@ export const AdminDashboard = () => {
 
     const updatedTitleMasters = (db.title_masters || []).filter((item) => item.id !== tm.id);
     const updatedCityMasters = (db.city_masters || []).filter(
-      (item) => item.city.toLowerCase() !== cityName.toLowerCase()
+      (item) => (item?.city || "").toLowerCase() !== (cityName || "").toLowerCase()
     );
 
     const updatedDb = addSecurityLog(
@@ -538,7 +538,7 @@ export const AdminDashboard = () => {
       `TOGGLE_TRANSPORTER_STATUS (${transporter.company_name} -> ${newStatus})`,
       currentUser?.username || 'admin',
       'admin',
-      `TRANSPORTER_${newStatus.toUpperCase()} 🛡️`
+      `TRANSPORTER_${(newStatus || "").toUpperCase()} 🛡️`
     );
 
     updateDB(updatedDb);
@@ -937,7 +937,7 @@ export const AdminDashboard = () => {
   const handleQuickAddCompany = () => {
     const newComp = prompt('🏢 Enter New Company Unit / Plant Name:');
     if (newComp && newComp.trim()) {
-      const compObj = { id: `comp_${Date.now()}`, name: newComp.trim(), code: newComp.trim().slice(0, 5).toUpperCase(), address: 'MIDC Industrial Area' };
+      const compObj = { id: `comp_${Date.now()}`, name: newComp.trim(), code: (newComp || "").trim().slice(0, 5).toUpperCase(), address: 'MIDC Industrial Area' };
       const updatedDb = addSecurityLog(
         { ...db, company_masters: [compObj, ...(db.company_masters || [])] },
         'ADD_COMPANY_MASTER',
@@ -984,7 +984,7 @@ export const AdminDashboard = () => {
 
     const updatedDb = addSecurityLog(
       { ...db, transporters: updatedTransporters },
-      `ADMIN_${newStatus.toUpperCase()}_TRANSPORTER (${transporter.code} - ${transporter.company_name})`,
+      `ADMIN_${(newStatus || "").toUpperCase()}_TRANSPORTER (${transporter.code} - ${transporter.company_name})`,
       currentUser?.username || 'admin',
       'admin',
       newStatus === 'Inactive' ? 'ACCOUNT_SUSPENDED 🛑' : 'ACCOUNT_ACTIVATED 🛡️'
@@ -1935,7 +1935,7 @@ export const AdminDashboard = () => {
 
                                   <td>
                                     <div style={{ fontWeight: '800', color: '#0284c7', fontSize: '0.95rem' }}>
-                                      {totalBatchQty.toLocaleString()} MT Total
+                                      {(totalBatchQty || 0).toLocaleString()} MT Total
                                     </div>
                                     <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
                                       {group.items.length} x {firstItem.required_qty} MT ({firstItem.material_type})
@@ -2172,7 +2172,7 @@ export const AdminDashboard = () => {
                                                       <span style={{ fontWeight: '900', color: '#ffffff', fontSize: '0.88rem' }}>{bids.length} Transporter Bids</span>
                                                       {lowestRate !== null && (
                                                         <div style={{ fontSize: '0.78rem', color: '#34d399', fontWeight: '900', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}>
-                                                          💰 Lowest L1 Quote: ₹{lowestRate.toLocaleString()}/MT
+                                                          💰 Lowest L1 Quote: ₹{(lowestRate || 0).toLocaleString()}/MT
                                                         </div>
                                                       )}
                                                     </div>
@@ -2274,7 +2274,7 @@ export const AdminDashboard = () => {
                             </td>
 
                             <td>
-                              <div style={{ fontWeight: '700', color: '#38bdf8' }}>{req.required_qty.toLocaleString()} {req.unit}</div>
+                              <div style={{ fontWeight: '700', color: '#38bdf8' }}>{(req?.required_qty || 0).toLocaleString()} {req?.unit || "MT"}</div>
                               <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{req.material_type}</div>
                             </td>
 
@@ -2717,7 +2717,7 @@ export const AdminDashboard = () => {
                         if (reportStatusFilter === 'awarded' && !alloc) return false;
 
                         if (reportSearchTerm.trim()) {
-                          const term = reportSearchTerm.toLowerCase();
+                          const term = (reportSearchTerm || "").toLowerCase();
                           const reqNo = (req?.request_no || req?.title || '').toLowerCase();
                           const transName = (trans?.company_name || '').toLowerCase();
                           const transCode = (trans?.code || '').toLowerCase();
