@@ -2050,7 +2050,26 @@ export const AdminDashboard = () => {
                         groups[masterKey].items.push(req);
                       });
 
-                      const groupedList = Object.values(groups);
+                      const groupedList = Object.values(groups).sort((a, b) => {
+                        const itemA = a.items[0];
+                        const itemB = b.items[0];
+
+                        const numA = parseInt((itemA?.batch_no || itemA?.request_no || itemA?.title || '').match(/REQ-(\d+)/i)?.[1] || 0, 10);
+                        const numB = parseInt((itemB?.batch_no || itemB?.request_no || itemB?.title || '').match(/REQ-(\d+)/i)?.[1] || 0, 10);
+                        if (numA !== numB) return numB - numA;
+
+                        const timeA = new Date(itemA?.created_at || itemA?.target_date || 0).getTime() || 0;
+                        const timeB = new Date(itemB?.created_at || itemB?.target_date || 0).getTime() || 0;
+                        return timeB - timeA;
+                      });
+
+                      groupedList.forEach((grp) => {
+                        grp.items.sort((x, y) => {
+                          const subX = parseInt((x.request_no || x.title || '').split('/').pop() || 0, 10);
+                          const subY = parseInt((y.request_no || y.title || '').split('/').pop() || 0, 10);
+                          return subX - subY;
+                        });
+                      });
 
                       return groupedList.map((group) => {
                         const isMultiItemBatch = group.items.length > 1;
