@@ -2059,7 +2059,7 @@ export const AdminDashboard = () => {
                         const isExpanded = expandedBatches[group.batchKey] || false;
 
                         const totalBatchQty = group.items.reduce((acc, curr) => acc + (parseFloat(curr.required_qty) || 0), 0);
-                        const allBatchBids = (db.rate_submissions || []).filter((s) => group.items.some((item) => item.id === s.rate_request_id));
+                        const allBatchBids = (db.rate_submissions || []).filter((s) => group.items.some((item) => String(item.id) === String(s.rate_request_id) || String(item.request_no) === String(s.rate_request_id)));
                         const firstItem = group.items[0];
 
                         if (isMultiItemBatch) {
@@ -2126,7 +2126,7 @@ export const AdminDashboard = () => {
                                   <td>
                                     {(() => {
                                       const isAwarded = group.items.every((i) => i.status === 'Awarded');
-                                      const awardedAlloc = (db.allocations || []).find((a) => group.items.some((item) => item.id === a.rate_request_id));
+                                      const awardedAlloc = (db.allocations || []).find((a) => group.items.some((item) => String(item.id) === String(a.rate_request_id) || String(item.request_no) === String(a.rate_request_id)));
                                       const awardedTrans = awardedAlloc ? (db.transporters || []).find((t) => t.id === awardedAlloc.transporter_id) : null;
 
                                       return (
@@ -2327,7 +2327,7 @@ export const AdminDashboard = () => {
                                           </thead>
                                           <tbody>
                                             {(group.items || []).map((req, rIdx) => {
-                                              const bids = (db.rate_submissions || []).filter((s) => s.rate_request_id === req.id);
+                                              const bids = (db.rate_submissions || []).filter((s) => String(s.rate_request_id) === String(req.id) || String(s.rate_request_id) === String(req.request_no));
                                               const validRates = bids.map((b) => parseFloat(b.rate_per_unit)).filter((r) => !isNaN(r));
                                               const lowestRate = validRates.length > 0 ? Math.min(...validRates) : null;
                                               const displayCode = req.request_no || req.title || 'REQ';
@@ -2448,7 +2448,7 @@ export const AdminDashboard = () => {
 
                         // SINGLE REQUIREMENT ROW (non-batch)
                         const req = group.items[0];
-                        const bids = (db.rate_submissions || []).filter((s) => s.rate_request_id === req.id);
+                        const bids = (db.rate_submissions || []).filter((s) => String(s.rate_request_id) === String(req.id) || String(s.rate_request_id) === String(req.request_no));
                         const validRates = bids.map((b) => b.rate_per_unit);
                         const lowestRate = validRates.length > 0 ? Math.min(...validRates) : null;
                         const displayCode = req.request_no || req.title;
@@ -2501,7 +2501,7 @@ export const AdminDashboard = () => {
 
                             <td>
                               {(() => {
-                                const alloc = (db.allocations || []).find((a) => a.rate_request_id === req.id);
+                                const alloc = (db.allocations || []).find((a) => String(a.rate_request_id) === String(req.id) || String(a.rate_request_id) === String(req.request_no));
                                 const transporter = alloc ? (db.transporters || []).find((t) => t.id === alloc.transporter_id) : null;
 
                                 return (
