@@ -1,7 +1,7 @@
 // src/components/AdminDashboard.jsx
 // Cleaned up Admin Dashboard with Auto-Sequential ERP Requirement Formatting, High-Visibility Badge Styling, Account Suspension, & Transporter Deletion Engine 🗑️
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { CreateRequirementModal } from './CreateRequirementModal';
 import { TransporterManagerModal } from './TransporterManagerModal';
@@ -96,6 +96,7 @@ export const AdminDashboard = () => {
   const [archiveNotice, setArchiveNotice] = useState('');
 
   // 🔒 Security Password Modal State for Database Operations
+  const restoreFileInputRef = useRef(null);
   const [securityAuthModal, setSecurityAuthModal] = useState({ isOpen: false, actionTitle: '', pendingAction: null });
   const [enteredAuthPass, setEnteredAuthPass] = useState('');
   const [showAuthPass, setShowAuthPass] = useState(false);
@@ -570,17 +571,25 @@ export const AdminDashboard = () => {
     reader.readAsText(file);
   };
 
-  const handleUploadDatabaseBackup = (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (e.target) e.target.value = '';
+  const handleInitiateRestoreBackup = () => {
     setEnteredAuthPass('');
     setAuthErrorMsg('');
     setSecurityAuthModal({
       isOpen: true,
       actionTitle: 'Database Cloud Restore (.json)',
-      pendingAction: () => processUploadBackupFile(file)
+      pendingAction: () => {
+        if (restoreFileInputRef.current) {
+          restoreFileInputRef.current.click();
+        }
+      }
     });
+  };
+
+  const handleUploadDatabaseBackup = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    processUploadBackupFile(file);
+    if (e.target) e.target.value = '';
   };
 
   const executeResetDatabase = () => {
@@ -3058,7 +3067,9 @@ export const AdminDashboard = () => {
                     <Download size={18} /> 📥 Download Full Database Backup (.json)
                   </button>
 
-                  <label
+                  <button
+                    type="button"
+                    onClick={handleInitiateRestoreBackup}
                     className="btn btn-primary"
                     style={{
                       background: 'linear-gradient(135deg, #0284c7 0%, #38bdf8 100%)',
@@ -3076,13 +3087,14 @@ export const AdminDashboard = () => {
                     }}
                   >
                     <Upload size={18} /> 📤 Restore Backup File (.json)
-                    <input
-                      type="file"
-                      accept=".json"
-                      onChange={handleUploadDatabaseBackup}
-                      style={{ display: 'none' }}
-                    />
-                  </label>
+                  </button>
+                  <input
+                    ref={restoreFileInputRef}
+                    type="file"
+                    accept=".json"
+                    onChange={handleUploadDatabaseBackup}
+                    style={{ display: 'none' }}
+                  />
 
                   <button
                     type="button"
