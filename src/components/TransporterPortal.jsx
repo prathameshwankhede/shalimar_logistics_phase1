@@ -76,7 +76,7 @@ export const TransporterPortal = () => {
     filledItems.forEach((req) => {
       const rateVal = parseFloat(quickRates[req.id]);
       const existingIdx = updatedSubmissions.findIndex(
-        (s) => s.rate_request_id === req.id && s.transporter_id === currentTransporter.id
+        (s) => (String(s.rate_request_id) === String(req.id) || String(s.rate_request_id) === String(req.request_no)) && String(s.transporter_id) === String(currentTransporter.id)
       );
 
       const totalValue = rateVal * (Number(req.required_qty) || 0);

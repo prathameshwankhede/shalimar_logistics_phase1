@@ -209,7 +209,10 @@ export const AuthProvider = ({ children }) => {
     const updatedData = { ...newDb, _updatedAt: Date.now() };
     setDb({ ...updatedData });
     try {
-      await saveDB(updatedData);
+      const mergedResult = await saveDB(updatedData);
+      if (mergedResult) {
+        setDb({ ...mergedResult });
+      }
     } catch (e) {
       console.error('Supabase save failed in updateDB:', e);
     }
