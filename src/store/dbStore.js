@@ -263,8 +263,64 @@ export async function saveDB(data) {
 
     if (!supabase) {
       console.warn('Supabase client not configured, saved to local cache');
-      console.log('SAVE COMPLETE');
       return dataToSave;
+    }
+
+    // 🛡️ READ LATEST CLOUD STATE FIRST TO PREVENT OVERWRITING CONCURRENT BIDS
+    let mergedData = dataToSave;
+    try {
+      const { data: cloudRows } = await supabase
+        .from('app_database')
+        .select('*')
+        .eq('id', 'transflow-live-prod-v3');
+
+      if (cloudRows && cloudRows.length > 0 && cloudRows[0].data) {
+        const existingCloudDb = cloudRows[0].data;
+
+        // Merge rate_submissions by ID so no bid from any mobile or laptop is ever deleted
+        const subMap = new Map();
+        (existingCloudDb.rate_submissions || []).forEach((s) => subMap.set(String(s.id), s));
+        (dataToSave.rate_submissions || []).forEach((s) => subMap.set(String(s.id), s));
+
+        // Merge rate_requests by ID
+        const reqMap = new Map();
+        (existingCloudDb.rate_requests || []).forEach((r) => reqMap.set(String(r.id), r));
+        (dataToSave.rate_requests || []).forEach((r) => reqMap.set(String(r.id), r));
+
+        // Merge allocations by ID
+        const allocMap = new Map();
+        (existingCloudDb.allocations || []).forEach((a) => allocMap.set(String(a.id), a));
+        (dataToSave.allocations || []).forEach((a) => allocMap.set(String(a.id), a));
+
+        // Merge contracts by ID
+        const contractMap = new Map();
+        (existingCloudDb.contracts || []).forEach((c) => contractMap.set(String(c.id), c));
+        (dataToSave.contracts || []).forEach((c) => contractMap.set(String(c.id), c));
+
+        // Merge truck_dispatches by ID
+        const dispatchMap = new Map();
+        (existingCloudDb.truck_dispatches || []).forEach((d) => dispatchMap.set(String(d.id), d));
+        (dataToSave.truck_dispatches || []).forEach((d) => dispatchMap.set(String(d.id), d));
+
+        // Merge security_audit_logs by ID
+        const logMap = new Map();
+        (existingCloudDb.security_audit_logs || []).forEach((l) => logMap.set(String(l.id), l));
+        (dataToSave.security_audit_logs || []).forEach((l) => logMap.set(String(l.id), l));
+
+        mergedData = {
+          ...existingCloudDb,
+          ...dataToSave,
+          _updatedAt: Date.now(),
+          rate_requests: Array.from(reqMap.values()),
+          rate_submissions: Array.from(subMap.values()),
+          allocations: Array.from(allocMap.values()),
+          contracts: Array.from(contractMap.values()),
+          truck_dispatches: Array.from(dispatchMap.values()),
+          security_audit_logs: Array.from(logMap.values()).slice(0, 100)
+        };
+      }
+    } catch (fetchErr) {
+      console.warn('Pre-fetch cloud DB failed, fallback to local dataToSave:', fetchErr);
     }
 
     console.log('SUPABASE UPSERT START');
@@ -273,7 +329,7 @@ export async function saveDB(data) {
       .upsert(
         {
           id: 'transflow-live-prod-v3',
-          data: dataToSave,
+          data: mergedData,
           updated_at: new Date().toISOString()
         },
         { onConflict: 'id' }
@@ -286,8 +342,10 @@ export async function saveDB(data) {
       console.error('Supabase save failed:', error);
     } else {
       console.log('Supabase save successful');
+      safeSetLocalStorage(DB_KEY, JSON.stringify(mergedData));
+      saveToPermanentIndexedDB(mergedData);
     }
-    return dataToSave;
+    return mergedData;
   } catch (err) {
     console.error('Supabase save failed:', err);
     saveToPermanentIndexedDB({ ...data, _updatedAt: Date.now() });
