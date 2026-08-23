@@ -2734,32 +2734,36 @@ export const AdminDashboard = () => {
 
               {/* Metric Summary Cards */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px', marginBottom: '28px' }}>
-                <div style={{ padding: '18px', borderRadius: '16px', borderLeft: '4px solid #0284c7', background: 'rgba(15, 23, 42, 0.85)', border: '1px solid rgba(2, 132, 199, 0.3)', boxShadow: '0 4px 20px rgba(0,0,0,0.15)' }}>
-                  <div style={{ fontSize: '0.78rem', fontWeight: '900', color: '#38bdf8', textTransform: 'uppercase', letterSpacing: '0.04em' }}>📥 TOTAL BIDS RECEIVED</div>
-                  <div style={{ fontSize: '1.8rem', fontWeight: '900', color: '#ffffff', marginTop: '6px' }}>{(db.rate_submissions || []).length} Quotes</div>
-                  <div style={{ fontSize: '0.72rem', color: '#94a3b8', marginTop: '4px' }}>Across all registered transporters</div>
-                </div>
-
-                <div style={{ padding: '18px', borderRadius: '16px', borderLeft: '4px solid #f59e0b', background: 'rgba(15, 23, 42, 0.85)', border: '1px solid rgba(245, 158, 11, 0.3)', boxShadow: '0 4px 20px rgba(0,0,0,0.15)' }}>
-                  <div style={{ fontSize: '0.78rem', fontWeight: '900', color: '#fbbf24', textTransform: 'uppercase', letterSpacing: '0.04em' }}>💬 COUNTER OFFERS</div>
-                  <div style={{ fontSize: '1.8rem', fontWeight: '900', color: '#ffffff', marginTop: '6px' }}>
-                    {(db.rate_submissions || []).filter((s) => s.counter_rate_per_unit).length} Active
+                <div className="glass-panel" style={{ padding: '18px', borderRadius: '16px', borderLeft: '4px solid #0284c7', background: 'linear-gradient(135deg, rgba(2, 132, 199, 0.08) 0%, rgba(15, 23, 42, 0.85) 100%)', border: '1px solid rgba(2, 132, 199, 0.4)', boxShadow: '0 4px 20px rgba(2, 132, 199, 0.15)' }}>
+                  <div style={{ fontSize: '0.78rem', fontWeight: '900', color: '#0284c7', textTransform: 'uppercase', letterSpacing: '0.04em' }}>📥 TOTAL BIDS RECEIVED</div>
+                  <div style={{ fontSize: '1.8rem', fontWeight: '900', color: '#0284c7', marginTop: '6px' }}>
+                    {(db.rate_submissions || []).length} <span style={{ fontSize: '0.9rem', color: '#64748b', fontWeight: '700' }}>Quotes</span>
                   </div>
-                  <div style={{ fontSize: '0.72rem', color: '#94a3b8', marginTop: '4px' }}>Negotiating target freight rates</div>
+                  <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '4px', fontWeight: '600' }}>Across all registered transporters</div>
                 </div>
 
-                <div style={{ padding: '18px', borderRadius: '16px', borderLeft: '4px solid #10b981', background: 'rgba(15, 23, 42, 0.85)', border: '1px solid rgba(16, 185, 129, 0.3)', boxShadow: '0 4px 20px rgba(0,0,0,0.15)' }}>
-                  <div style={{ fontSize: '0.78rem', fontWeight: '900', color: '#34d399', textTransform: 'uppercase', letterSpacing: '0.04em' }}>🏆 FINAL APPROVED CONTRACTS</div>
-                  <div style={{ fontSize: '1.8rem', fontWeight: '900', color: '#ffffff', marginTop: '6px' }}>{(db.allocations || []).length} Awarded</div>
-                  <div style={{ fontSize: '0.72rem', color: '#94a3b8', marginTop: '4px' }}>Finalized & synced with SAP ERP</div>
+                <div className="glass-panel" style={{ padding: '18px', borderRadius: '16px', borderLeft: '4px solid #f59e0b', background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.08) 0%, rgba(15, 23, 42, 0.85) 100%)', border: '1px solid rgba(245, 158, 11, 0.4)', boxShadow: '0 4px 20px rgba(245, 158, 11, 0.15)' }}>
+                  <div style={{ fontSize: '0.78rem', fontWeight: '900', color: '#d97706', textTransform: 'uppercase', letterSpacing: '0.04em' }}>💬 COUNTER OFFERS</div>
+                  <div style={{ fontSize: '1.8rem', fontWeight: '900', color: '#d97706', marginTop: '6px' }}>
+                    {(db.rate_submissions || []).filter((s) => s.counter_rate_per_unit).length} <span style={{ fontSize: '0.9rem', color: '#64748b', fontWeight: '700' }}>Active</span>
+                  </div>
+                  <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '4px', fontWeight: '600' }}>Negotiating target freight rates</div>
                 </div>
 
-                <div style={{ padding: '18px', borderRadius: '16px', borderLeft: '4px solid #a855f7', background: 'rgba(15, 23, 42, 0.85)', border: '1px solid rgba(168, 85, 247, 0.3)', boxShadow: '0 4px 20px rgba(0,0,0,0.15)' }}>
-                  <div style={{ fontSize: '0.78rem', fontWeight: '900', color: '#c084fc', textTransform: 'uppercase', letterSpacing: '0.04em' }}>💰 TOTAL FREIGHT VALUE</div>
-                  <div style={{ fontSize: '1.8rem', fontWeight: '900', color: '#ffffff', marginTop: '6px' }}>
+                <div className="glass-panel" style={{ padding: '18px', borderRadius: '16px', borderLeft: '4px solid #10b981', background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, rgba(15, 23, 42, 0.85) 100%)', border: '1px solid rgba(16, 185, 129, 0.4)', boxShadow: '0 4px 20px rgba(16, 185, 129, 0.15)' }}>
+                  <div style={{ fontSize: '0.78rem', fontWeight: '900', color: '#059669', textTransform: 'uppercase', letterSpacing: '0.04em' }}>🏆 FINAL APPROVED CONTRACTS</div>
+                  <div style={{ fontSize: '1.8rem', fontWeight: '900', color: '#059669', marginTop: '6px' }}>
+                    {(db.allocations || []).length} <span style={{ fontSize: '0.9rem', color: '#64748b', fontWeight: '700' }}>Awarded</span>
+                  </div>
+                  <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '4px', fontWeight: '600' }}>Finalized & synced with SAP ERP</div>
+                </div>
+
+                <div className="glass-panel" style={{ padding: '18px', borderRadius: '16px', borderLeft: '4px solid #a855f7', background: 'linear-gradient(135deg, rgba(168, 85, 247, 0.08) 0%, rgba(15, 23, 42, 0.85) 100%)', border: '1px solid rgba(168, 85, 247, 0.4)', boxShadow: '0 4px 20px rgba(168, 85, 247, 0.15)' }}>
+                  <div style={{ fontSize: '0.78rem', fontWeight: '900', color: '#9333ea', textTransform: 'uppercase', letterSpacing: '0.04em' }}>💰 TOTAL FREIGHT VALUE</div>
+                  <div style={{ fontSize: '1.8rem', fontWeight: '900', color: '#9333ea', marginTop: '6px' }}>
                     ₹{(db.allocations || []).reduce((acc, curr) => acc + (curr.allocated_qty * curr.agreed_rate), 0).toLocaleString()}
                   </div>
-                  <div style={{ fontSize: '0.72rem', color: '#94a3b8', marginTop: '4px' }}>Awarded contract commitment</div>
+                  <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '4px', fontWeight: '600' }}>Awarded contract commitment</div>
                 </div>
               </div>
 
