@@ -95,6 +95,12 @@ export const AdminDashboard = () => {
   // Archive Notice State
   const [archiveNotice, setArchiveNotice] = useState('');
 
+  // 🔒 Security Password Modal State for Database Operations
+  const [securityAuthModal, setSecurityAuthModal] = useState({ isOpen: false, actionTitle: '', pendingAction: null });
+  const [enteredAuthPass, setEnteredAuthPass] = useState('');
+  const [showAuthPass, setShowAuthPass] = useState(false);
+  const [authErrorMsg, setAuthErrorMsg] = useState('');
+
   // 📊 Live Reports & Audit Trail Modal States
   const [selectedAuditReportModal, setSelectedAuditReportModal] = useState(null);
   const [reportSearchTerm, setReportSearchTerm] = useState('');
@@ -437,31 +443,32 @@ export const AdminDashboard = () => {
     setEditingTransporterMaster(null);
   };
 
-  const verifyAdminPassword = (actionTitle) => {
-    const enteredPass = window.prompt(`🔒 SECURITY AUTHORIZATION REQUIRED:\n\nPlease enter Security Authorization Password to perform ${actionTitle}:`);
-    if (!enteredPass) return false;
+  const handleVerifySecuritySubmit = (e) => {
+    e.preventDefault();
+    const masterPass = 'SunilYede@katol';
+    const currentPass = currentUser?.password || 'admin123';
 
-    const masterSecurityPass = 'SunilYede@katol';
-    const actualAdminPass = currentUser?.password || 'admin123';
-
-    if (enteredPass.trim() !== masterSecurityPass && enteredPass.trim() !== actualAdminPass.trim()) {
-      alert(`🛑 ACCESS DENIED: Invalid Security Authorization Password for '${actionTitle}'. Security audit event logged.`);
+    if (enteredAuthPass.trim() !== masterPass && enteredAuthPass.trim() !== currentPass.trim()) {
+      setAuthErrorMsg('🛑 ACCESS DENIED: Invalid Security Authorization Password!');
       const updatedDb = addSecurityLog(
         db,
-        `UNAUTHORIZED_BACKUP_ACCESS_ATTEMPT (${actionTitle})`,
+        `UNAUTHORIZED_BACKUP_ACCESS_ATTEMPT (${securityAuthModal.actionTitle})`,
         currentUser?.username || 'admin',
         'admin',
         'ACCESS_DENIED 🛑'
       );
       updateDB(updatedDb);
-      return false;
+      return;
     }
-    return true;
+
+    const actionToRun = securityAuthModal.pendingAction;
+    setSecurityAuthModal({ isOpen: false, actionTitle: '', pendingAction: null });
+    setEnteredAuthPass('');
+    setAuthErrorMsg('');
+    if (actionToRun) actionToRun();
   };
 
-  const handleDownloadDatabaseBackup = () => {
-    if (!verifyAdminPassword('Database Backup Download (.json)')) return;
-
+  const executeDownloadBackup = () => {
     try {
       const backupData = {
         _exportedAt: new Date().toISOString(),
@@ -501,15 +508,17 @@ export const AdminDashboard = () => {
     }
   };
 
-  const handleUploadDatabaseBackup = (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const handleDownloadDatabaseBackup = () => {
+    setEnteredAuthPass('');
+    setAuthErrorMsg('');
+    setSecurityAuthModal({
+      isOpen: true,
+      actionTitle: 'Download Full Database Backup (.json)',
+      pendingAction: executeDownloadBackup
+    });
+  };
 
-    if (!verifyAdminPassword('Database Cloud Restore (.json)')) {
-      if (e.target) e.target.value = '';
-      return;
-    }
-
+  const processUploadBackupFile = (file) => {
     const reader = new FileReader();
     reader.onload = (event) => {
       try {
@@ -519,12 +528,10 @@ export const AdminDashboard = () => {
 
         if (!parsed || typeof parsed !== 'object') {
           alert('Invalid Backup File. Please upload a valid TransFlow JSON backup file.');
-          if (e.target) e.target.value = '';
           return;
         }
 
         if (!window.confirm('⚠️ DATABASE RESTORE CONFIRMATION:\n\nAre you sure you want to restore system database from this backup file?\n\nThis will update your Live Cloud Database with the backup data.')) {
-          if (e.target) e.target.value = '';
           return;
         }
 
@@ -554,20 +561,29 @@ export const AdminDashboard = () => {
         );
 
         updateDB(restoredDb);
-        if (e.target) e.target.value = '';
         setArchiveNotice('🎉 System Database successfully restored from JSON backup file & synced to Supabase Cloud!');
         setTimeout(() => setArchiveNotice(''), 5000);
       } catch (err) {
         alert(`Failed to parse backup JSON file: ${err.message}`);
-        if (e.target) e.target.value = '';
       }
     };
     reader.readAsText(file);
   };
 
-  const handleResetDatabaseToFreshStart = () => {
-    if (!verifyAdminPassword('System Data Reset')) return;
+  const handleUploadDatabaseBackup = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (e.target) e.target.value = '';
+    setEnteredAuthPass('');
+    setAuthErrorMsg('');
+    setSecurityAuthModal({
+      isOpen: true,
+      actionTitle: 'Database Cloud Restore (.json)',
+      pendingAction: () => processUploadBackupFile(file)
+    });
+  };
 
+  const executeResetDatabase = () => {
     if (!window.confirm('⚠️ CLEAR ALL SYSTEM OPERATIONAL DATA CONFIRMATION:\n\nAre you sure you want to clear all active rate requests, freight bids, awarded contracts, and truck dispatches?\n\nThis will reset operational tables and sync to Supabase Cloud.')) {
       return;
     }
@@ -592,6 +608,16 @@ export const AdminDashboard = () => {
     updateDB(cleanFreshDb);
     setArchiveNotice('🎉 System Database cleared completely! Operational tables are now 100% clean & ready for fresh live start.');
     setTimeout(() => setArchiveNotice(''), 5000);
+  };
+
+  const handleResetDatabaseToFreshStart = () => {
+    setEnteredAuthPass('');
+    setAuthErrorMsg('');
+    setSecurityAuthModal({
+      isOpen: true,
+      actionTitle: 'Clear All Data & Start Fresh',
+      pendingAction: executeResetDatabase
+    });
   };
 
   const handleToggleTransporterStatus = (transporter) => {
@@ -4559,6 +4585,101 @@ export const AdminDashboard = () => {
         batchData={whatsappModalData.data}
         transporters={db.transporters || []}
       />
+
+      {/* 🔒 ENTERPRISE SECURITY AUTHORIZATION PASSWORD MODAL */}
+      {securityAuthModal.isOpen && (
+        <div className="modal-overlay" style={{ zIndex: 999999 }}>
+          <div className="modal-content glass-panel" style={{ maxWidth: '440px', padding: '24px', boxSizing: 'border-box', border: '2px solid #ef4444', background: '#0f172a' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div style={{ background: 'rgba(239, 68, 68, 0.15)', padding: '10px', borderRadius: '10px' }}>
+                  <Lock size={22} color="#ef4444" />
+                </div>
+                <div>
+                  <h3 style={{ fontSize: '1.05rem', fontWeight: '900', color: '#ffffff', margin: 0 }}>
+                    Security Authorization Password
+                  </h3>
+                  <p style={{ fontSize: '0.75rem', color: '#f87171', margin: '2px 0 0 0' }}>
+                    {securityAuthModal.actionTitle}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setSecurityAuthModal({ isOpen: false, actionTitle: '', pendingAction: null });
+                  setEnteredAuthPass('');
+                  setAuthErrorMsg('');
+                }}
+                style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer' }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <form onSubmit={handleVerifySecuritySubmit}>
+              <div style={{ background: 'rgba(15, 23, 42, 0.8)', padding: '12px 14px', borderRadius: '10px', marginBottom: '16px', border: '1px solid rgba(239, 68, 68, 0.3)' }}>
+                <div style={{ fontSize: '0.8rem', color: '#cbd5e1', lineHeight: '1.4' }}>
+                  🔒 Enter Security Authorization Password (e.g. <strong style={{ color: '#38bdf8' }}>SunilYede@katol</strong>) to execute database operation.
+                </div>
+              </div>
+
+              {authErrorMsg && (
+                <div style={{ background: 'rgba(239, 68, 68, 0.2)', border: '1px solid #ef4444', color: '#fca5a5', padding: '10px 14px', borderRadius: '8px', fontSize: '0.82rem', fontWeight: '800', marginBottom: '14px' }}>
+                  {authErrorMsg}
+                </div>
+              )}
+
+              <div className="form-group" style={{ marginBottom: '20px', position: 'relative' }}>
+                <label className="form-label" style={{ color: '#ef4444', fontWeight: '800' }}>
+                  Security Password
+                </label>
+                <div style={{ position: 'relative' }}>
+                  <input
+                    type={showAuthPass ? 'text' : 'password'}
+                    className="form-control"
+                    placeholder="Enter Security Password..."
+                    value={enteredAuthPass}
+                    onChange={(e) => setEnteredAuthPass(e.target.value)}
+                    autoFocus
+                    required
+                    style={{ fontSize: '0.95rem', fontWeight: '800', paddingRight: '42px', height: '46px', border: '1.5px solid #ef4444', background: '#020617', color: '#ffffff' }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowAuthPass(!showAuthPass)}
+                    style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}
+                  >
+                    {showAuthPass ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', paddingTop: '12px', borderTop: '1px solid var(--border-color)' }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSecurityAuthModal({ isOpen: false, actionTitle: '', pendingAction: null });
+                    setEnteredAuthPass('');
+                    setAuthErrorMsg('');
+                  }}
+                  className="btn btn-secondary"
+                  style={{ padding: '8px 16px', fontSize: '0.85rem' }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="btn btn-danger"
+                  style={{ padding: '8px 20px', fontSize: '0.85rem', fontWeight: '900', background: 'linear-gradient(135deg, #dc2626 0%, #ef4444 100%)' }}
+                >
+                  <Key size={16} /> Authorize & Execute
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
