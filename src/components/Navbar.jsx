@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { ShieldCheck, LogOut, Lock } from 'lucide-react';
+import { ShieldCheck, LogOut, Lock, RefreshCw } from 'lucide-react';
 import { SHALIMAR_LOGO_BASE64 } from '../assets/logoBase64';
 
 export const Navbar = () => {
@@ -11,6 +11,15 @@ export const Navbar = () => {
     document.documentElement.setAttribute('data-theme', 'light');
     localStorage.setItem('transflow_theme', 'light');
   }, []);
+
+  const handleForceCloudSync = () => {
+    try {
+      localStorage.removeItem('transflow_logistics_db_live_v3');
+      window.location.reload();
+    } catch (e) {
+      window.location.reload();
+    }
+  };
 
   return (
     <nav className="glass-panel no-print" style={{ borderRadius: '0 0 16px 16px', marginBottom: '24px', padding: '12px 24px' }}>
@@ -67,6 +76,15 @@ export const Navbar = () => {
               {isAdmin ? '👑 Logistics Head' : `🚛 ${currentTransporter?.company_name || 'Transporter'}`}
             </div>
           </div>
+
+          <button
+            onClick={handleForceCloudSync}
+            className="btn btn-secondary"
+            title="Force Hard Refresh & Sync with Cloud DB"
+            style={{ padding: '8px 14px', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '6px', color: '#0284c7', border: '1px solid #0284c7', background: 'rgba(2, 132, 199, 0.1)', borderRadius: '8px' }}
+          >
+            <RefreshCw size={14} /> 🔄 Live Sync
+          </button>
 
           <button
             onClick={logout}
