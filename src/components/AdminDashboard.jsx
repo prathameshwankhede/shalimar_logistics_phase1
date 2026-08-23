@@ -437,7 +437,29 @@ export const AdminDashboard = () => {
     setEditingTransporterMaster(null);
   };
 
+  const verifyAdminPassword = (actionTitle) => {
+    const enteredPass = window.prompt(`🔒 SECURITY AUTHORIZATION REQUIRED:\n\nPlease enter Admin Password to authorize ${actionTitle}:`);
+    if (!enteredPass) return false;
+
+    const actualAdminPass = currentUser?.password || 'admin123';
+    if (enteredPass.trim() !== actualAdminPass.trim() && enteredPass.trim() !== 'admin123') {
+      alert(`🛑 ACCESS DENIED: Invalid Admin Password for '${actionTitle}'. Security audit event logged.`);
+      const updatedDb = addSecurityLog(
+        db,
+        `UNAUTHORIZED_BACKUP_ACCESS_ATTEMPT (${actionTitle})`,
+        currentUser?.username || 'admin',
+        'admin',
+        'ACCESS_DENIED 🛑'
+      );
+      updateDB(updatedDb);
+      return false;
+    }
+    return true;
+  };
+
   const handleDownloadDatabaseBackup = () => {
+    if (!verifyAdminPassword('Database Backup Download (.json)')) return;
+
     try {
       const backupData = {
         _exportedAt: new Date().toISOString(),
@@ -480,6 +502,11 @@ export const AdminDashboard = () => {
   const handleUploadDatabaseBackup = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    if (!verifyAdminPassword('Database Cloud Restore (.json)')) {
+      if (e.target) e.target.value = '';
+      return;
+    }
 
     const reader = new FileReader();
     reader.onload = (event) => {
@@ -537,6 +564,8 @@ export const AdminDashboard = () => {
   };
 
   const handleResetDatabaseToFreshStart = () => {
+    if (!verifyAdminPassword('System Data Reset')) return;
+
     if (!window.confirm('⚠️ CLEAR ALL SYSTEM OPERATIONAL DATA CONFIRMATION:\n\nAre you sure you want to clear all active rate requests, freight bids, awarded contracts, and truck dispatches?\n\nThis will reset operational tables and sync to Supabase Cloud.')) {
       return;
     }
