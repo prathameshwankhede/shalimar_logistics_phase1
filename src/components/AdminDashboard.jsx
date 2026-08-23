@@ -676,8 +676,8 @@ export const AdminDashboard = () => {
     updateDB(updatedDb);
   };
 
-  // ⚡ BULK RATE REQUEST CREATOR STATE (UP TO 20 REQUESTS AT ONCE)
-  const [masterPickupCity, setMasterPickupCity] = useState('Nagpur (Shalimar Plant MIDC)');
+  // ⚡ BULK RATE REQUEST CREATOR STATE (UP TO 50 REQUESTS AT ONCE)
+  const [masterPickupCity, setMasterPickupCity] = useState(() => (db.company_masters?.[0]?.name || db.city_masters?.[0]?.city || ''));
   const [expandedBatches, setExpandedBatches] = useState({});
 
   const toggleBatchExpand = (batchKey) => {
@@ -714,20 +714,22 @@ export const AdminDashboard = () => {
     const subNum = (indexOffset + 1).toString().padStart(2, '0');
     const reqNo = `${batchCode}/${subNum}`;
     const defaultProd = (db.product_masters && db.product_masters[0]) ? db.product_masters[0] : null;
-    const defaultProdName = defaultProd?.name || 'Soybean Meal De-Oiled Cake (DOC)';
-    const defaultHsn = defaultProd?.hsn_code || '15071000';
+    const defaultProdName = defaultProd?.name || '';
+    const defaultHsn = defaultProd?.hsn_code || '';
+    const defaultOrigin = masterPickupCity || (db.company_masters?.[0]?.name || db.city_masters?.[0]?.city || '');
+    const defaultDrop = (db.company_masters?.[1]?.name || db.city_masters?.[1]?.city || db.company_masters?.[0]?.name || '');
 
     return {
       id: `row_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
       title: reqNo,
       request_no: reqNo,
-      origin_city: masterPickupCity || 'Nagpur (Shalimar Plant MIDC)',
-      dest_city: 'Solapur (Shalimar Refinery)',
-      company_unit: 'Shalimar Nutrients Pvt Ltd (Nagpur Plant)',
+      origin_city: defaultOrigin,
+      dest_city: defaultDrop,
+      company_unit: (db.company_masters?.[0]?.name || ''),
       material_type: defaultProdName,
       hsn_code: defaultHsn,
-      required_qty: '500',
-      target_date: '2026-08-30'
+      required_qty: '',
+      target_date: ''
     };
   };
 
@@ -1552,19 +1554,21 @@ export const AdminDashboard = () => {
                           borderRadius: '8px'
                         }}
                       >
-                        {Array.from(
-                          new Set([
-                            ...(db.company_masters || []).map((c) => c.pickup_location_name || c.name || c.city).filter(Boolean),
-                            ...(db.title_masters || []).map((tm) => tm.origin_city || tm.title).filter(Boolean),
-                            ...(db.city_masters || []).map((c) => c.city).filter(Boolean),
-                            'Nagpur (Shalimar Plant MIDC)',
-                            'Solapur (Shalimar Refinery)',
-                            'Indore (Shalimar Plant MIDC)',
-                            'Thane (Shalimar Machinery Hub)'
-                          ])
-                        ).map((cityName, i) => (
-                          <option key={`master_orig_${i}`} value={cityName}>{cityName}</option>
-                        ))}
+                        {(() => {
+                          const optionsList = Array.from(
+                            new Set([
+                              ...(db.company_masters || []).map((c) => c.pickup_location_name || c.name || c.city).filter(Boolean),
+                              ...(db.title_masters || []).map((tm) => tm.origin_city || tm.title).filter(Boolean),
+                              ...(db.city_masters || []).map((c) => c.city).filter(Boolean)
+                            ])
+                          );
+                          if (optionsList.length === 0) {
+                            return <option value="">-- No Pickup Origin in Master (Add in Master Directory) --</option>;
+                          }
+                          return optionsList.map((cityName, i) => (
+                            <option key={`master_orig_${i}`} value={cityName}>{cityName}</option>
+                          ));
+                        })()}
                       </select>
                     </div>
                   </div>
@@ -1657,19 +1661,21 @@ export const AdminDashboard = () => {
                             onChange={(e) => handleUpdateBulkRow(row.id, 'dest_city', e.target.value)}
                             style={{ fontSize: '0.85rem', height: '42px', border: '1px solid rgba(245, 158, 11, 0.6)', color: 'var(--text-main)', borderRadius: '8px', fontWeight: '700' }}
                           >
-                            {Array.from(
-                              new Set([
-                                ...(db.company_masters || []).map((c) => c.drop_location_name || c.name || c.city).filter(Boolean),
-                                ...(db.title_masters || []).map((tm) => tm.dest_city || tm.title).filter(Boolean),
-                                ...(db.city_masters || []).map((c) => c.city).filter(Boolean),
-                                'Solapur (Shalimar Refinery)',
-                                'Nagpur (Shalimar Plant MIDC)',
-                                'Indore (Shalimar Plant MIDC)',
-                                'Thane (Shalimar Machinery Hub)'
-                              ])
-                            ).map((destName, i) => (
-                              <option key={`dest_${i}`} value={destName}>{destName}</option>
-                            ))}
+                            {(() => {
+                              const dropList = Array.from(
+                                new Set([
+                                  ...(db.company_masters || []).map((c) => c.drop_location_name || c.name || c.city).filter(Boolean),
+                                  ...(db.title_masters || []).map((tm) => tm.dest_city || tm.title).filter(Boolean),
+                                  ...(db.city_masters || []).map((c) => c.city).filter(Boolean)
+                                ])
+                              );
+                              if (dropList.length === 0) {
+                                return <option value="">-- No Drop Location in Master (Add in Master Directory) --</option>;
+                              }
+                              return dropList.map((destName, i) => (
+                                <option key={`dest_${i}`} value={destName}>{destName}</option>
+                              ));
+                            })()}
                           </select>
                         </div>
 
@@ -1680,23 +1686,21 @@ export const AdminDashboard = () => {
                           </label>
                           <select
                             className="form-control"
-                            value={row.material_type || (db.product_masters?.[0]?.name || 'Soybean Meal De-Oiled Cake (DOC)')}
+                            value={row.material_type}
                             onChange={(e) => handleUpdateBulkRow(row.id, 'material_type', e.target.value)}
                             style={{ fontSize: '0.82rem', height: '42px', border: '1.5px solid #38bdf8', color: 'var(--text-main)', borderRadius: '8px', fontWeight: '800' }}
                           >
-                            {(db.product_masters && db.product_masters.length > 0
-                              ? db.product_masters
-                              : [
-                                  { id: 'p1', name: 'Soybean Meal De-Oiled Cake (DOC)' },
-                                  { id: 'p2', name: 'Refined Edible Oil (Bulk)' },
-                                  { id: 'p3', name: 'Raw Mustard Seeds' },
-                                  { id: 'p4', name: 'HI-PRO SOYA' }
-                                ]
-                            ).map((prod, i) => (
-                              <option key={`prod_${prod.id || i}`} value={prod.name}>
-                                📦 {prod.name}
-                              </option>
-                            ))}
+                            {(() => {
+                              const prods = db.product_masters || [];
+                              if (prods.length === 0) {
+                                return <option value="">-- No Product in Master (Add in Master Directory) --</option>;
+                              }
+                              return prods.map((prod, i) => (
+                                <option key={`prod_${prod.id || i}`} value={prod.name}>
+                                  📦 {prod.name}
+                                </option>
+                              ));
+                            })()}
                           </select>
                         </div>
 

@@ -75,89 +75,72 @@ export const LoginModal = () => {
           </div>
         </div>
 
-        {/* ⚡ 1-CLICK QUICK AUTO-FILL DEMO LOGIN BUTTONS & 50-TRANSPORTER SELECTOR */}
+        {/* ⚡ 1-CLICK QUICK LOGIN BUTTON & TRANSPORTER SELECTOR */}
         <div style={{ background: 'rgba(56, 189, 248, 0.08)', border: '1px solid rgba(56, 189, 248, 0.3)', borderRadius: '12px', padding: '14px', marginBottom: '20px' }}>
           <div style={{ fontSize: '0.75rem', fontWeight: '800', color: '#38bdf8', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.04em', textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
-            ⚡ 1-Click Quick Auto-Fill Login
+            ⚡ Enterprise Portal Authentication
             <span style={{ background: '#10b981', color: '#fff', fontSize: '0.65rem', padding: '1px 6px', borderRadius: '10px' }}>
-              {transportersList.length || 50} Transporters Active
+              {transportersList.length} Transporters Registered
             </span>
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-              <button
-                type="button"
-                onClick={() => {
-                  setUsername('admin');
-                  setPassword('admin123');
-                  setSelectedTransporterCode('');
-                  setError('');
-                  localStorage.removeItem('transflow_login_attempts');
-                }}
-                style={{
-                  background: 'linear-gradient(135deg, #0284c7 0%, #38bdf8 100%)',
-                  color: '#ffffff',
-                  border: 'none',
-                  borderRadius: '8px',
-                  padding: '8px 10px',
-                  fontSize: '0.78rem',
-                  fontWeight: '800',
-                  cursor: 'pointer',
-                  boxShadow: '0 0 10px rgba(56, 189, 248, 0.4)'
-                }}
-              >
-                🛡️ Admin Login
-              </button>
+            <button
+              type="button"
+              onClick={() => {
+                setUsername('admin');
+                setPassword('admin123');
+                setSelectedTransporterCode('');
+                setError('');
+                localStorage.removeItem('transflow_login_attempts');
+              }}
+              style={{
+                width: '100%',
+                background: 'linear-gradient(135deg, #0284c7 0%, #38bdf8 100%)',
+                color: '#ffffff',
+                border: 'none',
+                borderRadius: '8px',
+                padding: '10px',
+                fontSize: '0.85rem',
+                fontWeight: '800',
+                cursor: 'pointer',
+                boxShadow: '0 0 12px rgba(56, 189, 248, 0.4)'
+              }}
+            >
+              🛡️ Quick Fill Logistics Admin Login
+            </button>
 
-              <button
-                type="button"
-                onClick={() => handleSelectTransporter('ABC001')}
-                style={{
-                  background: 'linear-gradient(135deg, #059669 0%, #10b981 100%)',
-                  color: '#ffffff',
-                  border: 'none',
-                  borderRadius: '8px',
-                  padding: '8px 10px',
-                  fontSize: '0.78rem',
-                  fontWeight: '800',
-                  cursor: 'pointer',
-                  boxShadow: '0 0 10px rgba(16, 185, 129, 0.4)'
-                }}
-              >
-                🚚 Quick Demo: ABC001
-              </button>
-            </div>
-
-            {/* 🚚 DYNAMIC 50 TRANSPORTER QUICK SELECTOR DROPDOWN */}
-            <div style={{ marginTop: '4px' }}>
-              <label style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: '700', marginBottom: '3px', display: 'block' }}>
-                🚚 Or Select Any of the {transportersList.length || 50} Registered Transporters:
-              </label>
-              <select
-                value={selectedTransporterCode}
-                onChange={(e) => handleSelectTransporter(e.target.value)}
-                style={{
-                  width: '100%',
-                  padding: '7px 10px',
-                  borderRadius: '8px',
-                  background: 'rgba(15, 23, 42, 0.8)',
-                  color: '#f8fafc',
-                  border: '1px solid rgba(56, 189, 248, 0.4)',
-                  fontSize: '0.78rem',
-                  fontWeight: '600',
-                  outline: 'none',
-                  cursor: 'pointer'
-                }}
-              >
-                <option value="">-- Choose from {transportersList.length || 50} Registered Transporters --</option>
-                {transportersList.map((t) => (
-                  <option key={t.id || t.code} value={t.code || t.username} style={{ background: '#0f172a', color: '#ffffff' }}>
-                    {t.code || t.username} - {t.company_name} ({t.status || 'Active'})
-                  </option>
-                ))}
-              </select>
-            </div>
+            {/* 🚚 DYNAMIC TRANSPORTER SELECTOR DROPDOWN */}
+            {transportersList.length > 0 && (
+              <div style={{ marginTop: '6px' }}>
+                <label style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: '700', marginBottom: '3px', display: 'block' }}>
+                  🚚 Select Registered Transporter Account:
+                </label>
+                <select
+                  value={selectedTransporterCode}
+                  onChange={(e) => handleSelectTransporter(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '8px 10px',
+                    borderRadius: '8px',
+                    background: 'rgba(15, 23, 42, 0.8)',
+                    color: '#f8fafc',
+                    border: '1px solid rgba(56, 189, 248, 0.4)',
+                    fontSize: '0.78rem',
+                    fontWeight: '600',
+                    outline: 'none',
+                    cursor: 'pointer'
+                  }}
+                >
+                  <option value="">-- Choose Registered Transporter --</option>
+                  {transportersList.map((t) => (
+                    <option key={t.id || t.code} value={t.code || t.username} style={{ background: '#0f172a', color: '#ffffff' }}>
+                      {t.code || t.username} - {t.company_name} ({t.status || 'Active'})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
         </div>
 
