@@ -782,21 +782,16 @@ export const AdminDashboard = () => {
     const batchCode = `SNPL/26-27/REQ-${currentBatchNum.toString().padStart(2, '0')}`;
     const subNum = (indexOffset + 1).toString().padStart(2, '0');
     const reqNo = `${batchCode}/${subNum}`;
-    const defaultProd = (db.product_masters && db.product_masters[0]) ? db.product_masters[0] : null;
-    const defaultProdName = defaultProd?.name || '';
-    const defaultHsn = defaultProd?.hsn_code || '';
-    const defaultOrigin = masterPickupCity || (db.company_masters?.[0]?.name || db.city_masters?.[0]?.city || '');
-    const defaultDrop = (db.company_masters?.[1]?.name || db.city_masters?.[1]?.city || db.company_masters?.[0]?.name || '');
 
     return {
       id: `row_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
       title: reqNo,
       request_no: reqNo,
-      origin_city: defaultOrigin,
-      dest_city: defaultDrop,
-      company_unit: (db.company_masters?.[0]?.name || ''),
-      material_type: defaultProdName,
-      hsn_code: defaultHsn,
+      origin_city: masterPickupCity || '',
+      dest_city: '',
+      company_unit: '',
+      material_type: '',
+      hsn_code: '',
       required_qty: '',
       target_date: ''
     };
@@ -1688,9 +1683,12 @@ export const AdminDashboard = () => {
                           if (optionsList.length === 0) {
                             return <option value="">-- No Pickup Origin in Master (Add in Master Directory) --</option>;
                           }
-                          return optionsList.map((cityName, i) => (
-                            <option key={`master_orig_${i}`} value={cityName}>{cityName}</option>
-                          ));
+                          return [
+                            <option key="master_orig_default" value="">-- Select Pickup Origin (From Master) --</option>,
+                            ...optionsList.map((cityName, i) => (
+                              <option key={`master_orig_${i}`} value={cityName}>{cityName}</option>
+                            ))
+                          ];
                         })()}
                       </select>
                     </div>
@@ -1795,9 +1793,12 @@ export const AdminDashboard = () => {
                               if (dropList.length === 0) {
                                 return <option value="">-- No Drop Location in Master (Add in Master Directory) --</option>;
                               }
-                              return dropList.map((destName, i) => (
-                                <option key={`dest_${i}`} value={destName}>{destName}</option>
-                              ));
+                              return [
+                                <option key="dest_default" value="">-- Select Drop Location (From Master) --</option>,
+                                ...dropList.map((destName, i) => (
+                                  <option key={`dest_${i}`} value={destName}>{destName}</option>
+                                ))
+                              ];
                             })()}
                           </select>
                         </div>
@@ -1818,11 +1819,14 @@ export const AdminDashboard = () => {
                               if (prods.length === 0) {
                                 return <option value="">-- No Product in Master (Add in Master Directory) --</option>;
                               }
-                              return prods.map((prod, i) => (
-                                <option key={`prod_${prod.id || i}`} value={prod.name}>
-                                  📦 {prod.name}
-                                </option>
-                              ));
+                              return [
+                                <option key="prod_default" value="">-- Select Product Name (From Master) --</option>,
+                                ...prods.map((prod, i) => (
+                                  <option key={`prod_${prod.id || i}`} value={prod.name}>
+                                    📦 {prod.name}
+                                  </option>
+                                ))
+                              ];
                             })()}
                           </select>
                         </div>
