@@ -8,6 +8,7 @@ import {
   saveDB,
   resetDB as resetStoreDB
 } from '../store/dbStore';
+import { supabase } from '../supabaseClient';
 
 const USER_SESSION_KEY = 'transflow_current_user';
 const AuthContext = createContext(null);
@@ -48,6 +49,65 @@ export const AuthProvider = ({ children }) => {
     return null;
   });
 
+  // Helper function to merge Cloud DB and Local DB without losing bids or indents
+  const mergeDbStates = (cloudDb, prevDb) => {
+    if (!cloudDb) return prevDb;
+    if (!prevDb) return cloudDb;
+
+    // Merge rate_submissions by id (taking newest submitted_at / counter_rate / is_frozen)
+    const subMap = new Map();
+    (prevDb.rate_submissions || []).forEach((s) => subMap.set(String(s.id), s));
+    (cloudDb.rate_submissions || []).forEach((s) => {
+      const prevSub = subMap.get(String(s.id));
+      if (!prevSub) {
+        subMap.set(String(s.id), s);
+      } else {
+        const timePrev = new Date(prevSub.submitted_at || prevSub.frozen_at || 0).getTime();
+        const timeCloud = new Date(s.submitted_at || s.frozen_at || 0).getTime();
+        if (timeCloud >= timePrev) {
+          subMap.set(String(s.id), s);
+        }
+      }
+    });
+
+    // Merge rate_requests by id
+    const reqMap = new Map();
+    (prevDb.rate_requests || []).forEach((r) => reqMap.set(String(r.id), r));
+    (cloudDb.rate_requests || []).forEach((r) => reqMap.set(String(r.id), r));
+
+    // Merge allocations by id
+    const allocMap = new Map();
+    (prevDb.allocations || []).forEach((a) => allocMap.set(String(a.id), a));
+    (cloudDb.allocations || []).forEach((a) => allocMap.set(String(a.id), a));
+
+    // Merge contracts by id
+    const contractMap = new Map();
+    (prevDb.contracts || []).forEach((c) => contractMap.set(String(c.id), c));
+    (cloudDb.contracts || []).forEach((c) => contractMap.set(String(c.id), c));
+
+    // Merge truck_dispatches by id
+    const dispatchMap = new Map();
+    (prevDb.truck_dispatches || []).forEach((d) => dispatchMap.set(String(d.id), d));
+    (cloudDb.truck_dispatches || []).forEach((d) => dispatchMap.set(String(d.id), d));
+
+    // Merge security_audit_logs by id
+    const logMap = new Map();
+    (prevDb.security_audit_logs || []).forEach((l) => logMap.set(String(l.id), l));
+    (cloudDb.security_audit_logs || []).forEach((l) => logMap.set(String(l.id), l));
+
+    return {
+      ...prevDb,
+      ...cloudDb,
+      _updatedAt: Math.max(cloudDb._updatedAt || 0, prevDb._updatedAt || 0, Date.now()),
+      rate_requests: Array.from(reqMap.values()),
+      rate_submissions: Array.from(subMap.values()),
+      allocations: Array.from(allocMap.values()),
+      contracts: Array.from(contractMap.values()),
+      truck_dispatches: Array.from(dispatchMap.values()),
+      security_audit_logs: Array.from(logMap.values()).slice(0, 100)
+    };
+  };
+
   // Listen to Window Storage, BroadcastChannel, & Supabase for real-time cross-device sync (Laptop <-> Mobile)
   useEffect(() => {
     let isMounted = true;
@@ -57,12 +117,7 @@ export const AuthProvider = ({ children }) => {
         const sharedDb = await loadDBFromSupabase();
 
         if (sharedDb && isMounted) {
-          setDb((prevDb) => {
-            if (sharedDb._updatedAt && prevDb?._updatedAt && sharedDb._updatedAt <= prevDb._updatedAt) {
-              return prevDb;
-            }
-            return { ...sharedDb };
-          });
+          setDb((prevDb) => mergeDbStates(sharedDb, prevDb));
         }
       } catch (e) {
         console.error('Supabase load failed:', e);
@@ -71,10 +126,29 @@ export const AuthProvider = ({ children }) => {
 
     fetchSharedServerDb();
 
+    // 📡 SUPABASE REALTIME WEBSOCKET LISTENER FOR INSTANT CROSS-DEVICE SYNC (LAPTOP <-> MOBILE)
+    let channel = null;
+    if (supabase) {
+      try {
+        channel = supabase
+          .channel('public:app_database_sync')
+          .on(
+            'postgres_changes',
+            { event: '*', schema: 'public', table: 'app_database' },
+            () => {
+              fetchSharedServerDb();
+            }
+          )
+          .subscribe();
+      } catch (err) {
+        console.error('Supabase Realtime Channel error:', err);
+      }
+    }
+
     const handleStorageChange = (e) => {
       if (e.key === 'transflow_logistics_db_live_v3' || e.key === 'transflow_logistics_db_prod_v2' || e.key === 'transflow_logistics_db_v1' || !e.key) {
         const freshData = loadDB();
-        setDb({ ...freshData });
+        setDb((prevDb) => mergeDbStates(freshData, prevDb));
       }
     };
 
@@ -88,13 +162,14 @@ export const AuthProvider = ({ children }) => {
       } catch (e) {}
     }
 
-    const interval = setInterval(fetchSharedServerDb, 3000);
+    const interval = setInterval(fetchSharedServerDb, 1500);
 
     window.addEventListener('storage', handleStorageChange);
     return () => {
       isMounted = false;
       window.removeEventListener('storage', handleStorageChange);
       if (bc) bc.close();
+      if (channel && supabase) supabase.removeChannel(channel);
       clearInterval(interval);
     };
   }, []);
