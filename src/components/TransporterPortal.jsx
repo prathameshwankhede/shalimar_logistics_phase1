@@ -168,9 +168,9 @@ export const TransporterPortal = () => {
   }
 
   // DATA ISOLATION: Only fetch data associated with this Transporter ID
-  const mySubmissions = (db.rate_submissions || []).filter((s) => s.transporter_id === currentTransporter.id);
-  const myAllocations = (db.allocations || []).filter((a) => a.transporter_id === currentTransporter.id);
-  const myDispatches = (db.truck_dispatches || []).filter((d) => d.transporter_id === currentTransporter.id);
+  const mySubmissions = (db.rate_submissions || []).filter((s) => String(s.transporter_id) === String(currentTransporter.id));
+  const myAllocations = (db.allocations || []).filter((a) => String(a.transporter_id) === String(currentTransporter.id));
+  const myDispatches = (db.truck_dispatches || []).filter((d) => String(d.transporter_id) === String(currentTransporter.id));
 
   // Available open rate requests (ONLY ACTIVE UNACCEPTED & UNAWARDED REQUIREMENTS)
   const openRateRequests = (db.rate_requests || []).filter((r) => {
@@ -246,25 +246,31 @@ export const TransporterPortal = () => {
   // FAST 1-LINE INLINE SUBMIT HANDLER
   const handleExpressQuickSubmit = (e, req) => {
     e.preventDefault();
-    const rateVal = parseFloat(quickRates[req.id]);
-    if (!rateVal || rateVal <= 0) {
-      alert('Please enter a valid freight rate per MT.');
+    if (!currentTransporter) {
+      alert('Please select or log in to a Transporter Account first.');
       return;
     }
 
-    const existingBid = mySubmissions.find((s) => s.rate_request_id === req.id);
+    const rawInput = quickRates[req.id];
+    const rateVal = parseFloat(String(rawInput || '').replace(/,/g, '').trim());
+    if (!rateVal || isNaN(rateVal) || rateVal <= 0) {
+      alert('Please enter a valid freight rate per MT (e.g. 2450).');
+      return;
+    }
+
+    const existingBid = mySubmissions.find((s) => String(s.rate_request_id) === String(req.id));
     if (existingBid) {
-      alert(`🛑 RATE BID LOCKED: You have already submitted ₹${existingBid.rate_per_unit}/MT for ${req.request_no}.`);
+      alert(`🛑 RATE BID LOCKED: You have already submitted ₹${existingBid.rate_per_unit}/MT for ${req.request_no}. Rates cannot be modified once submitted.`);
       return;
     }
 
-    const newSubId = `sub_${(currentTransporter?.code || "").toLowerCase()}_${Date.now()}`;
+    const newSubId = `sub_${(currentTransporter?.code || "tr").toLowerCase()}_${Date.now()}`;
     const newSubmission = {
       id: newSubId,
       rate_request_id: req.id,
       transporter_id: currentTransporter.id,
       rate_per_unit: rateVal,
-      total_estimated_amount: rateVal * req.required_qty,
+      total_estimated_amount: rateVal * (Number(req.required_qty) || 0),
       transit_days: 2,
       notes: 'Fast 1-line quote submitted.',
       status: 'Submitted',
@@ -283,17 +289,22 @@ export const TransporterPortal = () => {
     );
 
     updateDB(updatedDb);
-    setSuccessNotice(`⚡ Fast Quote ₹${rateVal}/MT submitted & locked 🔒 for ${req.request_no}!`);
-    setQuickRates({ ...quickRates, [req.id]: '' });
-    setTimeout(() => setSuccessNotice(''), 3000);
+    alert(`🎉 SUCCESS: Fast Quote ₹${rateVal.toLocaleString()}/MT submitted & locked 🔒 for ${req.request_no}!`);
+    setSuccessNotice(`⚡ Fast Quote ₹${rateVal.toLocaleString()}/MT submitted & locked 🔒 for ${req.request_no}!`);
+    setQuickRates((prev) => ({ ...prev, [req.id]: '' }));
+    setTimeout(() => setSuccessNotice(''), 5000);
   };
 
   const handleRateSubmit = (e) => {
     e.preventDefault();
     if (!selectedReqForBid) return;
+    if (!currentTransporter) {
+      alert('Please select or log in to a Transporter Account first.');
+      return;
+    }
 
     // Check if requirement was deleted by admin while modal was open
-    const isStillActive = (db.rate_requests || []).some((r) => r.id === selectedReqForBid.id);
+    const isStillActive = (db.rate_requests || []).some((r) => String(r.id) === String(selectedReqForBid.id));
     if (!isStillActive) {
       alert(`🛑 REQUIREMENT CANCELLED: This requirement was cancelled or deleted by Shalimar Admin.`);
       setSelectedReqForBid(null);
@@ -301,23 +312,26 @@ export const TransporterPortal = () => {
     }
 
     // Check if already submitted (Anti-modification check)
-    const existingBid = mySubmissions.find((s) => s.rate_request_id === selectedReqForBid.id);
+    const existingBid = mySubmissions.find((s) => String(s.rate_request_id) === String(selectedReqForBid.id));
     if (existingBid) {
       alert(`🛑 RATE BID LOCKED: You have already submitted a rate of ₹${existingBid.rate_per_unit}/MT for ${selectedReqForBid.request_no}. Rates cannot be modified once submitted.`);
       setSelectedReqForBid(null);
       return;
     }
 
-    const rateVal = parseFloat(bidForm.rate_per_unit);
-    if (!rateVal || rateVal <= 0) return;
+    const rateVal = parseFloat(String(bidForm.rate_per_unit || '').replace(/,/g, '').trim());
+    if (!rateVal || isNaN(rateVal) || rateVal <= 0) {
+      alert('Please enter a valid freight rate per MT (e.g. 2450).');
+      return;
+    }
 
-    const newSubId = `sub_${(currentTransporter?.code || "").toLowerCase()}_${Date.now()}`;
+    const newSubId = `sub_${(currentTransporter?.code || "tr").toLowerCase()}_${Date.now()}`;
     const newSubmission = {
       id: newSubId,
       rate_request_id: selectedReqForBid.id,
       transporter_id: currentTransporter.id,
       rate_per_unit: rateVal,
-      total_estimated_amount: rateVal * selectedReqForBid.required_qty,
+      total_estimated_amount: rateVal * (Number(selectedReqForBid.required_qty) || 0),
       transit_days: parseInt(bidForm.transit_days) || 2,
       notes: bidForm.notes || 'Competitive rate offered.',
       status: 'Submitted',
@@ -336,11 +350,12 @@ export const TransporterPortal = () => {
     );
 
     updateDB(updatedDb);
-    setSuccessNotice(`Rate quote ₹${rateVal}/MT submitted & locked 🔒 for ${selectedReqForBid.request_no}!`);
+    alert(`🎉 SUCCESS: Rate quote ₹${rateVal.toLocaleString()}/MT submitted & locked 🔒 for ${selectedReqForBid.request_no}!`);
+    setSuccessNotice(`Rate quote ₹${rateVal.toLocaleString()}/MT submitted & locked 🔒 for ${selectedReqForBid.request_no}!`);
     setSelectedReqForBid(null);
     setBidForm({ rate_per_unit: '', transit_days: '2', notes: '' });
 
-    setTimeout(() => setSuccessNotice(''), 3500);
+    setTimeout(() => setSuccessNotice(''), 5000);
   };
 
   // Transporter Accepts Admin Counter Rate & Freezes Rate -> AUTO AWARD & INSTANT CONTRACT CREATION
