@@ -180,12 +180,12 @@ export const TransporterPortal = () => {
     if (r.status === 'Awarded' || r.status === 'Closed') return false;
 
     // 2. Exclude if allocated in db.allocations to any transporter
-    const isAllocated = (db.allocations || []).some((a) => a.rate_request_id === r.id);
+    const isAllocated = (db.allocations || []).some((a) => String(a.rate_request_id) === String(r.id) || String(a.rate_request_id) === String(r.request_no));
     if (isAllocated) return false;
 
     // 3. Exclude if rate is accepted/frozen by any transporter
     const isAcceptedByAnyone = (db.rate_submissions || []).some(
-      (s) => s.rate_request_id === r.id && (s.is_frozen || s.status === 'Rate Frozen' || s.status === 'Accepted')
+      (s) => (String(s.rate_request_id) === String(r.id) || String(s.rate_request_id) === String(r.request_no)) && (s.is_frozen || s.status === 'Rate Frozen' || s.status === 'Accepted')
     );
     if (isAcceptedByAnyone) return false;
 
@@ -258,7 +258,7 @@ export const TransporterPortal = () => {
       return;
     }
 
-    const existingBid = mySubmissions.find((s) => String(s.rate_request_id) === String(req.id));
+    const existingBid = mySubmissions.find((s) => String(s.rate_request_id) === String(req.id) || String(s.rate_request_id) === String(req.request_no));
     if (existingBid) {
       alert(`🛑 RATE BID LOCKED: You have already submitted ₹${existingBid.rate_per_unit}/MT for ${req.request_no}. Rates cannot be modified once submitted.`);
       return;
@@ -312,7 +312,7 @@ export const TransporterPortal = () => {
     }
 
     // Check if already submitted (Anti-modification check)
-    const existingBid = mySubmissions.find((s) => String(s.rate_request_id) === String(selectedReqForBid.id));
+    const existingBid = mySubmissions.find((s) => String(s.rate_request_id) === String(selectedReqForBid.id) || String(s.rate_request_id) === String(selectedReqForBid.request_no));
     if (existingBid) {
       alert(`🛑 RATE BID LOCKED: You have already submitted a rate of ₹${existingBid.rate_per_unit}/MT for ${selectedReqForBid.request_no}. Rates cannot be modified once submitted.`);
       setSelectedReqForBid(null);
@@ -1018,7 +1018,7 @@ export const TransporterPortal = () => {
                                           </thead>
                                           <tbody>
                                             {(group.items || []).map((req, rIdx) => {
-                                              const myExistingBid = (mySubmissions || []).find((s) => s.rate_request_id === req.id);
+                                              const myExistingBid = (mySubmissions || []).find((s) => String(s.rate_request_id) === String(req.id) || String(s.rate_request_id) === String(req.request_no));
                                               const isAwarded = req.status === 'Awarded';
                                               const currentInputRate = quickRates[req.id] || '';
                                               const displayCode = req.request_no || req.title || 'REQ';
@@ -1145,7 +1145,7 @@ export const TransporterPortal = () => {
 
                         // SINGLE ITEM ROW
                       const req = group.items[0];
-                      const myExistingBid = mySubmissions.find((s) => s.rate_request_id === req.id);
+                      const myExistingBid = mySubmissions.find((s) => String(s.rate_request_id) === String(req.id) || String(s.rate_request_id) === String(req.request_no));
                       const isAwarded = req.status === 'Awarded';
                       const currentInputRate = quickRates[req.id] || '';
                       const displayCode = req.request_no || req.title;
