@@ -66,6 +66,7 @@ export const AdminDashboard = () => {
   useEffect(() => {
     localStorage.setItem('transflow_admin_master_sub_tab', masterFilterTab);
   }, [masterFilterTab]);
+  const todayStr = new Date().toISOString().split('T')[0];
   const [selectedRequestForComparison, setSelectedRequestForComparison] = useState(null);
   const [selectedRequestForParticularReport, setSelectedRequestForParticularReport] = useState(null);
   const [whatsappModalData, setWhatsappModalData] = useState({ isOpen: false, data: null });
@@ -836,6 +837,11 @@ export const AdminDashboard = () => {
         if (isInvalidDate) missingFields.push('Target Dispatch Date');
 
         alert(`⚠️ CANNOT BROADCAST RATE REQUEST (Row #${i + 1}):\n\nThe following required field(s) are missing or unselected:\n• ${missingFields.join('\n• ')}\n\n💡 Tip: Please add Plants & Products in Master Directories first if dropdowns are empty!`);
+        return;
+      }
+
+      if (dateVal < todayStr) {
+        alert(`⚠️ CANNOT BROADCAST RATE REQUEST (Row #${i + 1}):\n\nTarget Dispatch Date (${dateVal}) is in the PAST!\n\nPlease select Today (${todayStr}) or a Future Date.`);
         return;
       }
 
@@ -1798,6 +1804,7 @@ export const AdminDashboard = () => {
                           <input
                             type="date"
                             className="form-control"
+                            min={todayStr}
                             value={row.target_date}
                             onChange={(e) => handleUpdateBulkRow(row.id, 'target_date', e.target.value)}
                             required
