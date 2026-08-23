@@ -34,21 +34,26 @@ export const WhatsAppBroadcastModal = ({ isOpen, onClose, batchData, transporter
   };
 
   return (
-    <div className="modal-overlay" style={{ background: 'rgba(15, 23, 42, 0.9)', backdropFilter: 'blur(12px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: '20px' }}>
+    <div 
+      className="modal-overlay" 
+      onClick={onClose}
+      style={{ background: 'rgba(15, 23, 42, 0.92)', backdropFilter: 'blur(14px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 99999, padding: '20px' }}
+    >
       <div 
         className="glass-panel" 
+        onClick={(e) => e.stopPropagation()}
         style={{ 
-          maxWidth: '560px', 
+          maxWidth: '580px', 
           width: '100%', 
           borderRadius: '24px', 
           padding: '30px 32px',
           border: '2px solid #22c55e',
-          boxShadow: '0 25px 60px rgba(34, 197, 94, 0.25)',
-          background: 'linear-gradient(135deg, rgba(15,23,42,0.95) 0%, rgba(20,83,45,0.95) 100%)'
+          boxShadow: '0 25px 60px rgba(34, 197, 94, 0.3)',
+          background: 'linear-gradient(135deg, rgba(15,23,42,0.98) 0%, rgba(20,83,45,0.98) 100%)'
         }}
       >
         {/* Modal Header */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '22px', borderBottom: '1px solid rgba(34, 197, 94, 0.3)', paddingBottom: '16px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '22px', borderBottom: '1.5px solid rgba(34, 197, 94, 0.3)', paddingBottom: '16px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <div style={{ background: '#22c55e', padding: '10px', borderRadius: '12px', boxShadow: '0 0 20px rgba(34, 197, 94, 0.5)' }}>
               <MessageSquare size={24} color="#ffffff" />
@@ -66,9 +71,23 @@ export const WhatsAppBroadcastModal = ({ isOpen, onClose, batchData, transporter
           <button 
             type="button" 
             onClick={onClose} 
-            style={{ background: 'rgba(255, 255, 255, 0.1)', border: 'none', color: '#ffffff', borderRadius: '50%', width: '36px', height: '36px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+            title="Close Broadcast Modal"
+            style={{ 
+              background: '#ef4444', 
+              border: 'none', 
+              color: '#ffffff', 
+              borderRadius: '10px', 
+              padding: '6px 14px', 
+              fontSize: '0.82rem',
+              fontWeight: '900',
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: '6px', 
+              cursor: 'pointer',
+              boxShadow: '0 4px 12px rgba(239, 68, 68, 0.4)'
+            }}
           >
-            <X size={20} />
+            <X size={18} /> Close
           </button>
         </div>
 
@@ -81,7 +100,7 @@ export const WhatsAppBroadcastModal = ({ isOpen, onClose, batchData, transporter
             <button
               type="button"
               onClick={handleCopyMessage}
-              style={{ background: copied ? '#16a34a' : 'rgba(34, 197, 94, 0.2)', border: '1px solid #22c55e', color: '#ffffff', padding: '4px 10px', borderRadius: '8px', fontSize: '0.75rem', fontWeight: '800', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+              style={{ background: copied ? '#16a34a' : 'rgba(34, 197, 94, 0.2)', border: '1px solid #22c55e', color: '#ffffff', padding: '4px 12px', borderRadius: '8px', fontSize: '0.75rem', fontWeight: '800', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
             >
               {copied ? <Check size={14} /> : <Copy size={14} />}
               {copied ? 'Copied to Clipboard!' : 'Copy Text'}
@@ -126,7 +145,7 @@ export const WhatsAppBroadcastModal = ({ isOpen, onClose, batchData, transporter
         )}
 
         {/* 1-Click Broadcast Buttons */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '16px' }}>
           <a
             href={groupWebLink}
             target="_blank"
@@ -173,6 +192,32 @@ export const WhatsAppBroadcastModal = ({ isOpen, onClose, batchData, transporter
           >
             <Smartphone size={18} /> Open WhatsApp App
           </a>
+        </div>
+
+        {/* 🚨 LARGE PROMINENT BOTTOM CLOSE BUTTON 🚨 */}
+        <div style={{ borderTop: '1px solid rgba(255, 255, 255, 0.1)', paddingTop: '16px' }}>
+          <button
+            type="button"
+            onClick={onClose}
+            style={{
+              width: '100%',
+              background: 'rgba(239, 68, 68, 0.18)',
+              color: '#fca5a5',
+              border: '1.5px solid #ef4444',
+              borderRadius: '12px',
+              padding: '12px',
+              fontSize: '0.9rem',
+              fontWeight: '900',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '8px',
+              transition: 'all 0.2s ease-in-out'
+            }}
+          >
+            <X size={18} /> ✕ Close Broadcast Window (Done)
+          </button>
         </div>
 
       </div>
