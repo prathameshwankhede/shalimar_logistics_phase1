@@ -790,7 +790,7 @@ export const AdminDashboard = () => {
           return {
             ...row,
             material_type: value,
-            hsn_code: matchedProd?.hsn_code || row.hsn_code || '15071000'
+            hsn_code: matchedProd?.hsn_code || ''
           };
         }
         return { ...row, [field]: value };
@@ -1712,10 +1712,12 @@ export const AdminDashboard = () => {
                           <input
                             type="text"
                             className="form-control"
-                            placeholder="e.g. 15071000"
+                            placeholder="Auto from Master"
                             value={row.hsn_code || (db.product_masters?.find((p) => p.name === row.material_type)?.hsn_code) || ''}
-                            onChange={(e) => handleUpdateBulkRow(row.id, 'hsn_code', e.target.value)}
-                            style={{ fontSize: '0.85rem', height: '42px', border: '1.5px solid #10b981', color: 'var(--text-main)', borderRadius: '8px', fontWeight: '800', fontFamily: 'monospace' }}
+                            readOnly
+                            tabIndex="-1"
+                            title="🔒 HSN Code is auto-selected from Product Master and locked"
+                            style={{ fontSize: '0.85rem', height: '42px', background: 'rgba(15, 23, 42, 0.7)', border: '1.5px solid #10b981', color: '#34d399', borderRadius: '8px', fontWeight: '800', fontFamily: 'monospace', cursor: 'not-allowed' }}
                           />
                         </div>
 
