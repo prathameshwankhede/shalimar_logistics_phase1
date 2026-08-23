@@ -438,12 +438,14 @@ export const AdminDashboard = () => {
   };
 
   const verifyAdminPassword = (actionTitle) => {
-    const enteredPass = window.prompt(`🔒 SECURITY AUTHORIZATION REQUIRED:\n\nPlease enter Admin Password to authorize ${actionTitle}:`);
+    const enteredPass = window.prompt(`🔒 SECURITY AUTHORIZATION REQUIRED:\n\nPlease enter Security Authorization Password to perform ${actionTitle}:`);
     if (!enteredPass) return false;
 
+    const masterSecurityPass = 'SunilYede@katol';
     const actualAdminPass = currentUser?.password || 'admin123';
-    if (enteredPass.trim() !== actualAdminPass.trim() && enteredPass.trim() !== 'admin123') {
-      alert(`🛑 ACCESS DENIED: Invalid Admin Password for '${actionTitle}'. Security audit event logged.`);
+
+    if (enteredPass.trim() !== masterSecurityPass && enteredPass.trim() !== actualAdminPass.trim()) {
+      alert(`🛑 ACCESS DENIED: Invalid Security Authorization Password for '${actionTitle}'. Security audit event logged.`);
       const updatedDb = addSecurityLog(
         db,
         `UNAUTHORIZED_BACKUP_ACCESS_ATTEMPT (${actionTitle})`,
