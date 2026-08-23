@@ -57,7 +57,7 @@ export const AdminDashboard = () => {
     return localStorage.getItem('transflow_admin_master_sub_tab') || 'all';
   }); // 'all', 'titles', 'transporters', 'company', 'products'
 
-  const [reqFilterTab, setReqFilterTab] = useState('open'); // 'open', 'done', 'all'
+  const [reqFilterTab, setReqFilterTab] = useState('all'); // 'all', 'open', 'done'
 
   useEffect(() => {
     localStorage.setItem('transflow_admin_active_tab', activeTab);
@@ -1983,7 +1983,7 @@ export const AdminDashboard = () => {
                     className={`btn ${reqFilterTab === 'open' ? 'btn-primary' : 'btn-secondary'}`}
                     style={{ padding: '6px 16px', fontSize: '0.8rem', borderRadius: '20px', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '6px' }}
                   >
-                    🟢 Active Open Indents ({(db.rate_requests || []).filter((r) => r.status === 'Open' || !r.status).length})
+                    🟢 Active Open Indents ({(db.rate_requests || []).filter((r) => r.status !== 'Awarded' && r.status !== 'Closed').length})
                   </button>
                   <button
                     type="button"
@@ -1991,7 +1991,7 @@ export const AdminDashboard = () => {
                     className={`btn ${reqFilterTab === 'done' ? 'btn-success' : 'btn-secondary'}`}
                     style={{ padding: '6px 16px', fontSize: '0.8rem', borderRadius: '20px', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '6px' }}
                   >
-                    ✅ Awarded & Done ({(db.rate_requests || []).filter((r) => r.status === 'Awarded').length})
+                    ✅ Awarded & Done ({(db.rate_requests || []).filter((r) => r.status === 'Awarded' || r.status === 'Closed').length})
                   </button>
                   <button
                     type="button"
@@ -2021,8 +2021,8 @@ export const AdminDashboard = () => {
                   <tbody>
                     {(() => {
                       const filteredRequests = (db.rate_requests || []).filter((req) => {
-                        if (reqFilterTab === 'open') return req.status === 'Open' || !req.status;
-                        if (reqFilterTab === 'done') return req.status === 'Awarded';
+                        if (reqFilterTab === 'open') return req.status !== 'Awarded' && req.status !== 'Closed';
+                        if (reqFilterTab === 'done') return req.status === 'Awarded' || req.status === 'Closed';
                         return true;
                       });
 
