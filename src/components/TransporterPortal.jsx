@@ -1587,7 +1587,7 @@ export const TransporterPortal = () => {
                                   <div style={{ fontSize: '0.74rem', color: '#38bdf8', fontFamily: 'monospace' }}>DL: {d.driver_license || 'MH31 20210012345'}</div>
                                 </td>
                                 <td>
-                                  <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>{new Date(d.dispatched_at).toLocaleString()}</div>
+                                  <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>{d?.dispatched_at ? new Date(d.dispatched_at).toLocaleString() : 'Just now'}</div>
                                 </td>
                                 <td>
                                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -1714,13 +1714,13 @@ export const TransporterPortal = () => {
                         <div style={{ fontSize: '0.85rem' }}>₹{rate}/MT</div>
                       </td>
                       <td>
-                        <div style={{ fontWeight: '700', color: '#ffffff' }}>₹{grossVal.toLocaleString()}</div>
+                        <div style={{ fontWeight: '700', color: '#ffffff' }}>₹{(grossVal || 0).toLocaleString()}</div>
                       </td>
                       <td>
-                        <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>₹{gstVal.toLocaleString()}</div>
+                        <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>₹{(gstVal || 0).toLocaleString()}</div>
                       </td>
                       <td>
-                        <div style={{ fontWeight: '800', color: '#34d399' }}>₹{(grossVal + gstVal).toLocaleString()}</div>
+                        <div style={{ fontWeight: '800', color: '#34d399' }}>₹{((grossVal || 0) + (gstVal || 0)).toLocaleString()}</div>
                       </td>
                     </tr>
                   );
@@ -1787,7 +1787,7 @@ export const TransporterPortal = () => {
 
                       <td>
                         <div style={{ fontSize: '1.1rem', fontWeight: '800', color: '#ffffff' }}>
-                          ₹{sub.rate_per_unit.toLocaleString()} / MT
+                          ₹{(Number(sub?.rate_per_unit) || 0).toLocaleString()} / MT
                         </div>
                         <span style={{ fontSize: '0.7rem', color: isReqDeleted ? '#ef4444' : '#34d399', fontWeight: '700' }}>
                           {isReqDeleted ? '🗑️ Cancelled' : '🔒 Rate Locked'}
@@ -1795,7 +1795,7 @@ export const TransporterPortal = () => {
                       </td>
 
                       <td>
-                        {sub.counter_rate_per_unit ? (
+                        {sub?.counter_rate_per_unit ? (
                           <div style={{ background: 'rgba(245, 158, 11, 0.2)', padding: '6px 10px', borderRadius: '8px', border: '1px solid #f59e0b', display: 'inline-block' }}>
                             <span style={{ fontSize: '0.72rem', color: '#fbbf24', fontWeight: '700', display: 'block' }}>🔥 LOWEST COMPETING BID</span>
                             <strong style={{ color: '#ffffff', fontSize: '1.05rem' }}>₹{sub.counter_rate_per_unit}/MT</strong>
@@ -1807,7 +1807,7 @@ export const TransporterPortal = () => {
 
                       <td>
                         <div style={{ fontWeight: '700', color: '#38bdf8' }}>
-                          ₹{(sub.rate_per_unit * (req?.required_qty || 1)).toLocaleString()}
+                          ₹{((Number(sub?.rate_per_unit) || 0) * (req?.required_qty || 1)).toLocaleString()}
                         </div>
                       </td>
 

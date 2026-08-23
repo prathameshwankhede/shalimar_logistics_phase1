@@ -76,7 +76,7 @@ export const Footer = () => {
             {logs.map((log) => (
               <tr key={log.id}>
                 <td style={{ fontSize: '0.85rem', color: 'var(--text-sub)', fontFamily: 'monospace' }}>
-                  {new Date(log.timestamp).toLocaleString()}
+                  {log?.timestamp ? new Date(log.timestamp).toLocaleString() : 'N/A'}
                 </td>
                 <td>
                   <div style={{ fontWeight: '800', color: 'var(--text-main)', fontSize: '0.92rem' }}>{log.username}</div>

@@ -3238,7 +3238,7 @@ export const AdminDashboard = () => {
                       <tr key={log.id || idx}>
                         <td>
                           <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontFamily: 'monospace' }}>
-                            {new Date(log.timestamp).toLocaleString()}
+                            {log?.timestamp ? new Date(log.timestamp).toLocaleString() : 'N/A'}
                           </div>
                         </td>
                         <td>
