@@ -13,20 +13,20 @@ export const CreateRequirementModal = ({ isOpen, onClose }) => {
 
   // Title Master State
   const [selectedMasterId, setSelectedMasterId] = useState(titleMasters[0]?.id || '');
-  const [currentTitle, setCurrentTitle] = useState(titleMasters[0]?.title || 'Shalimar Nutrients Bulk Transport');
+  const [currentTitle, setCurrentTitle] = useState(titleMasters[0]?.title || '');
 
   // Destination City Master State
   const [selectedCityId, setSelectedCityId] = useState(cityMasters[0]?.id || '');
-  const [currentCityName, setCurrentCityName] = useState(cityMasters[0]?.city || 'Nagpur');
-  const [currentPinCode, setCurrentPinCode] = useState(cityMasters[0]?.pin || '440028');
+  const [currentCityName, setCurrentCityName] = useState(cityMasters[0]?.city || '');
+  const [currentPinCode, setCurrentPinCode] = useState(cityMasters[0]?.pin || '');
 
   // Other form fields
   const [formData, setFormData] = useState({
-    material_type: titleMasters[0]?.material_type || 'Soybean Meal De-Oiled Cake (DOC)',
-    required_qty: '1000',
+    material_type: titleMasters[0]?.material_type || '',
+    required_qty: '',
     unit: 'MT',
-    target_date: '2026-08-30',
-    notes: 'Food-grade tarpaulin covering mandatory. Unloading available 24x7.'
+    target_date: new Date().toISOString().split('T')[0],
+    notes: ''
   });
 
   if (!isOpen) return null;
