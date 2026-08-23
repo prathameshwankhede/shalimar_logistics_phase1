@@ -287,6 +287,16 @@ export async function saveDB(data) {
         (existingCloudDb.rate_requests || []).forEach((r) => reqMap.set(String(r.id), r));
         (dataToSave.rate_requests || []).forEach((r) => reqMap.set(String(r.id), r));
 
+        // Merge transporters by ID
+        const transMap = new Map();
+        (existingCloudDb.transporters || []).forEach((t) => transMap.set(String(t.id || t.code), t));
+        (dataToSave.transporters || []).forEach((t) => transMap.set(String(t.id || t.code), t));
+
+        // Merge users by ID
+        const userMap = new Map();
+        (existingCloudDb.users || []).forEach((u) => userMap.set(String(u.id || u.username), u));
+        (dataToSave.users || []).forEach((u) => userMap.set(String(u.id || u.username), u));
+
         // Merge allocations by ID
         const allocMap = new Map();
         (existingCloudDb.allocations || []).forEach((a) => allocMap.set(String(a.id), a));
@@ -313,6 +323,8 @@ export async function saveDB(data) {
           _updatedAt: Date.now(),
           rate_requests: Array.from(reqMap.values()),
           rate_submissions: Array.from(subMap.values()),
+          transporters: Array.from(transMap.values()),
+          users: Array.from(userMap.values()),
           allocations: Array.from(allocMap.values()),
           contracts: Array.from(contractMap.values()),
           truck_dispatches: Array.from(dispatchMap.values()),

@@ -75,6 +75,16 @@ export const AuthProvider = ({ children }) => {
     (prevDb.rate_requests || []).forEach((r) => reqMap.set(String(r.id), r));
     (cloudDb.rate_requests || []).forEach((r) => reqMap.set(String(r.id), r));
 
+    // Merge transporters by id / code
+    const transMap = new Map();
+    (prevDb.transporters || []).forEach((t) => transMap.set(String(t.id || t.code), t));
+    (cloudDb.transporters || []).forEach((t) => transMap.set(String(t.id || t.code), t));
+
+    // Merge users by id / username
+    const userMap = new Map();
+    (prevDb.users || []).forEach((u) => userMap.set(String(u.id || u.username), u));
+    (cloudDb.users || []).forEach((u) => userMap.set(String(u.id || u.username), u));
+
     // Merge allocations by id
     const allocMap = new Map();
     (prevDb.allocations || []).forEach((a) => allocMap.set(String(a.id), a));
@@ -101,6 +111,8 @@ export const AuthProvider = ({ children }) => {
       _updatedAt: Math.max(cloudDb._updatedAt || 0, prevDb._updatedAt || 0, Date.now()),
       rate_requests: Array.from(reqMap.values()),
       rate_submissions: Array.from(subMap.values()),
+      transporters: Array.from(transMap.values()),
+      users: Array.from(userMap.values()),
       allocations: Array.from(allocMap.values()),
       contracts: Array.from(contractMap.values()),
       truck_dispatches: Array.from(dispatchMap.values()),
