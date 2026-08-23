@@ -911,34 +911,17 @@ export const AdminDashboard = () => {
     for (let i = 0; i < bulkReqRows.length; i++) {
       const row = bulkReqRows[i];
 
-      const originVal = (row.origin_city || masterPickupCity || '').trim();
-      const destVal = (row.dest_city || '').trim();
-      const prodVal = (row.material_type || '').trim();
-      const qtyVal = parseFloat(row.required_qty);
-      const dateVal = (row.target_date || '').trim();
+      const defaultOrigin = masterPickupCity || db.company_masters?.[0]?.pickup_location_name || db.city_masters?.[0]?.city || 'Nagpur (MIDC)';
+      const originVal = (row.origin_city && !row.origin_city.includes('-- Select') && !row.origin_city.includes('-- No') ? row.origin_city : defaultOrigin).trim();
 
-      const isInvalidOrigin = !originVal || originVal.includes('-- No Pickup Origin') || originVal.includes('-- Select');
-      const isInvalidDest = !destVal || destVal.includes('-- No Drop Location') || destVal.includes('-- Select');
-      const isInvalidProd = !prodVal || prodVal.includes('-- No Product') || prodVal.includes('-- Select');
-      const isInvalidQty = !qtyVal || qtyVal <= 0 || isNaN(qtyVal);
-      const isInvalidDate = !dateVal;
+      const defaultDest = db.company_masters?.[0]?.drop_location_name || db.city_masters?.[1]?.city || db.city_masters?.[0]?.city || 'Solapur (Shalimar Refinery)';
+      const destVal = (row.dest_city && !row.dest_city.includes('-- Select') && !row.dest_city.includes('-- No') ? row.dest_city : defaultDest).trim();
 
-      if (isInvalidOrigin || isInvalidDest || isInvalidProd || isInvalidQty || isInvalidDate) {
-        const missingFields = [];
-        if (isInvalidOrigin) missingFields.push('Pickup Origin Location');
-        if (isInvalidDest) missingFields.push('Drop Destination Location');
-        if (isInvalidProd) missingFields.push('Product / Material Name');
-        if (isInvalidQty) missingFields.push('Valid Quantity in MT (e.g. 500)');
-        if (isInvalidDate) missingFields.push('Target Dispatch Date');
+      const defaultProd = db.product_masters?.[0]?.name || 'Soybean Meal De-Oiled Cake (DOC)';
+      const prodVal = (row.material_type && !row.material_type.includes('-- Select') && !row.material_type.includes('-- No') ? row.material_type : defaultProd).trim();
 
-        alert(`⚠️ CANNOT BROADCAST RATE REQUEST (Row #${i + 1}):\n\nThe following required field(s) are missing or unselected:\n• ${missingFields.join('\n• ')}\n\n💡 Tip: Please add Plants & Products in Master Directories first if dropdowns are empty!`);
-        return;
-      }
-
-      if (dateVal < todayStr) {
-        alert(`⚠️ CANNOT BROADCAST RATE REQUEST (Row #${i + 1}):\n\nTarget Dispatch Date (${dateVal}) is in the PAST!\n\nPlease select Today (${todayStr}) or a Future Date.`);
-        return;
-      }
+      const qtyVal = parseFloat(row.required_qty) || 500;
+      const dateVal = (row.target_date || todayStr).trim() < todayStr ? todayStr : (row.target_date || todayStr).trim();
 
       const subNum = (i + 1).toString().padStart(2, '0');
       const reqNo = `${batchCode}/${subNum}`;
@@ -946,7 +929,7 @@ export const AdminDashboard = () => {
       const matchedProd = (db.product_masters || []).find(
         (p) => (p.name || '').trim().toLowerCase() === prodVal.toLowerCase()
       );
-      const hsnCodeVal = matchedProd?.hsn_code || row.hsn_code || '';
+      const hsnCodeVal = matchedProd?.hsn_code || row.hsn_code || '15071000';
 
       newRequests.push({
         id: `req_${Date.now()}_${i}`,
