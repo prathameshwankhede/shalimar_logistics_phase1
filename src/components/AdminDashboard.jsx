@@ -4632,7 +4632,7 @@ export const AdminDashboard = () => {
             <form onSubmit={handleVerifySecuritySubmit}>
               <div style={{ background: 'rgba(15, 23, 42, 0.8)', padding: '12px 14px', borderRadius: '10px', marginBottom: '16px', border: '1px solid rgba(239, 68, 68, 0.3)' }}>
                 <div style={{ fontSize: '0.8rem', color: '#cbd5e1', lineHeight: '1.4' }}>
-                  🔒 Enter Security Authorization Password (e.g. <strong style={{ color: '#38bdf8' }}>SunilYede@katol</strong>) to execute database operation.
+                  🔒 Enter Security Authorization Password to execute database operation.
                 </div>
               </div>
 
