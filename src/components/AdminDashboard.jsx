@@ -9,6 +9,8 @@ import { RateComparisonView } from './RateComparisonView';
 import { ContractModal } from './ContractModal';
 import { ERPPaymentModal } from './ERPPaymentModal';
 import { ParticularBidReportModal } from './ParticularBidReportModal';
+import { WhatsAppBroadcastModal } from './WhatsAppBroadcastModal';
+import { sendWhatsAppAlert } from '../utils/whatsappEngine';
 import { validateMobile, validatePincode, validateGSTIN, validatePAN, validateName, validateEmail } from '../utils/validationRules';
 import {
   PlusCircle,
@@ -66,6 +68,7 @@ export const AdminDashboard = () => {
   }, [masterFilterTab]);
   const [selectedRequestForComparison, setSelectedRequestForComparison] = useState(null);
   const [selectedRequestForParticularReport, setSelectedRequestForParticularReport] = useState(null);
+  const [whatsappModalData, setWhatsappModalData] = useState({ isOpen: false, data: null });
   
   const [isReqModalOpen, setIsReqModalOpen] = useState(false);
   const [isTransporterModalOpen, setIsTransporterModalOpen] = useState(false);
@@ -862,12 +865,39 @@ export const AdminDashboard = () => {
 
     updateDB(updatedDb);
 
-    alert(`🎉 Successfully Broadcasted Batch ${batchCode} (${newRequests.length} Rate Request(s): ${batchCode}/01) to Transporters!`);
+    // 📱 Automated Background WhatsApp Alert Push for all Registered Transporters
+    (db.transporters || []).forEach((transporter) => {
+      if (transporter.mobile) {
+        sendWhatsAppAlert({
+          db,
+          updateDB,
+          recipientPhone: transporter.mobile,
+          recipientName: transporter.company_name,
+          title: `🚨 New Freight Bid Broadcast: ${batchCode}`,
+          message: `🚨 *SHALIMAR LOGISTICS BID ALERT* 🚨\n\n🏢 Company: ${newRequests[0].company_unit}\n📦 Batch: ${batchCode} (${newRequests.length} Items)\n📍 Route: ${newRequests[0].origin_city} ➔ ${newRequests[0].dest_city}\n⚖️ Volume: ${newRequests.reduce((a, b) => a + (Number(b.required_qty) || 0), 0)} MT\n📅 Target Date: ${newRequests[0].target_date}\n\nSubmit rates: https://transflow-logistics.vercel.app/`
+        });
+      }
+    });
 
     // Reset Bulk Form with 1 fresh row initialized for NEXT Batch
     setBulkReqRows([createSingleReqRow(0)]);
 
-    setArchiveNotice(`🚀 ${newRequests.length} Rate Requests broadcasted to all transporters in 1-Click!`);
+    // 📱 Open 1-Click WhatsApp Broadcast Modal Popup
+    setWhatsappModalData({
+      isOpen: true,
+      data: {
+        batchCode,
+        itemsCount: newRequests.length,
+        origin: newRequests[0].origin_city,
+        dest: newRequests[0].dest_city,
+        totalQty: newRequests.reduce((a, b) => a + (Number(b.required_qty) || 0), 0),
+        materialType: newRequests[0].material_type,
+        targetDate: newRequests[0].target_date,
+        companyUnit: newRequests[0].company_unit
+      }
+    });
+
+    setArchiveNotice(`🚀 Batch ${batchCode} broadcasted with instant WhatsApp Alerts!`);
     setTimeout(() => setArchiveNotice(''), 5000);
   };
 
@@ -2068,6 +2098,41 @@ export const AdminDashboard = () => {
                                           <span style={{ fontSize: '0.82rem', background: 'rgba(16, 185, 129, 0.2)', color: '#34d399', border: '1px solid #34d399', padding: '6px 14px', borderRadius: '20px', fontWeight: '900' }}>
                                             ⚖️ {(totalBatchQty || 0).toLocaleString()} MT Batch Total
                                           </span>
+                                          <button
+                                            type="button"
+                                            onClick={() => setWhatsappModalData({
+                                              isOpen: true,
+                                              data: {
+                                                batchCode: group.batchKey,
+                                                itemsCount: group.items.length,
+                                                origin: firstItem?.origin_city || 'Origin',
+                                                dest: firstItem?.dest_city || 'Destination',
+                                                totalQty: totalBatchQty || 0,
+                                                materialType: firstItem?.material_type || 'Cargo',
+                                                targetDate: firstItem?.target_date || 'Target Date',
+                                                companyUnit: firstItem?.company_unit || 'Shalimar Nutrients'
+                                              }
+                                            })}
+                                            className="btn"
+                                            style={{
+                                              background: 'linear-gradient(135deg, #16a34a 0%, #22c55e 100%)',
+                                              color: '#ffffff',
+                                              border: '1.5px solid #4ade80',
+                                              padding: '6px 16px',
+                                              fontSize: '0.82rem',
+                                              borderRadius: '12px',
+                                              fontWeight: '900',
+                                              cursor: 'pointer',
+                                              display: 'inline-flex',
+                                              alignItems: 'center',
+                                              gap: '6px',
+                                              boxShadow: '0 4px 14px rgba(34, 197, 94, 0.4)'
+                                            }}
+                                            title="Send WhatsApp Notification Alert for this Batch to Transporters"
+                                          >
+                                            <MessageSquare size={15} /> 📱 WhatsApp Broadcast
+                                          </button>
+
                                           <button
                                             type="button"
                                             onClick={() => setSelectedRequestForParticularReport(firstItem)}
@@ -4389,6 +4454,13 @@ export const AdminDashboard = () => {
           onClose={() => setSelectedRequestForParticularReport(null)}
         />
       )}
+
+      <WhatsAppBroadcastModal
+        isOpen={whatsappModalData.isOpen}
+        onClose={() => setWhatsappModalData({ isOpen: false, data: null })}
+        batchData={whatsappModalData.data}
+        transporters={db.transporters || []}
+      />
     </div>
   );
 };
