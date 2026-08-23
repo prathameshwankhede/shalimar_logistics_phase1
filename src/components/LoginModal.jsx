@@ -1,226 +1,235 @@
 // src/components/LoginModal.jsx
-// Secure Isolated Multi-Tenant Login Screen - Enterprise Trusted Device Authentication 🚀🛡️
+// Enterprise 256-Bit Encrypted Authentication Portal 🛡️⚡
 
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { sanitizeInput, checkBruteForceLock, recordLoginAttempt } from '../utils/securityEngine';
-import { ArrowRight, AlertCircle, ShieldAlert, Lock, Smartphone, ShieldCheck } from 'lucide-react';
+import { ArrowRight, ShieldAlert, Lock, User, Eye, EyeOff, ShieldCheck } from 'lucide-react';
 import { SHALIMAR_LOGO_BASE64 } from '../assets/logoBase64';
 
 export const LoginModal = () => {
-  const { login, db } = useAuth();
+  const { login } = useAuth();
   
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [rememberDevice, setRememberDevice] = useState(true);
   const [error, setError] = useState('');
-  const [selectedTransporterCode, setSelectedTransporterCode] = useState('');
-
-  const transportersList = db?.transporters || [];
-
-  const handleSelectTransporter = (code) => {
-    setSelectedTransporterCode(code);
-    if (code) {
-      setUsername(code);
-      setPassword('password123');
-      setError('');
-      localStorage.removeItem('transflow_login_attempts');
-    }
-  };
 
   const handleSubmit = (e) => {
     e.preventDefault();
     setError('');
 
     const cleanUsername = sanitizeInput(username.trim());
-    const lockStatus = checkBruteForceLock(cleanUsername);
+    if (!cleanUsername || !password) {
+      setError('Please enter both your Username/Vendor Code and Password.');
+      return;
+    }
 
+    const lockStatus = checkBruteForceLock(cleanUsername);
     if (lockStatus.locked) {
-      setError(`🛑 ACCOUNT SECURITY LOCKOUT: Too many failed password attempts. Account locked for security. Try again in ${lockStatus.remainingSec}s.`);
+      setError(`🛑 ACCOUNT LOCKOUT: Too many failed attempts. Try again in ${lockStatus.remainingSec}s.`);
       return;
     }
 
     const res = login(cleanUsername, password);
     if (!res.success) {
       recordLoginAttempt(cleanUsername, false);
-      setError(`${res.error} (Security Event Logged 🛡️)`);
+      setError(`${res.error} (Security Audit Event Logged 🛡️)`);
     } else {
       recordLoginAttempt(cleanUsername, true);
     }
   };
 
   return (
-    <div className="modal-overlay" style={{ background: 'rgba(15, 23, 42, 0.95)' }}>
-      <div className="glass-panel" style={{ maxWidth: '460px', width: '100%', padding: '36px 32px', border: '1px solid rgba(16, 185, 129, 0.3)' }}>
+    <div className="modal-overlay" style={{ background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+      <div 
+        className="glass-panel" 
+        style={{ 
+          maxWidth: '440px', 
+          width: '100%', 
+          padding: '40px 36px', 
+          borderRadius: '24px',
+          background: 'rgba(30, 41, 59, 0.85)',
+          backdropFilter: 'blur(20px)',
+          border: '1px solid rgba(56, 189, 248, 0.25)',
+          boxShadow: '0 25px 60px rgba(0, 0, 0, 0.6)'
+        }}
+      >
         
-        {/* Pure Uploaded Shalimar Group Logo */}
-        <div style={{ textAlign: 'center', marginBottom: '24px' }}>
+        {/* Shalimar Corporate Logo Header */}
+        <div style={{ textAlign: 'center', marginBottom: '28px' }}>
           <img
             src={SHALIMAR_LOGO_BASE64}
-            alt="Shalimar Group Official Logo"
-            style={{ height: '90px', width: 'auto', borderRadius: '10px', marginBottom: '12px', objectFit: 'contain' }}
+            alt="Shalimar Group Logo"
+            style={{ height: '80px', width: 'auto', borderRadius: '12px', marginBottom: '14px', objectFit: 'contain' }}
           />
 
-          <h2 style={{ fontSize: '1.4rem', fontWeight: '800', color: '#ffffff', margin: '4px 0' }}>
+          <h2 style={{ fontSize: '1.45rem', fontWeight: '900', color: '#ffffff', margin: '4px 0', letterSpacing: '-0.02em' }}>
             Shalimar Nutrients Pvt Ltd
           </h2>
-          <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: 0 }}>Transport Procurement Portal</p>
-          <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', marginTop: '6px', alignItems: 'center' }}>
-            <span style={{ fontSize: '0.72rem', color: '#38bdf8', fontFamily: 'monospace', fontWeight: '800', background: 'rgba(56, 189, 248, 0.15)', padding: '2px 8px', borderRadius: '4px', border: '1px solid rgba(56, 189, 248, 0.3)' }}>
+          <p style={{ fontSize: '0.82rem', color: '#94a3b8', margin: 0, fontWeight: '600' }}>
+            Enterprise Transport Procurement Portal
+          </p>
+
+          <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', marginTop: '12px', alignItems: 'center' }}>
+            <span style={{ fontSize: '0.72rem', color: '#38bdf8', fontFamily: 'monospace', fontWeight: '800', background: 'rgba(56, 189, 248, 0.12)', padding: '3px 10px', borderRadius: '6px', border: '1px solid rgba(56, 189, 248, 0.3)' }}>
               GSTIN: 27AAPCS1419M1ZV
             </span>
-            <span style={{ fontSize: '0.7rem', color: '#34d399', fontWeight: '700', background: 'rgba(16, 185, 129, 0.15)', padding: '2px 8px', borderRadius: '4px', border: '1px solid rgba(16, 185, 129, 0.3)', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+            <span style={{ fontSize: '0.7rem', color: '#34d399', fontWeight: '700', background: 'rgba(16, 185, 129, 0.12)', padding: '3px 10px', borderRadius: '6px', border: '1px solid rgba(16, 185, 129, 0.3)', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
               <Lock size={11} /> 256-Bit SSL Encrypted
             </span>
           </div>
         </div>
 
-        {/* ⚡ 1-CLICK QUICK LOGIN BUTTON & TRANSPORTER SELECTOR */}
-        <div style={{ background: 'rgba(56, 189, 248, 0.08)', border: '1px solid rgba(56, 189, 248, 0.3)', borderRadius: '12px', padding: '14px', marginBottom: '20px' }}>
-          <div style={{ fontSize: '0.75rem', fontWeight: '800', color: '#38bdf8', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.04em', textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
-            ⚡ Enterprise Portal Authentication
-            <span style={{ background: '#10b981', color: '#fff', fontSize: '0.65rem', padding: '1px 6px', borderRadius: '10px' }}>
-              {transportersList.length} Transporters Registered
-            </span>
-          </div>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            <button
-              type="button"
-              onClick={() => {
-                setUsername('admin');
-                setPassword('admin123');
-                setSelectedTransporterCode('');
-                setError('');
-                localStorage.removeItem('transflow_login_attempts');
-              }}
-              style={{
-                width: '100%',
-                background: 'linear-gradient(135deg, #0284c7 0%, #38bdf8 100%)',
-                color: '#ffffff',
-                border: 'none',
-                borderRadius: '8px',
-                padding: '10px',
-                fontSize: '0.85rem',
-                fontWeight: '800',
-                cursor: 'pointer',
-                boxShadow: '0 0 12px rgba(56, 189, 248, 0.4)'
-              }}
-            >
-              🛡️ Quick Fill Logistics Admin Login
-            </button>
-
-            {/* 🚚 DYNAMIC TRANSPORTER SELECTOR DROPDOWN */}
-            {transportersList.length > 0 && (
-              <div style={{ marginTop: '6px' }}>
-                <label style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: '700', marginBottom: '3px', display: 'block' }}>
-                  🚚 Select Registered Transporter Account:
-                </label>
-                <select
-                  value={selectedTransporterCode}
-                  onChange={(e) => handleSelectTransporter(e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '8px 10px',
-                    borderRadius: '8px',
-                    background: 'rgba(15, 23, 42, 0.8)',
-                    color: '#f8fafc',
-                    border: '1px solid rgba(56, 189, 248, 0.4)',
-                    fontSize: '0.78rem',
-                    fontWeight: '600',
-                    outline: 'none',
-                    cursor: 'pointer'
-                  }}
-                >
-                  <option value="">-- Choose Registered Transporter --</option>
-                  {transportersList.map((t) => (
-                    <option key={t.id || t.code} value={t.code || t.username} style={{ background: '#0f172a', color: '#ffffff' }}>
-                      {t.code || t.username} - {t.company_name} ({t.status || 'Active'})
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
-          </div>
-        </div>
-
+        {/* Security Alert Banner */}
         {error && (
           <div style={{
-            background: 'rgba(239, 68, 68, 0.2)',
+            background: 'rgba(239, 68, 68, 0.15)',
             border: '1px solid rgba(239, 68, 68, 0.4)',
-            borderRadius: '10px',
-            padding: '10px 14px',
-            marginBottom: '16px',
+            borderRadius: '12px',
+            padding: '12px 14px',
+            marginBottom: '20px',
             color: '#fca5a5',
-            fontSize: '0.85rem',
+            fontSize: '0.84rem',
             display: 'flex',
             alignItems: 'center',
-            gap: '8px'
+            gap: '10px'
           }}>
-            <ShieldAlert size={18} color="#ef4444" />
-            <div style={{ flex: 1 }}>{error}</div>
-            <button
-              type="button"
-              onClick={() => {
-                localStorage.removeItem('transflow_login_attempts');
-                setError('');
-              }}
-              style={{ background: '#ef4444', color: '#fff', border: 'none', borderRadius: '4px', padding: '2px 6px', fontSize: '0.68rem', cursor: 'pointer', fontWeight: '800' }}
-            >
-              Unlock
-            </button>
+            <ShieldAlert size={20} color="#ef4444" style={{ flexShrink: 0 }} />
+            <div style={{ flex: 1, fontWeight: '600', lineHeight: '1.4' }}>{error}</div>
           </div>
         )}
 
-        <form onSubmit={handleSubmit}>
-          <div className="form-group">
-            <label className="form-label">Username / Transporter Code</label>
-            <input
-              type="text"
-              className="form-control"
-              placeholder="e.g. admin, TRP001, ABC001"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              required
-            />
+        {/* Login Form */}
+        <form onSubmit={handleSubmit} autoComplete="off">
+          {/* Username / Code Field */}
+          <div style={{ marginBottom: '20px' }}>
+            <label style={{ fontSize: '0.8rem', fontWeight: '800', color: '#cbd5e1', marginBottom: '8px', display: 'block', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              Username / Vendor Code
+            </label>
+            <div style={{ position: 'relative' }}>
+              <div style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: '#0284c7', display: 'flex', alignItems: 'center' }}>
+                <User size={18} />
+              </div>
+              <input
+                type="text"
+                className="form-control"
+                placeholder="Enter Username or Vendor Code"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                autoComplete="off"
+                required
+                style={{
+                  paddingLeft: '44px',
+                  height: '46px',
+                  fontSize: '0.9rem',
+                  background: 'rgba(15, 23, 42, 0.7)',
+                  border: '1.5px solid rgba(56, 189, 248, 0.3)',
+                  color: '#ffffff',
+                  borderRadius: '12px',
+                  fontWeight: '700'
+                }}
+              />
+            </div>
           </div>
 
-          <div className="form-group">
-            <label className="form-label">Password</label>
-            <input
-              type="password"
-              className="form-control"
-              placeholder="••••••••"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-            />
+          {/* Password Field with Eye Toggle */}
+          <div style={{ marginBottom: '20px' }}>
+            <label style={{ fontSize: '0.8rem', fontWeight: '800', color: '#cbd5e1', marginBottom: '8px', display: 'block', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              Password
+            </label>
+            <div style={{ position: 'relative' }}>
+              <div style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: '#0284c7', display: 'flex', alignItems: 'center' }}>
+                <Lock size={18} />
+              </div>
+              <input
+                type={showPassword ? 'text' : 'password'}
+                className="form-control"
+                placeholder="Enter Password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                autoComplete="new-password"
+                required
+                style={{
+                  paddingLeft: '44px',
+                  paddingRight: '44px',
+                  height: '46px',
+                  fontSize: '0.9rem',
+                  background: 'rgba(15, 23, 42, 0.7)',
+                  border: '1.5px solid rgba(56, 189, 248, 0.3)',
+                  color: '#ffffff',
+                  borderRadius: '12px',
+                  fontWeight: '700'
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                style={{
+                  position: 'absolute',
+                  right: '12px',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  background: 'none',
+                  border: 'none',
+                  color: '#94a3b8',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  padding: '4px'
+                }}
+                title={showPassword ? 'Hide password' : 'Show password'}
+              >
+                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
+            </div>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px', cursor: 'pointer' }}>
+          {/* Remember Device Checkbox */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '24px', cursor: 'pointer' }}>
             <input
               type="checkbox"
               id="rememberDevice"
               checked={rememberDevice}
               onChange={(e) => setRememberDevice(e.target.checked)}
-              style={{ width: '16px', height: '16px', accentColor: '#38bdf8', cursor: 'pointer' }}
+              style={{ width: '16px', height: '16px', accentColor: '#0284c7', cursor: 'pointer' }}
             />
-            <label htmlFor="rememberDevice" style={{ fontSize: '0.8rem', color: '#38bdf8', fontWeight: '700', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-              <ShieldCheck size={14} color="#38bdf8" /> Keep me signed in on this trusted device
+            <label htmlFor="rememberDevice" style={{ fontSize: '0.82rem', color: '#94a3b8', fontWeight: '600', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+              <ShieldCheck size={14} color="#34d399" /> Keep session active on this trusted device
             </label>
           </div>
 
-          <button type="submit" className="btn btn-primary" style={{ width: '100%', padding: '12px' }}>
-            Sign In to Secure Portal <ArrowRight size={16} />
+          {/* Submit Button */}
+          <button 
+            type="submit" 
+            className="btn" 
+            style={{ 
+              width: '100%', 
+              height: '48px',
+              background: 'linear-gradient(135deg, #0284c7 0%, #38bdf8 100%)',
+              color: '#ffffff',
+              border: 'none',
+              borderRadius: '12px',
+              fontWeight: '800',
+              fontSize: '0.95rem',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '8px',
+              boxShadow: '0 8px 25px rgba(2, 132, 199, 0.4)',
+              cursor: 'pointer',
+              transition: 'all 0.2s ease-in-out'
+            }}
+          >
+            Sign In to Enterprise Portal <ArrowRight size={18} />
           </button>
         </form>
 
-        <div style={{ marginTop: '20px', textAlign: 'center', borderTop: '1px solid var(--border-color)', paddingTop: '14px' }}>
-          <div style={{ fontSize: '0.78rem', color: '#e2e8f0', fontWeight: '700', marginBottom: '4px' }}>
-            🔑 Admin Credentials: <span style={{ color: '#38bdf8' }}>admin</span> / <span style={{ color: '#38bdf8' }}>admin123</span>
-          </div>
-          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-            🔑 Transporter Credentials: 50 Accounts Active (Codes: TRP001 to TRP050, ABC001, XYZ001, PQR001 | Pass: <span style={{ color: '#34d399' }}>password123</span>)
+        {/* Corporate Security Footer */}
+        <div style={{ marginTop: '28px', textAlign: 'center', borderTop: '1px solid rgba(255, 255, 255, 0.1)', paddingTop: '16px' }}>
+          <div style={{ fontSize: '0.74rem', color: '#64748b', fontWeight: '600', lineHeight: '1.5' }}>
+            🛡️ Authorized Corporate Access Only. All authentication attempts are logged, encrypted, and monitored for security.
           </div>
         </div>
 
