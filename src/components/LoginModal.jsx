@@ -8,12 +8,25 @@ import { ArrowRight, AlertCircle, ShieldAlert, Lock, Smartphone, ShieldCheck } f
 import { SHALIMAR_LOGO_BASE64 } from '../assets/logoBase64';
 
 export const LoginModal = () => {
-  const { login } = useAuth();
+  const { login, db } = useAuth();
   
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [rememberDevice, setRememberDevice] = useState(true);
   const [error, setError] = useState('');
+  const [selectedTransporterCode, setSelectedTransporterCode] = useState('');
+
+  const transportersList = db?.transporters || [];
+
+  const handleSelectTransporter = (code) => {
+    setSelectedTransporterCode(code);
+    if (code) {
+      setUsername(code);
+      setPassword('password123');
+      setError('');
+      localStorage.removeItem('transflow_login_attempts');
+    }
+  };
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -38,7 +51,7 @@ export const LoginModal = () => {
 
   return (
     <div className="modal-overlay" style={{ background: 'rgba(15, 23, 42, 0.95)' }}>
-      <div className="glass-panel" style={{ maxWidth: '440px', width: '100%', padding: '36px 32px', border: '1px solid rgba(16, 185, 129, 0.3)' }}>
+      <div className="glass-panel" style={{ maxWidth: '460px', width: '100%', padding: '36px 32px', border: '1px solid rgba(16, 185, 129, 0.3)' }}>
         
         {/* Pure Uploaded Shalimar Group Logo */}
         <div style={{ textAlign: 'center', marginBottom: '24px' }}>
@@ -62,57 +75,89 @@ export const LoginModal = () => {
           </div>
         </div>
 
-        {/* ⚡ 1-CLICK QUICK AUTO-FILL DEMO LOGIN BUTTONS */}
-        <div style={{ background: 'rgba(56, 189, 248, 0.1)', border: '1px solid rgba(56, 189, 248, 0.3)', borderRadius: '12px', padding: '12px', marginBottom: '20px' }}>
-          <div style={{ fontSize: '0.75rem', fontWeight: '800', color: '#38bdf8', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.04em', textAlign: 'center' }}>
-            ⚡ 1-Click Auto-Fill Quick Login
+        {/* ⚡ 1-CLICK QUICK AUTO-FILL DEMO LOGIN BUTTONS & 50-TRANSPORTER SELECTOR */}
+        <div style={{ background: 'rgba(56, 189, 248, 0.08)', border: '1px solid rgba(56, 189, 248, 0.3)', borderRadius: '12px', padding: '14px', marginBottom: '20px' }}>
+          <div style={{ fontSize: '0.75rem', fontWeight: '800', color: '#38bdf8', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.04em', textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+            ⚡ 1-Click Quick Auto-Fill Login
+            <span style={{ background: '#10b981', color: '#fff', fontSize: '0.65rem', padding: '1px 6px', borderRadius: '10px' }}>
+              {transportersList.length || 50} Transporters Active
+            </span>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-            <button
-              type="button"
-              onClick={() => {
-                setUsername('admin');
-                setPassword('admin123');
-                setError('');
-                localStorage.removeItem('transflow_login_attempts');
-              }}
-              style={{
-                background: 'linear-gradient(135deg, #0284c7 0%, #38bdf8 100%)',
-                color: '#ffffff',
-                border: 'none',
-                borderRadius: '8px',
-                padding: '8px 10px',
-                fontSize: '0.78rem',
-                fontWeight: '800',
-                cursor: 'pointer',
-                boxShadow: '0 0 10px rgba(56, 189, 248, 0.4)'
-              }}
-            >
-              🛡️ Admin Login
-            </button>
 
-            <button
-              type="button"
-              onClick={() => {
-                setUsername('ABC001');
-                setPassword('password123');
-                setError('');
-                localStorage.removeItem('transflow_login_attempts');
-              }}
-              style={{
-                background: 'linear-gradient(135deg, #059669 0%, #10b981 100%)',
-                color: '#ffffff',
-                border: 'none',
-                borderRadius: '8px',
-                padding: '8px 10px',
-                fontSize: '0.78rem',
-                fontWeight: '800',
-                cursor: 'pointer',
-                boxShadow: '0 0 10px rgba(16, 185, 129, 0.4)'
-              }}
-            >
-              🚚 ABC Transporter
-            </button>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+              <button
+                type="button"
+                onClick={() => {
+                  setUsername('admin');
+                  setPassword('admin123');
+                  setSelectedTransporterCode('');
+                  setError('');
+                  localStorage.removeItem('transflow_login_attempts');
+                }}
+                style={{
+                  background: 'linear-gradient(135deg, #0284c7 0%, #38bdf8 100%)',
+                  color: '#ffffff',
+                  border: 'none',
+                  borderRadius: '8px',
+                  padding: '8px 10px',
+                  fontSize: '0.78rem',
+                  fontWeight: '800',
+                  cursor: 'pointer',
+                  boxShadow: '0 0 10px rgba(56, 189, 248, 0.4)'
+                }}
+              >
+                🛡️ Admin Login
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleSelectTransporter('ABC001')}
+                style={{
+                  background: 'linear-gradient(135deg, #059669 0%, #10b981 100%)',
+                  color: '#ffffff',
+                  border: 'none',
+                  borderRadius: '8px',
+                  padding: '8px 10px',
+                  fontSize: '0.78rem',
+                  fontWeight: '800',
+                  cursor: 'pointer',
+                  boxShadow: '0 0 10px rgba(16, 185, 129, 0.4)'
+                }}
+              >
+                🚚 Quick Demo: ABC001
+              </button>
+            </div>
+
+            {/* 🚚 DYNAMIC 50 TRANSPORTER QUICK SELECTOR DROPDOWN */}
+            <div style={{ marginTop: '4px' }}>
+              <label style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: '700', marginBottom: '3px', display: 'block' }}>
+                🚚 Or Select Any of the {transportersList.length || 50} Registered Transporters:
+              </label>
+              <select
+                value={selectedTransporterCode}
+                onChange={(e) => handleSelectTransporter(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '7px 10px',
+                  borderRadius: '8px',
+                  background: 'rgba(15, 23, 42, 0.8)',
+                  color: '#f8fafc',
+                  border: '1px solid rgba(56, 189, 248, 0.4)',
+                  fontSize: '0.78rem',
+                  fontWeight: '600',
+                  outline: 'none',
+                  cursor: 'pointer'
+                }}
+              >
+                <option value="">-- Choose from {transportersList.length || 50} Registered Transporters --</option>
+                {transportersList.map((t) => (
+                  <option key={t.id || t.code} value={t.code || t.username} style={{ background: '#0f172a', color: '#ffffff' }}>
+                    {t.code || t.username} - {t.company_name} ({t.status || 'Active'})
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
         </div>
 
@@ -150,7 +195,7 @@ export const LoginModal = () => {
             <input
               type="text"
               className="form-control"
-              placeholder="e.g. admin or ABC001"
+              placeholder="e.g. admin, TRP001, ABC001"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               required
@@ -189,11 +234,11 @@ export const LoginModal = () => {
 
         <div style={{ marginTop: '20px', textAlign: 'center', borderTop: '1px solid var(--border-color)', paddingTop: '14px' }}>
           <div style={{ fontSize: '0.78rem', color: '#e2e8f0', fontWeight: '700', marginBottom: '4px' }}>
-            🔑 Admin Credentials: <span style={{ color: '#38bdf8' }}>admin</span> / <span style={{ color: '#38bdf8' }}>admin123</span> (or <span style={{ color: '#38bdf8' }}>admin</span>)
+            🔑 Admin Credentials: <span style={{ color: '#38bdf8' }}>admin</span> / <span style={{ color: '#38bdf8' }}>admin123</span>
           </div>
-          <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-            🔑 Transporter Credentials: ABC001 / XYZ001 / PQR001 (Pass: password123)
-          </span>
+          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+            🔑 Transporter Credentials: 50 Accounts Active (Codes: TRP001 to TRP050, ABC001, XYZ001, PQR001 | Pass: <span style={{ color: '#34d399' }}>password123</span>)
+          </div>
         </div>
 
       </div>

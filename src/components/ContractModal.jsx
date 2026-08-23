@@ -73,7 +73,10 @@ export const ContractModal = ({ contract, onClose }) => {
 
   // Dynamic Product & Tonnage Calculations
   const productName = rateRequest ? rateRequest.material_type : 'AGRI COMMODITY';
-  const hsnCode = doMaster.hsn_code || '23040010';
+  const matchedProductObj = (db.product_masters || []).find(
+    (p) => (p.name || '').trim().toLowerCase() === (productName || '').trim().toLowerCase()
+  );
+  const hsnCode = rateRequest?.hsn_code || matchedProductObj?.hsn_code || doMaster.hsn_code || '15071000';
   const ordQty = allocation ? (parseFloat(allocation.allocated_qty) || 0) : 0;
   const ratePerUnit = allocation ? (parseFloat(allocation.agreed_rate) || 0) : 0;
   const netMaterialVal = ordQty * ratePerUnit;

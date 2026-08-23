@@ -85,20 +85,43 @@
   color: #0f172a !important;
 }
 
-/* Force ALL dark card containers with inline styles to render clean white in Light Mode */
-[data-theme="light"] [style*="15, 23, 42"],
-[data-theme="light"] [style*="30, 41, 59"],
-[data-theme="light"] [style*="#0f172a"],
-[data-theme="light"] [style*="#1e293b"],
-[data-theme="light"] [style*="#0f172a"],
-[data-theme="light"] [style*="#1a202c"] {
-  background-color: #ffffff !important;
-  border-color: #cbd5e1 !important;
-  color: #0f172a !important;
+/* Preserve Dark Card Utility Class - High Contrast across Light/Dark modes */
+.preserve-dark-card {
+  background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%) !important;
+  color: #ffffff !important;
+  border: 2px solid #0284c7 !important;
+  border-radius: 18px !important;
 }
 
-[data-theme="light"] [style*="15, 23, 42"] *,
-[data-theme="light"] [style*="30, 41, 59"] * {
+[data-theme="light"] .preserve-dark-card {
+  background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%) !important;
+  color: #ffffff !important;
+  border: 2px solid #0284c7 !important;
+}
+
+[data-theme="light"] .preserve-dark-card h1,
+[data-theme="light"] .preserve-dark-card h2,
+[data-theme="light"] .preserve-dark-card h3,
+[data-theme="light"] .preserve-dark-card h4 {
+  color: #ffffff !important;
+}
+
+[data-theme="light"] .preserve-dark-card p {
+  color: #cbd5e1 !important;
+}
+
+[data-theme="light"] .preserve-dark-card .badge-blue {
+  color: #38bdf8 !important;
+}
+
+/* Force dark card containers with inline styles to render clean in Light Mode, except .preserve-dark-card */
+[data-theme="light"] [style*="15, 23, 42"]:not(.preserve-dark-card),
+[data-theme="light"] [style*="30, 41, 59"]:not(.preserve-dark-card),
+[data-theme="light"] [style*="#0f172a"]:not(.preserve-dark-card),
+[data-theme="light"] [style*="#1e293b"]:not(.preserve-dark-card) {
+  background-color: #ffffff !important;
+  background-image: none !important;
+  border-color: #cbd5e1 !important;
   color: #0f172a !important;
 }
 
@@ -183,13 +206,13 @@
 }
 
 /* High Contrast Text & Accent overrides in Light Mode */
-[data-theme="light"] div[style*="color: #ffffff"],
-[data-theme="light"] span[style*="color: #ffffff"],
-[data-theme="light"] td[style*="color: #ffffff"],
-[data-theme="light"] p[style*="color: #ffffff"],
-[data-theme="light"] h3[style*="color: #ffffff"],
-[data-theme="light"] h2[style*="color: #ffffff"],
-[data-theme="light"] h1[style*="color: #ffffff"] {
+[data-theme="light"] div[style*="color: #ffffff"]:not(.preserve-dark-card *):not(.preserve-dark-card),
+[data-theme="light"] span[style*="color: #ffffff"]:not(.preserve-dark-card *):not(.preserve-dark-card),
+[data-theme="light"] td[style*="color: #ffffff"]:not(.preserve-dark-card *):not(.preserve-dark-card),
+[data-theme="light"] p[style*="color: #ffffff"]:not(.preserve-dark-card *):not(.preserve-dark-card),
+[data-theme="light"] h3[style*="color: #ffffff"]:not(.preserve-dark-card *):not(.preserve-dark-card),
+[data-theme="light"] h2[style*="color: #ffffff"]:not(.preserve-dark-card *):not(.preserve-dark-card),
+[data-theme="light"] h1[style*="color: #ffffff"]:not(.preserve-dark-card *):not(.preserve-dark-card) {
   color: #0f172a !important;
 }
 
@@ -272,6 +295,36 @@
 [data-theme="light"] .btn-success,
 [data-theme="light"] .btn-danger {
   color: #ffffff !important;
+}
+
+/* 🛡️ MASTER EXEMPTION FOR PRESERVE DARK CARDS IN LIGHT MODE */
+[data-theme="light"] .preserve-dark-card,
+[data-theme="light"] .preserve-dark-card *,
+[data-theme="light"] .preserve-dark-card h1,
+[data-theme="light"] .preserve-dark-card h2,
+[data-theme="light"] .preserve-dark-card h3,
+[data-theme="light"] .preserve-dark-card h4,
+[data-theme="light"] .preserve-dark-card label,
+[data-theme="light"] .preserve-dark-card span,
+[data-theme="light"] .preserve-dark-card p,
+[data-theme="light"] .preserve-dark-card button,
+[data-theme="light"] .preserve-dark-card button * {
+  color: #ffffff !important;
+}
+
+[data-theme="light"] .preserve-dark-card {
+  background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%) !important;
+  border: 2px solid #0284c7 !important;
+}
+
+[data-theme="light"] .preserve-dark-card p {
+  color: #cbd5e1 !important;
+}
+
+[data-theme="light"] .preserve-dark-card .badge-blue {
+  color: #38bdf8 !important;
+  background: rgba(56, 189, 248, 0.2) !important;
+  border: 1px solid #0284c7 !important;
 }
 
 /* Header & AI Assistant Chatbot in Light Mode */
@@ -902,4 +955,41 @@ html, body {
     border-radius: 10px !important;
     width: 100% !important;
   }
+}
+
+/* ☀️ PURE CLEAN LIGHT MODE CARD STYLING FOR SYSTEM & BACKUP CARDS */
+.preserve-dark-card,
+.glass-panel-subtle,
+[data-theme="light"] .preserve-dark-card,
+[data-theme="light"] .glass-panel-subtle {
+  background: #ffffff !important;
+  background-color: #ffffff !important;
+  border: 1.5px solid #0284c7 !important;
+  color: #0f172a !important;
+  box-shadow: 0 4px 20px rgba(2, 132, 199, 0.08) !important;
+  border-radius: 16px !important;
+}
+
+.preserve-dark-card h1,
+.preserve-dark-card h2,
+.preserve-dark-card h3,
+.preserve-dark-card h4,
+[data-theme="light"] .preserve-dark-card h1,
+[data-theme="light"] .preserve-dark-card h2,
+[data-theme="light"] .preserve-dark-card h3,
+[data-theme="light"] .preserve-dark-card h4 {
+  color: #0f172a !important;
+  font-weight: 800 !important;
+}
+
+.preserve-dark-card p,
+[data-theme="light"] .preserve-dark-card p {
+  color: #475569 !important;
+}
+
+.preserve-dark-card .badge-blue,
+[data-theme="light"] .preserve-dark-card .badge-blue {
+  color: #0284c7 !important;
+  background: #e0f2fe !important;
+  border: 1px solid #7dd3fc !important;
 }

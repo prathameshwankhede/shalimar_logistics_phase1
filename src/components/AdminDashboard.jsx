@@ -177,7 +177,9 @@ export const AdminDashboard = () => {
     state: 'Maharashtra',
     city: '',
     district: '',
-    pincode: ''
+    pincode: '',
+    pickup_location_name: '',
+    drop_location_name: ''
   });
 
   const handleAddCompanyMaster = (e) => {
@@ -248,7 +250,9 @@ export const AdminDashboard = () => {
       state: 'Maharashtra',
       city: '',
       district: '',
-      pincode: ''
+      pincode: '',
+      pickup_location_name: '',
+      drop_location_name: ''
     });
     setIsAddCompanyModalOpen(false);
     setArchiveNotice(`🏢 New Company / Plant Master '${newCompObj.name}' added to Master Directory!`);
@@ -709,6 +713,9 @@ export const AdminDashboard = () => {
     const batchCode = `SNPL/26-27/REQ-${currentBatchNum.toString().padStart(2, '0')}`;
     const subNum = (indexOffset + 1).toString().padStart(2, '0');
     const reqNo = `${batchCode}/${subNum}`;
+    const defaultProd = (db.product_masters && db.product_masters[0]) ? db.product_masters[0] : null;
+    const defaultProdName = defaultProd?.name || 'Soybean Meal De-Oiled Cake (DOC)';
+    const defaultHsn = defaultProd?.hsn_code || '15071000';
 
     return {
       id: `row_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
@@ -717,7 +724,8 @@ export const AdminDashboard = () => {
       origin_city: masterPickupCity || 'Nagpur (Shalimar Plant MIDC)',
       dest_city: 'Solapur (Shalimar Refinery)',
       company_unit: 'Shalimar Nutrients Pvt Ltd (Nagpur Plant)',
-      material_type: 'Soybean Meal De-Oiled Cake (DOC)',
+      material_type: defaultProdName,
+      hsn_code: defaultHsn,
       required_qty: '500',
       target_date: '2026-08-30'
     };
@@ -771,7 +779,20 @@ export const AdminDashboard = () => {
 
   const handleUpdateBulkRow = (rowId, field, value) => {
     setBulkReqRows((prev) =>
-      prev.map((row) => (row.id === rowId ? { ...row, [field]: value } : row))
+      prev.map((row) => {
+        if (row.id !== rowId) return row;
+        if (field === 'material_type') {
+          const matchedProd = (db.product_masters || []).find(
+            (p) => (p.name || '').trim().toLowerCase() === (value || '').trim().toLowerCase()
+          );
+          return {
+            ...row,
+            material_type: value,
+            hsn_code: matchedProd?.hsn_code || row.hsn_code || '15071000'
+          };
+        }
+        return { ...row, [field]: value };
+      })
     );
   };
 
@@ -794,6 +815,11 @@ export const AdminDashboard = () => {
       const subNum = (i + 1).toString().padStart(2, '0');
       const reqNo = `${batchCode}/${subNum}`;
 
+      const matchedProd = (db.product_masters || []).find(
+        (p) => (p.name || '').trim().toLowerCase() === (row.material_type || '').trim().toLowerCase()
+      );
+      const hsnCodeVal = matchedProd?.hsn_code || row.hsn_code || '15071000';
+
       newRequests.push({
         id: `req_${Date.now()}_${i}`,
         request_no: reqNo,
@@ -806,12 +832,13 @@ export const AdminDashboard = () => {
         dest_pin: '413001',
         company_unit: row.company_unit || 'Shalimar Nutrients Pvt Ltd',
         material_type: row.material_type || 'Soybean Meal De-Oiled Cake (DOC)',
+        hsn_code: hsnCodeVal,
         required_qty: qtyVal,
         unit: 'MT',
         target_date: row.target_date || '2026-08-30',
         status: 'Open',
         created_at: new Date().toISOString(),
-        notes: `Company Unit: ${row.company_unit || 'Shalimar Group'}. Batch ${batchCode} Item #${subNum}.`
+        notes: `Company Unit: ${row.company_unit || 'Shalimar Group'}. HSN Code: ${hsnCodeVal}. Batch ${batchCode} Item #${subNum}.`
       });
     }
 
@@ -1404,6 +1431,38 @@ export const AdminDashboard = () => {
           >
             <Activity size={17} /> 📊 Bidding & Approval Reports
           </button>
+
+          <button
+            onClick={() => {
+              setSelectedRequestForComparison(null);
+              setActiveTab('db_backup');
+            }}
+            className="btn"
+            style={{
+              background: (activeTab === 'db_backup' && !selectedRequestForComparison)
+                ? 'linear-gradient(135deg, #0284c7 0%, #38bdf8 100%)'
+                : 'rgba(30, 41, 59, 0.65)',
+              color: (activeTab === 'db_backup' && !selectedRequestForComparison) ? '#ffffff' : 'var(--text-sub)',
+              border: (activeTab === 'db_backup' && !selectedRequestForComparison)
+                ? '2px solid #7dd3fc'
+                : '1px solid rgba(255, 255, 255, 0.15)',
+              boxShadow: (activeTab === 'db_backup' && !selectedRequestForComparison)
+                ? '0 0 22px rgba(56, 189, 248, 0.6), 0 0 45px rgba(56, 189, 248, 0.3)'
+                : 'none',
+              fontWeight: (activeTab === 'db_backup' && !selectedRequestForComparison) ? '900' : '700',
+              transform: (activeTab === 'db_backup' && !selectedRequestForComparison) ? 'scale(1.05)' : 'scale(1)',
+              padding: '10px 18px',
+              fontSize: '0.88rem',
+              borderRadius: '12px',
+              transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px'
+            }}
+          >
+            <Database size={17} /> 🗄️ System Backup & Restore
+          </button>
       </div>
       </div>
 
@@ -1495,8 +1554,13 @@ export const AdminDashboard = () => {
                       >
                         {Array.from(
                           new Set([
+                            ...(db.company_masters || []).map((c) => c.pickup_location_name || c.name || c.city).filter(Boolean),
                             ...(db.title_masters || []).map((tm) => tm.origin_city || tm.title).filter(Boolean),
-                            ...(db.city_masters || []).map((c) => c.city).filter(Boolean)
+                            ...(db.city_masters || []).map((c) => c.city).filter(Boolean),
+                            'Nagpur (Shalimar Plant MIDC)',
+                            'Solapur (Shalimar Refinery)',
+                            'Indore (Shalimar Plant MIDC)',
+                            'Thane (Shalimar Machinery Hub)'
                           ])
                         ).map((cityName, i) => (
                           <option key={`master_orig_${i}`} value={cityName}>{cityName}</option>
@@ -1561,7 +1625,7 @@ export const AdminDashboard = () => {
                           borderRadius: '14px',
                           padding: '16px 18px',
                           display: 'grid',
-                          gridTemplateColumns: '1fr 2.3fr 2.3fr 0.8fr 1.1fr auto',
+                          gridTemplateColumns: '1fr 2fr 2fr 1.3fr 0.9fr 1.1fr auto',
                           gap: '12px',
                           alignItems: 'end',
                           transition: 'all 0.2s ease-in-out'
@@ -1593,8 +1657,18 @@ export const AdminDashboard = () => {
                             onChange={(e) => handleUpdateBulkRow(row.id, 'dest_city', e.target.value)}
                             style={{ fontSize: '0.85rem', height: '42px', border: '1px solid rgba(245, 158, 11, 0.6)', color: 'var(--text-main)', borderRadius: '8px', fontWeight: '700' }}
                           >
-                            {(db.city_masters || []).map((c) => (
-                              <option key={`dest_${c.id}`} value={`${c.city}`}>{c.city}</option>
+                            {Array.from(
+                              new Set([
+                                ...(db.company_masters || []).map((c) => c.drop_location_name || c.name || c.city).filter(Boolean),
+                                ...(db.title_masters || []).map((tm) => tm.dest_city || tm.title).filter(Boolean),
+                                ...(db.city_masters || []).map((c) => c.city).filter(Boolean),
+                                'Solapur (Shalimar Refinery)',
+                                'Nagpur (Shalimar Plant MIDC)',
+                                'Indore (Shalimar Plant MIDC)',
+                                'Thane (Shalimar Machinery Hub)'
+                              ])
+                            ).map((destName, i) => (
+                              <option key={`dest_${i}`} value={destName}>{destName}</option>
                             ))}
                           </select>
                         </div>
@@ -1610,16 +1684,35 @@ export const AdminDashboard = () => {
                             onChange={(e) => handleUpdateBulkRow(row.id, 'material_type', e.target.value)}
                             style={{ fontSize: '0.82rem', height: '42px', border: '1.5px solid #38bdf8', color: 'var(--text-main)', borderRadius: '8px', fontWeight: '800' }}
                           >
-                            {(db.product_masters || [
-                              { id: 'p1', name: 'Soybean Meal De-Oiled Cake (DOC)' },
-                              { id: 'p2', name: 'Refined Edible Oil (Bulk)' },
-                              { id: 'p3', name: 'Raw Mustard Seeds' }
-                            ]).map((prod) => (
-                              <option key={`prod_${prod.id}`} value={prod.name}>
+                            {(db.product_masters && db.product_masters.length > 0
+                              ? db.product_masters
+                              : [
+                                  { id: 'p1', name: 'Soybean Meal De-Oiled Cake (DOC)' },
+                                  { id: 'p2', name: 'Refined Edible Oil (Bulk)' },
+                                  { id: 'p3', name: 'Raw Mustard Seeds' },
+                                  { id: 'p4', name: 'HI-PRO SOYA' }
+                                ]
+                            ).map((prod, i) => (
+                              <option key={`prod_${prod.id || i}`} value={prod.name}>
                                 📦 {prod.name}
                               </option>
                             ))}
                           </select>
+                        </div>
+
+                        {/* 4. HSN CODE FIELD */}
+                        <div>
+                          <label style={{ fontSize: '0.7rem', fontWeight: '900', color: '#10b981', marginBottom: '6px', display: 'block', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+                            🏷️ HSN CODE
+                          </label>
+                          <input
+                            type="text"
+                            className="form-control"
+                            placeholder="15071000"
+                            value={row.hsn_code || (db.product_masters?.find((p) => p.name === row.material_type)?.hsn_code) || '15071000'}
+                            onChange={(e) => handleUpdateBulkRow(row.id, 'hsn_code', e.target.value)}
+                            style={{ fontSize: '0.85rem', height: '42px', border: '1.5px solid #10b981', color: 'var(--text-main)', borderRadius: '8px', fontWeight: '800', fontFamily: 'monospace' }}
+                          />
                         </div>
 
                         {/* 5. Qty (MT) */}
@@ -2731,105 +2824,100 @@ export const AdminDashboard = () => {
             </div>
           )}
 
+          {/* TAB 5: DEDICATED DATABASE BACKUP & CLOUD RESTORE CENTER */}
+          {activeTab === 'db_backup' && (
+            <div className="glass-panel" style={{ padding: '30px', borderRadius: '18px', background: '#ffffff', border: '1.5px solid #0284c7', boxShadow: '0 4px 25px rgba(2, 132, 199, 0.1)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px', marginBottom: '24px' }}>
+                <div>
+                  <div style={{ fontSize: '0.78rem', fontWeight: '900', color: '#0284c7', background: '#ffffff', padding: '4px 12px', borderRadius: '6px', width: 'fit-content', border: '1.5px solid #0284c7', marginBottom: '8px', boxShadow: '0 2px 8px rgba(2, 132, 199, 0.12)' }}>
+                    🛡️ VERCEL / SUPABASE CLOUD DATABASE ENGINE
+                  </div>
+                  <h2 style={{ fontSize: '1.5rem', fontWeight: '900', color: '#0f172a', margin: '4px 0', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <Database size={24} color="#059669" /> 🗄️ System Database Backup & Cloud Restore Center
+                  </h2>
+                  <p style={{ fontSize: '0.88rem', color: '#475569', margin: 0 }}>
+                    Manage 1-click JSON database backups, cloud restores, and system data resets for all 10 ERP tables.
+                  </p>
+                </div>
+
+                <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    onClick={handleDownloadDatabaseBackup}
+                    className="btn btn-success"
+                    style={{
+                      background: 'linear-gradient(135deg, #059669 0%, #10b981 100%)',
+                      color: '#ffffff',
+                      border: 'none',
+                      padding: '12px 22px',
+                      fontSize: '0.9rem',
+                      fontWeight: '900',
+                      borderRadius: '12px',
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      boxShadow: '0 4px 14px rgba(16, 185, 129, 0.4)'
+                    }}
+                  >
+                    <Download size={18} /> 📥 Download Full Database Backup (.json)
+                  </button>
+
+                  <label
+                    className="btn btn-primary"
+                    style={{
+                      background: 'linear-gradient(135deg, #0284c7 0%, #38bdf8 100%)',
+                      color: '#ffffff',
+                      border: 'none',
+                      padding: '12px 22px',
+                      fontSize: '0.9rem',
+                      fontWeight: '900',
+                      borderRadius: '12px',
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      boxShadow: '0 4px 14px rgba(2, 132, 199, 0.4)'
+                    }}
+                  >
+                    <Upload size={18} /> 📤 Restore Backup File (.json)
+                    <input
+                      type="file"
+                      accept=".json"
+                      onChange={handleUploadDatabaseBackup}
+                      style={{ display: 'none' }}
+                    />
+                  </label>
+
+                  <button
+                    type="button"
+                    onClick={handleResetDatabaseToFreshStart}
+                    className="btn btn-danger"
+                    style={{
+                      background: 'linear-gradient(135deg, #dc2626 0%, #ef4444 100%)',
+                      color: '#ffffff',
+                      border: 'none',
+                      padding: '12px 22px',
+                      fontSize: '0.9rem',
+                      fontWeight: '900',
+                      borderRadius: '12px',
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      boxShadow: '0 4px 14px rgba(239, 68, 68, 0.4)'
+                    }}
+                  >
+                    <Trash2 size={18} /> 🗑️ ⚠️ Clear All Data & Start Fresh
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* TAB 3: CONSOLIDATED ERP MASTERS DIRECTORY (TRANSPORTERS, COMPANIES, PRODUCTS, CARGO, DO SETTINGS) */}
           {(activeTab === 'title_masters' || activeTab === 'transporters') && (
             <div className="glass-panel" style={{ padding: '24px' }}>
-              
-              {/* 🗄️ DATABASE BACKUP & CLOUD SYNC MANAGER CARD */}
-              <div style={{
-                background: 'linear-gradient(135deg, rgba(15, 23, 42, 0.9) 0%, rgba(30, 41, 59, 0.9) 100%)',
-                border: '2px solid #0284c7',
-                borderRadius: '18px',
-                padding: '22px',
-                marginBottom: '24px',
-                boxShadow: '0 10px 30px rgba(2, 132, 199, 0.2)'
-              }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '14px' }}>
-                  <div>
-                    <div style={{ fontSize: '0.78rem', fontWeight: '900', color: '#38bdf8', background: 'rgba(56, 189, 248, 0.15)', padding: '3px 10px', borderRadius: '6px', width: 'fit-content', border: '1px solid #0284c7', marginBottom: '6px' }}>
-                      🛡️ VERCEL / SUPABASE CLOUD DATABASE ENGINE
-                    </div>
-                    <h3 style={{ fontSize: '1.2rem', fontWeight: '900', color: '#ffffff', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <Database size={20} color="#34d399" /> 🗄️ Complete System Database Backup & Cloud Restore Center
-                    </h3>
-                    <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: '4px 0 0 0' }}>
-                      1-Click Instant JSON Database Backup Download & Cloud Restore for all 10 System Tables.
-                    </p>
-                  </div>
-
-                  <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-                    <button
-                      type="button"
-                      onClick={handleDownloadDatabaseBackup}
-                      className="btn"
-                      style={{
-                        background: 'linear-gradient(135deg, #059669 0%, #10b981 100%)',
-                        color: '#ffffff',
-                        border: 'none',
-                        padding: '10px 18px',
-                        fontSize: '0.85rem',
-                        fontWeight: '900',
-                        borderRadius: '10px',
-                        cursor: 'pointer',
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '6px',
-                        boxShadow: '0 4px 14px rgba(16, 185, 129, 0.4)'
-                      }}
-                    >
-                      <Download size={16} /> 📥 Download Full Database Backup (.json)
-                    </button>
-
-                    <label
-                      className="btn"
-                      style={{
-                        background: 'rgba(2, 132, 199, 0.2)',
-                        color: '#38bdf8',
-                        border: '1.5px solid #0284c7',
-                        padding: '10px 18px',
-                        fontSize: '0.85rem',
-                        fontWeight: '900',
-                        borderRadius: '10px',
-                        cursor: 'pointer',
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '6px'
-                      }}
-                    >
-                      <Upload size={16} /> 📤 Restore Backup (.json)
-                      <input
-                        type="file"
-                        accept=".json"
-                        onChange={handleUploadDatabaseBackup}
-                        style={{ display: 'none' }}
-                      />
-                    </label>
-
-                    <button
-                      type="button"
-                      onClick={handleResetDatabaseToFreshStart}
-                      className="btn btn-danger"
-                      style={{
-                        background: 'linear-gradient(135deg, #dc2626 0%, #ef4444 100%)',
-                        color: '#ffffff',
-                        border: 'none',
-                        padding: '10px 18px',
-                        fontSize: '0.85rem',
-                        fontWeight: '900',
-                        borderRadius: '10px',
-                        cursor: 'pointer',
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '6px',
-                        boxShadow: '0 4px 14px rgba(239, 68, 68, 0.4)'
-                      }}
-                      title="Clear all test indents, bids, contracts, and truck dispatches to start fresh"
-                    >
-                      <Trash2 size={16} /> ⚠️ Clear All Data & Start Fresh
-                    </button>
-                  </div>
-                </div>
-              </div>
               
               {/* 📑 Master Directories Filter Sub-Nav Bar */}
               <div style={{ display: 'flex', gap: '8px', marginBottom: '24px', flexWrap: 'wrap', background: 'rgba(255,255,255,0.03)', padding: '12px', borderRadius: '14px', border: '1px solid var(--border-color)' }}>
@@ -2839,27 +2927,6 @@ export const AdminDashboard = () => {
                   style={{ padding: '8px 16px', fontSize: '0.82rem', borderRadius: '20px', fontWeight: '700' }}
                 >
                   📂 All Master Directories ({ ((db?.title_masters || []).length + (db?.transporters || []).length + (db?.company_masters || []).length + (db?.product_masters || []).length) })
-                </button>
-                <button
-                  onClick={() => setMasterFilterTab('pickup')}
-                  className={`btn ${masterFilterTab === 'pickup' ? 'btn-primary' : 'btn-secondary'}`}
-                  style={{ padding: '8px 16px', fontSize: '0.82rem', borderRadius: '20px', fontWeight: '700' }}
-                >
-                  📍 Pickup Origins
-                </button>
-                <button
-                  onClick={() => setMasterFilterTab('drop')}
-                  className={`btn ${masterFilterTab === 'drop' ? 'btn-primary' : 'btn-secondary'}`}
-                  style={{ padding: '8px 16px', fontSize: '0.82rem', borderRadius: '20px', fontWeight: '700' }}
-                >
-                  🎯 Drop Locations
-                </button>
-                <button
-                  onClick={() => setMasterFilterTab('transporters')}
-                  className={`btn ${masterFilterTab === 'transporters' ? 'btn-primary' : 'btn-secondary'}`}
-                  style={{ padding: '8px 16px', fontSize: '0.82rem', borderRadius: '20px', fontWeight: '700' }}
-                >
-                  🚛 Transporters
                 </button>
                 <button
                   onClick={() => setMasterFilterTab('company')}
@@ -2876,108 +2943,6 @@ export const AdminDashboard = () => {
                   📦 Products / Cargo
                 </button>
               </div>
-
-              {/* 📍 1. PICKUP ORIGIN HUB MASTERS DIRECTORY */}
-              {(masterFilterTab === 'all' || masterFilterTab === 'pickup' || masterFilterTab === 'titles') && (
-                <div style={{ background: 'rgba(15, 23, 42, 0.85)', border: '2px solid #38bdf8', boxShadow: '0 0 25px rgba(56, 189, 248, 0.25)', borderRadius: '16px', padding: '22px', marginBottom: '28px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                  <div>
-                    <h3 style={{ fontSize: '1.2rem', fontWeight: '900', color: '#ffffff', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <MapPin size={22} color="#38bdf8" /> 📍 Company Units & Plant Master Directory - PICKUP ORIGIN
-                    </h3>
-                    <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                      Company yahan se apne Default Loading / Pickup Origin Cities & Plant Hubs add, save aur edit kar sakti hai.
-                    </p>
-                  </div>
-                  <button onClick={() => { setNewMasterOrigin(''); setIsAddRouteModalOpen(true); }} className="btn btn-success" style={{ fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <Plus size={15} /> Add New Pickup Origin Master
-                  </button>
-                </div>
-
-                {/* Saved Pickup Templates Table */}
-                <div className="custom-table-container">
-                  <table className="custom-table">
-                    <thead>
-                      <tr>
-                        <th>📍 Default Pickup Origin City</th>
-                        <th style={{ textAlign: 'right' }}>Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {(db.title_masters || []).map((tm) => (
-                        <tr key={`pickup_${tm.id}`}>
-                          <td style={{ color: '#38bdf8', fontSize: '0.92rem', fontWeight: '800' }}>
-                            📍 {tm.origin_city || tm.title || 'Nagpur MIDC'}
-                          </td>
-                          <td style={{ textAlign: 'right' }}>
-                            <button
-                              onClick={() => setEditingRouteMaster({ ...tm })}
-                              className="btn btn-secondary"
-                              style={{ padding: '4px 10px', fontSize: '0.75rem', border: '1px solid #38bdf8', color: '#0284c7' }}
-                              title="Edit Pickup Route Master"
-                            >
-                              <Edit size={13} /> Edit Pickup Master
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-              )}
-
-              {/* 🎯 2. DROP LOCATION REFINERY MASTERS DIRECTORY */}
-              {(masterFilterTab === 'all' || masterFilterTab === 'drop') && (
-                <div style={{ background: 'rgba(15, 23, 42, 0.85)', border: '2px solid #fbbf24', boxShadow: '0 0 25px rgba(251, 191, 36, 0.2)', borderRadius: '16px', padding: '22px', marginBottom: '28px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                  <div>
-                    <h3 style={{ fontSize: '1.2rem', fontWeight: '900', color: '#ffffff', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <MapPin size={22} color="#fbbf24" /> 🎯 Company Units & Plant Master Directory - DROP DESTINATION
-                    </h3>
-                    <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                      Company yahan se apne Default Unloading / Drop Destination Cities & Target Refineries add, save aur edit kar sakti hai.
-                    </p>
-                  </div>
-                  <button onClick={() => { setNewMasterOrigin(''); setIsAddRouteModalOpen(true); }} className="btn btn-success" style={{ fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <Plus size={15} /> Add New Drop Location Master
-                  </button>
-                </div>
-
-                {/* Saved Drop Location Templates Table */}
-                <div className="custom-table-container">
-                  <table className="custom-table">
-                    <thead>
-                      <tr>
-                        <th>🎯 Default Drop Destination City</th>
-                        <th style={{ textAlign: 'right' }}>Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {(db.title_masters || []).map((tm) => (
-                        <tr key={`drop_${tm.id}`}>
-                          <td style={{ color: '#fbbf24', fontSize: '0.92rem', fontWeight: '800' }}>
-                            🎯 {tm.dest_city || tm.title || 'Solapur Refinery'}
-                          </td>
-                          <td style={{ textAlign: 'right' }}>
-                            <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end' }}>
-                              <button
-                                onClick={() => setEditingRouteMaster({ ...tm })}
-                                className="btn btn-secondary"
-                                style={{ padding: '4px 10px', fontSize: '0.75rem', border: '1px solid #fbbf24', color: '#d97706' }}
-                                title="Edit Drop Location Master"
-                              >
-                                <Edit size={13} /> Edit
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-              )}
 
               {/* 🚛 2.5 TRANSPORTERS MASTER DIRECTORY */}
               {(masterFilterTab === 'all' || masterFilterTab === 'transporters') && (
@@ -3126,7 +3091,24 @@ export const AdminDashboard = () => {
                         <tr key={comp.id}>
                           <td>
                             <div style={{ fontWeight: '700', color: 'var(--text-main)' }}>{comp.name}</div>
-                            {comp.code && <span className="badge badge-open" style={{ fontSize: '0.68rem', marginTop: '2px' }}>{comp.code}</span>}
+                            <div style={{ display: 'flex', gap: '4px', marginTop: '3px', flexWrap: 'wrap', alignItems: 'center' }}>
+                              {comp.code && <span className="badge badge-open" style={{ fontSize: '0.65rem' }}>{comp.code}</span>}
+                              {comp.pickup_location_name && (
+                                <span style={{ fontSize: '0.65rem', fontWeight: '800', padding: '1px 6px', borderRadius: '4px', background: '#dcfce7', color: '#15803d', border: '1px solid #86efac' }}>
+                                  📍 Pickup: {comp.pickup_location_name}
+                                </span>
+                              )}
+                              {comp.drop_location_name && (
+                                <span style={{ fontSize: '0.65rem', fontWeight: '800', padding: '1px 6px', borderRadius: '4px', background: '#e0f2fe', color: '#0369a1', border: '1px solid #7dd3fc' }}>
+                                  🎯 Drop: {comp.drop_location_name}
+                                </span>
+                              )}
+                              {!comp.pickup_location_name && !comp.drop_location_name && (
+                                <span style={{ fontSize: '0.65rem', fontWeight: '800', padding: '1px 6px', borderRadius: '4px', background: '#f1f5f9', color: '#475569', border: '1px solid #cbd5e1' }}>
+                                  🏢 {comp.city || 'General Plant Unit'}
+                                </span>
+                              )}
+                            </div>
                           </td>
                           <td style={{ fontSize: '0.82rem', fontWeight: '700', color: 'var(--text-main)' }}>{comp.proprietor_name || 'N/A'}</td>
                           <td>
@@ -3553,7 +3535,6 @@ export const AdminDashboard = () => {
                   className="form-control"
                   value={editingCompanyMaster.address || editingCompanyMaster.register_address || ''}
                   onChange={(e) => setEditingCompanyMaster({ ...editingCompanyMaster, address: e.target.value })}
-                  required
                 />
               </div>
 
@@ -3564,7 +3545,6 @@ export const AdminDashboard = () => {
                   className="form-control"
                   value={editingCompanyMaster.gstin || editingCompanyMaster.gst || ''}
                   onChange={(e) => setEditingCompanyMaster({ ...editingCompanyMaster, gstin: e.target.value })}
-                  required
                 />
               </div>
 
@@ -3575,7 +3555,6 @@ export const AdminDashboard = () => {
                   className="form-control"
                   value={editingCompanyMaster.pan_no || ''}
                   onChange={(e) => setEditingCompanyMaster({ ...editingCompanyMaster, pan_no: e.target.value })}
-                  required
                 />
               </div>
 
@@ -3586,7 +3565,6 @@ export const AdminDashboard = () => {
                   className="form-control"
                   value={editingCompanyMaster.proprietor_name || ''}
                   onChange={(e) => setEditingCompanyMaster({ ...editingCompanyMaster, proprietor_name: e.target.value })}
-                  required
                 />
               </div>
 
@@ -3597,7 +3575,6 @@ export const AdminDashboard = () => {
                   className="form-control"
                   value={editingCompanyMaster.email || ''}
                   onChange={(e) => setEditingCompanyMaster({ ...editingCompanyMaster, email: e.target.value })}
-                  required
                 />
               </div>
 
@@ -3608,7 +3585,6 @@ export const AdminDashboard = () => {
                   className="form-control"
                   value={editingCompanyMaster.mobile_no || ''}
                   onChange={(e) => setEditingCompanyMaster({ ...editingCompanyMaster, mobile_no: e.target.value })}
-                  required
                 />
               </div>
 
@@ -3619,7 +3595,6 @@ export const AdminDashboard = () => {
                   className="form-control"
                   value={editingCompanyMaster.state || ''}
                   onChange={(e) => setEditingCompanyMaster({ ...editingCompanyMaster, state: e.target.value })}
-                  required
                 />
               </div>
 
@@ -3630,7 +3605,6 @@ export const AdminDashboard = () => {
                   className="form-control"
                   value={editingCompanyMaster.city || ''}
                   onChange={(e) => setEditingCompanyMaster({ ...editingCompanyMaster, city: e.target.value })}
-                  required
                 />
               </div>
 
@@ -3641,7 +3615,6 @@ export const AdminDashboard = () => {
                   className="form-control"
                   value={editingCompanyMaster.district || ''}
                   onChange={(e) => setEditingCompanyMaster({ ...editingCompanyMaster, district: e.target.value })}
-                  required
                 />
               </div>
 
@@ -3652,7 +3625,28 @@ export const AdminDashboard = () => {
                   className="form-control"
                   value={editingCompanyMaster.pincode || editingCompanyMaster.pin || ''}
                   onChange={(e) => setEditingCompanyMaster({ ...editingCompanyMaster, pincode: e.target.value })}
-                  required
+                />
+              </div>
+
+              <div>
+                <label className="form-label">12. Pickup Origin</label>
+                <input
+                  type="text"
+                  className="form-control"
+                  placeholder="e.g. Nagpur (Shalimar Plant MIDC)"
+                  value={editingCompanyMaster.pickup_location_name || ''}
+                  onChange={(e) => setEditingCompanyMaster({ ...editingCompanyMaster, pickup_location_name: e.target.value })}
+                />
+              </div>
+
+              <div>
+                <label className="form-label">13. Drop Location</label>
+                <input
+                  type="text"
+                  className="form-control"
+                  placeholder="e.g. Solapur (Shalimar Refinery)"
+                  value={editingCompanyMaster.drop_location_name || ''}
+                  onChange={(e) => setEditingCompanyMaster({ ...editingCompanyMaster, drop_location_name: e.target.value })}
                 />
               </div>
 
@@ -3723,7 +3717,6 @@ export const AdminDashboard = () => {
                     placeholder="e.g. Plot 12 MIDC Industrial Area"
                     value={newCompanyMaster.address}
                     onChange={(e) => setNewCompanyMaster({ ...newCompanyMaster, address: e.target.value })}
-                    required
                   />
                 </div>
               </div>
@@ -3737,7 +3730,6 @@ export const AdminDashboard = () => {
                     placeholder="e.g. 27AAPCS1419M1ZV"
                     value={newCompanyMaster.gstin}
                     onChange={(e) => setNewCompanyMaster({ ...newCompanyMaster, gstin: e.target.value })}
-                    required
                   />
                 </div>
                 <div className="form-group">
@@ -3748,7 +3740,6 @@ export const AdminDashboard = () => {
                     placeholder="e.g. AAPCS1419M"
                     value={newCompanyMaster.pan_no}
                     onChange={(e) => setNewCompanyMaster({ ...newCompanyMaster, pan_no: e.target.value })}
-                    required
                   />
                 </div>
               </div>
@@ -3762,7 +3753,6 @@ export const AdminDashboard = () => {
                     placeholder="Rajesh Sharma"
                     value={newCompanyMaster.proprietor_name}
                     onChange={(e) => setNewCompanyMaster({ ...newCompanyMaster, proprietor_name: e.target.value })}
-                    required
                   />
                 </div>
                 <div className="form-group">
@@ -3773,7 +3763,6 @@ export const AdminDashboard = () => {
                     placeholder="plant@shalimar.com"
                     value={newCompanyMaster.email}
                     onChange={(e) => setNewCompanyMaster({ ...newCompanyMaster, email: e.target.value })}
-                    required
                   />
                 </div>
                 <div className="form-group">
@@ -3784,7 +3773,6 @@ export const AdminDashboard = () => {
                     placeholder="e.g. 9823012345"
                     value={newCompanyMaster.mobile_no}
                     onChange={(e) => setNewCompanyMaster({ ...newCompanyMaster, mobile_no: e.target.value })}
-                    required
                   />
                 </div>
               </div>
@@ -3798,7 +3786,6 @@ export const AdminDashboard = () => {
                     placeholder="Maharashtra"
                     value={newCompanyMaster.state}
                     onChange={(e) => setNewCompanyMaster({ ...newCompanyMaster, state: e.target.value })}
-                    required
                   />
                 </div>
                 <div className="form-group">
@@ -3809,7 +3796,6 @@ export const AdminDashboard = () => {
                     placeholder="Nagpur"
                     value={newCompanyMaster.city}
                     onChange={(e) => setNewCompanyMaster({ ...newCompanyMaster, city: e.target.value })}
-                    required
                   />
                 </div>
                 <div className="form-group">
@@ -3820,7 +3806,6 @@ export const AdminDashboard = () => {
                     placeholder="Nagpur"
                     value={newCompanyMaster.district}
                     onChange={(e) => setNewCompanyMaster({ ...newCompanyMaster, district: e.target.value })}
-                    required
                   />
                 </div>
                 <div className="form-group">
@@ -3831,7 +3816,29 @@ export const AdminDashboard = () => {
                     placeholder="440028"
                     value={newCompanyMaster.pincode}
                     onChange={(e) => setNewCompanyMaster({ ...newCompanyMaster, pincode: e.target.value })}
-                    required
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '16px' }}>
+                <div className="form-group">
+                  <label className="form-label">12. Pickup Origin</label>
+                  <input
+                    type="text"
+                    className="form-control"
+                    placeholder="e.g. Nagpur (Shalimar Plant MIDC)"
+                    value={newCompanyMaster.pickup_location_name || ''}
+                    onChange={(e) => setNewCompanyMaster({ ...newCompanyMaster, pickup_location_name: e.target.value })}
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">13. Drop Location</label>
+                  <input
+                    type="text"
+                    className="form-control"
+                    placeholder="e.g. Solapur (Shalimar Refinery)"
+                    value={newCompanyMaster.drop_location_name || ''}
+                    onChange={(e) => setNewCompanyMaster({ ...newCompanyMaster, drop_location_name: e.target.value })}
                   />
                 </div>
               </div>
