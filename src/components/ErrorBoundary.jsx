@@ -21,22 +21,22 @@ export class ErrorBoundary extends React.Component {
 
   handleAutoRecover = () => {
     try {
+      localStorage.clear();
+      sessionStorage.clear();
       this.setState({ hasError: false, error: null, errorInfo: null });
-      window.location.href = window.location.origin + window.location.pathname + '?v=' + Date.now();
+      window.location.href = window.location.origin + '/?refresh=' + Date.now();
     } catch (e) {
       window.location.href = '/';
     }
   };
 
   handleResetStorageSafety = () => {
-    if (window.confirm('Restore initial clean state and recover portal? (Your master records will be auto-migrated)')) {
-      try {
-        localStorage.clear();
-        sessionStorage.clear();
-        window.location.reload();
-      } catch (e) {
-        window.location.href = '/';
-      }
+    try {
+      localStorage.clear();
+      sessionStorage.clear();
+      window.location.href = window.location.origin + '/?reset=' + Date.now();
+    } catch (e) {
+      window.location.href = '/';
     }
   };
 

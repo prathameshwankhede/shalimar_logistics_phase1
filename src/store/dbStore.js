@@ -142,20 +142,13 @@ export async function loadDBFromSupabase() {
       if (localStr) localDb = JSON.parse(localStr);
     } catch (e) {}
 
-    const localTime = localDb?._updatedAt || 0;
-    const supabaseTime = supabaseDb?._updatedAt || 0;
-
-    if (supabaseTime >= localTime || localTime <= 100 || !localDb) {
+    if (supabaseDb && typeof supabaseDb === 'object') {
       safeSetLocalStorage(DB_KEY, JSON.stringify(supabaseDb));
       saveToPermanentIndexedDB(supabaseDb);
       console.log('Supabase load successful');
       return supabaseDb;
-    } else {
-      console.log('Local cache has offline edits, syncing local cache to Supabase...');
-      await saveDB(localDb);
-      console.log('Supabase load successful');
-      return localDb;
     }
+    return loadDB();
   } catch (error) {
     console.error('Supabase load failed:', error);
     return loadDB();
