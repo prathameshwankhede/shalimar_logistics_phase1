@@ -1712,8 +1712,8 @@ export const AdminDashboard = () => {
                           <input
                             type="text"
                             className="form-control"
-                            placeholder="15071000"
-                            value={row.hsn_code || (db.product_masters?.find((p) => p.name === row.material_type)?.hsn_code) || '15071000'}
+                            placeholder="e.g. 15071000"
+                            value={row.hsn_code || (db.product_masters?.find((p) => p.name === row.material_type)?.hsn_code) || ''}
                             onChange={(e) => handleUpdateBulkRow(row.id, 'hsn_code', e.target.value)}
                             style={{ fontSize: '0.85rem', height: '42px', border: '1.5px solid #10b981', color: 'var(--text-main)', borderRadius: '8px', fontWeight: '800', fontFamily: 'monospace' }}
                           />
