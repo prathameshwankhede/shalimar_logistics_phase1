@@ -438,24 +438,43 @@ export const AdminDashboard = () => {
   };
 
   const handleDownloadDatabaseBackup = () => {
-    const backupData = {
-      ...db,
-      _exportedAt: new Date().toISOString(),
-      _exportVersion: 'v1.0'
-    };
-    const jsonStr = JSON.stringify(backupData, null, 2);
-    const blob = new Blob([jsonStr], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `Transflow_Full_Database_Backup_${new Date().toISOString().slice(0, 10)}.json`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+    try {
+      const backupData = {
+        _exportedAt: new Date().toISOString(),
+        _exportVersion: 'v2.0',
+        company: db.company || {},
+        do_master_settings: db.do_master_settings || {},
+        company_masters: db.company_masters || [],
+        product_masters: db.product_masters || [],
+        cargo_masters: db.cargo_masters || [],
+        title_masters: db.title_masters || [],
+        city_masters: db.city_masters || [],
+        transporters: db.transporters || [],
+        rate_requests: db.rate_requests || [],
+        rate_submissions: db.rate_submissions || [],
+        allocations: db.allocations || [],
+        contracts: db.contracts || [],
+        truck_dispatches: db.truck_dispatches || [],
+        users: db.users || [],
+        security_audit_logs: db.security_audit_logs || []
+      };
 
-    setArchiveNotice('📥 Complete System Database Backup (.json) downloaded successfully!');
-    setTimeout(() => setArchiveNotice(''), 4000);
+      const jsonStr = JSON.stringify(backupData, null, 2);
+      const blob = new Blob([jsonStr], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `TransFlow_Full_ERP_Backup_${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      setArchiveNotice('📥 Complete System Database Backup (.json) downloaded successfully!');
+      setTimeout(() => setArchiveNotice(''), 4000);
+    } catch (err) {
+      alert(`Backup creation failed: ${err.message}`);
+    }
   };
 
   const handleUploadDatabaseBackup = (e) => {
@@ -469,19 +488,35 @@ export const AdminDashboard = () => {
         if (!jsonContent) return;
         const parsed = JSON.parse(jsonContent);
 
-        if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.rate_requests || parsed.transporters)) {
-          alert('Invalid Database Backup file format. Backup file must be a valid Transflow JSON backup.');
+        if (!parsed || typeof parsed !== 'object') {
+          alert('Invalid Backup File. Please upload a valid TransFlow JSON backup file.');
+          if (e.target) e.target.value = '';
           return;
         }
 
-        if (!window.confirm('⚠️ DATABASE RESTORE WARNING:\n\nAre you sure you want to restore the system database from this backup file?\n\nThis will replace current database tables with the backup contents and sync to Supabase Cloud.')) {
+        if (!window.confirm('⚠️ DATABASE RESTORE CONFIRMATION:\n\nAre you sure you want to restore system database from this backup file?\n\nThis will update your Live Cloud Database with the backup data.')) {
+          if (e.target) e.target.value = '';
           return;
         }
 
         const restoredDb = addSecurityLog(
           {
-            ...parsed,
-            _updatedAt: Date.now()
+            _updatedAt: Date.now() + 100000,
+            company: parsed.company || db.company || {},
+            do_master_settings: parsed.do_master_settings || db.do_master_settings || {},
+            company_masters: Array.isArray(parsed.company_masters) ? parsed.company_masters : (db.company_masters || []),
+            product_masters: Array.isArray(parsed.product_masters) ? parsed.product_masters : (db.product_masters || []),
+            cargo_masters: Array.isArray(parsed.cargo_masters) ? parsed.cargo_masters : (db.cargo_masters || []),
+            title_masters: Array.isArray(parsed.title_masters) ? parsed.title_masters : (db.title_masters || []),
+            city_masters: Array.isArray(parsed.city_masters) ? parsed.city_masters : (db.city_masters || []),
+            transporters: Array.isArray(parsed.transporters) ? parsed.transporters : (db.transporters || []),
+            rate_requests: Array.isArray(parsed.rate_requests) ? parsed.rate_requests : (db.rate_requests || []),
+            rate_submissions: Array.isArray(parsed.rate_submissions) ? parsed.rate_submissions : (db.rate_submissions || []),
+            allocations: Array.isArray(parsed.allocations) ? parsed.allocations : (db.allocations || []),
+            contracts: Array.isArray(parsed.contracts) ? parsed.contracts : (db.contracts || []),
+            truck_dispatches: Array.isArray(parsed.truck_dispatches) ? parsed.truck_dispatches : (db.truck_dispatches || []),
+            users: Array.isArray(parsed.users) && parsed.users.length > 0 ? parsed.users : (db.users || []),
+            security_audit_logs: Array.isArray(parsed.security_audit_logs) ? parsed.security_audit_logs : (db.security_audit_logs || [])
           },
           'RESTORE_DATABASE_FROM_JSON_BACKUP',
           currentUser?.username || 'admin',
@@ -490,42 +525,41 @@ export const AdminDashboard = () => {
         );
 
         updateDB(restoredDb);
-        setArchiveNotice('🎉 Database successfully restored from JSON backup file & synced to Supabase Cloud!');
+        if (e.target) e.target.value = '';
+        setArchiveNotice('🎉 System Database successfully restored from JSON backup file & synced to Supabase Cloud!');
         setTimeout(() => setArchiveNotice(''), 5000);
       } catch (err) {
         alert(`Failed to parse backup JSON file: ${err.message}`);
+        if (e.target) e.target.value = '';
       }
     };
     reader.readAsText(file);
   };
 
   const handleResetDatabaseToFreshStart = () => {
-    if (!window.confirm('⚠️ WARNING: ARE YOU SURE YOU WANT TO CLEAR ALL OPERATIONAL DATA AND START FRESH?\n\nThis will permanently clear all test indents, bids, contracts, and truck dispatches from Supabase Cloud Database & Vercel.')) {
+    if (!window.confirm('⚠️ CLEAR ALL SYSTEM OPERATIONAL DATA CONFIRMATION:\n\nAre you sure you want to clear all active rate requests, freight bids, awarded contracts, and truck dispatches?\n\nThis will reset operational tables and sync to Supabase Cloud.')) {
       return;
     }
 
-    const cleanFreshDb = {
-      ...db,
-      _updatedAt: Date.now(),
-      rate_requests: [],
-      rate_submissions: [],
-      allocations: [],
-      contracts: [],
-      truck_dispatches: [],
-      security_logs: [
-        {
-          id: `sec_${Date.now()}`,
-          action: 'SYSTEM_DATABASE_RESET_FRESH_START',
-          actor: currentUser?.username || 'admin',
-          role: 'admin',
-          timestamp: new Date().toISOString(),
-          details: 'System database cleared for fresh operational start 🚀'
-        }
-      ]
-    };
+    const cleanFreshDb = addSecurityLog(
+      {
+        ...db,
+        _updatedAt: Date.now() + 100000,
+        rate_requests: [],
+        rate_submissions: [],
+        allocations: [],
+        contracts: [],
+        truck_dispatches: [],
+        whatsapp_notifications: []
+      },
+      'SYSTEM_DATABASE_RESET_FRESH_START',
+      currentUser?.username || 'admin',
+      'admin',
+      'SYSTEM_RESET 🚀'
+    );
 
     updateDB(cleanFreshDb);
-    setArchiveNotice('🎉 System Database cleared completely! Fresh clean start ready for real operations.');
+    setArchiveNotice('🎉 System Database cleared completely! Operational tables are now 100% clean & ready for fresh live start.');
     setTimeout(() => setArchiveNotice(''), 5000);
   };
 
