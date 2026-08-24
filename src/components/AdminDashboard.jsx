@@ -515,7 +515,7 @@ export const AdminDashboard = () => {
 
   const processUploadBackupFile = (file) => {
     const reader = new FileReader();
-    reader.onload = (event) => {
+    reader.onload = async (event) => {
       try {
         const jsonContent = event.target?.result;
         if (!jsonContent) return;
@@ -532,25 +532,83 @@ export const AdminDashboard = () => {
 
         const rawObj = parsed.data || parsed.db || parsed;
 
+        // 🛡️ Flexible Multi-Schema Key Resolvers
+        const rateRequests = Array.isArray(rawObj.rate_requests) ? rawObj.rate_requests :
+                             Array.isArray(rawObj.requests) ? rawObj.requests :
+                             Array.isArray(rawObj.indents) ? rawObj.indents :
+                             Array.isArray(rawObj.requisitions) ? rawObj.requisitions :
+                             Array.isArray(rawObj.items) ? rawObj.items :
+                             Array.isArray(rawObj.rows) ? rawObj.rows : [];
+
+        const companyMasters = Array.isArray(rawObj.company_masters) ? rawObj.company_masters :
+                               Array.isArray(rawObj.companies) ? rawObj.companies :
+                               Array.isArray(rawObj.locations) ? rawObj.locations :
+                               Array.isArray(rawObj.plants) ? rawObj.plants : [];
+
+        const productMasters = Array.isArray(rawObj.product_masters) ? rawObj.product_masters :
+                               Array.isArray(rawObj.products) ? rawObj.products :
+                               Array.isArray(rawObj.commodities) ? rawObj.commodities : [];
+
+        const transporters = Array.isArray(rawObj.transporters) ? rawObj.transporters :
+                             Array.isArray(rawObj.vendors) ? rawObj.vendors : [];
+
+        const rateSubmissions = Array.isArray(rawObj.rate_submissions) ? rawObj.rate_submissions :
+                                Array.isArray(rawObj.submissions) ? rawObj.submissions :
+                                Array.isArray(rawObj.bids) ? rawObj.bids :
+                                Array.isArray(rawObj.quotes) ? rawObj.quotes : [];
+
+        const allocations = Array.isArray(rawObj.allocations) ? rawObj.allocations :
+                            Array.isArray(rawObj.contracts) ? rawObj.contracts : [];
+
+        // 🎯 Auto-extract Drop Locations from Rate Requests if company_masters is empty
+        const finalCompanyMasters = [...companyMasters];
+        if (finalCompanyMasters.length === 0 && rateRequests.length > 0) {
+          const uniqueDests = Array.from(new Set(rateRequests.map((r) => r.dest_city).filter(Boolean)));
+          uniqueDests.forEach((dest, i) => {
+            finalCompanyMasters.push({
+              id: `comp_restored_${i}`,
+              name: dest,
+              drop_location_name: dest,
+              city: dest,
+              code: `DST${i + 1}`
+            });
+          });
+        }
+
+        // 📦 Auto-extract Product Names from Rate Requests if product_masters is empty
+        const finalProductMasters = [...productMasters];
+        if (finalProductMasters.length === 0 && rateRequests.length > 0) {
+          const uniqueProds = Array.from(new Set(rateRequests.map((r) => r.material_type).filter(Boolean)));
+          uniqueProds.forEach((prod, i) => {
+            finalProductMasters.push({
+              id: `prod_restored_${i}`,
+              name: prod,
+              category: 'Restored Commodity',
+              hsn_code: '23040010',
+              unit: 'MT'
+            });
+          });
+        }
+
         const restoredDb = addSecurityLog(
           {
             ...rawObj,
-            _updatedAt: Date.now() + 100000,
+            _updatedAt: Date.now() + 500000,
             company: rawObj.company || db.company || {},
             do_master_settings: rawObj.do_master_settings || db.do_master_settings || {},
-            company_masters: Array.isArray(rawObj.company_masters) ? rawObj.company_masters : (db.company_masters || []),
-            product_masters: Array.isArray(rawObj.product_masters) ? rawObj.product_masters : (db.product_masters || []),
-            cargo_masters: Array.isArray(rawObj.cargo_masters) ? rawObj.cargo_masters : (db.cargo_masters || []),
-            title_masters: Array.isArray(rawObj.title_masters) ? rawObj.title_masters : (db.title_masters || []),
-            city_masters: Array.isArray(rawObj.city_masters) ? rawObj.city_masters : (db.city_masters || []),
-            transporters: Array.isArray(rawObj.transporters) ? rawObj.transporters : (db.transporters || []),
-            rate_requests: Array.isArray(rawObj.rate_requests) ? rawObj.rate_requests : (db.rate_requests || []),
-            rate_submissions: Array.isArray(rawObj.rate_submissions) ? rawObj.rate_submissions : (db.rate_submissions || []),
-            allocations: Array.isArray(rawObj.allocations) ? rawObj.allocations : (db.allocations || []),
-            contracts: Array.isArray(rawObj.contracts) ? rawObj.contracts : (db.contracts || []),
-            truck_dispatches: Array.isArray(rawObj.truck_dispatches) ? rawObj.truck_dispatches : (db.truck_dispatches || []),
+            company_masters: finalCompanyMasters,
+            product_masters: finalProductMasters,
+            cargo_masters: Array.isArray(rawObj.cargo_masters) ? rawObj.cargo_masters : [],
+            title_masters: Array.isArray(rawObj.title_masters) ? rawObj.title_masters : [],
+            city_masters: Array.isArray(rawObj.city_masters) ? rawObj.city_masters : [],
+            transporters: transporters,
+            rate_requests: rateRequests,
+            rate_submissions: rateSubmissions,
+            allocations: allocations,
+            contracts: Array.isArray(rawObj.contracts) ? rawObj.contracts : [],
+            truck_dispatches: Array.isArray(rawObj.truck_dispatches) ? rawObj.truck_dispatches : [],
             users: Array.isArray(rawObj.users) && rawObj.users.length > 0 ? rawObj.users : (db.users || []),
-            security_audit_logs: Array.isArray(rawObj.security_audit_logs) ? rawObj.security_audit_logs : (db.security_audit_logs || [])
+            security_audit_logs: Array.isArray(rawObj.security_audit_logs) ? rawObj.security_audit_logs : []
           },
           'RESTORE_DATABASE_FROM_JSON_BACKUP',
           currentUser?.username || 'admin',
@@ -558,8 +616,8 @@ export const AdminDashboard = () => {
           'DB_RESTORED 🛡️'
         );
 
-        updateDB(restoredDb);
-        alert('🎉 SUCCESS: Database Backup Restored Successfully to Supabase Cloud! Page will now reload.');
+        await updateDB(restoredDb);
+        alert(`🎉 SUCCESS: Restored ${rateRequests.length} Indents, ${finalCompanyMasters.length} Locations & ${finalProductMasters.length} Products to Supabase Cloud Server! Page will reload.`);
         window.location.reload();
       } catch (err) {
         alert(`Failed to parse backup JSON file: ${err.message}`);
