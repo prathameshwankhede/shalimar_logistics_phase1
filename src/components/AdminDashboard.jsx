@@ -1,8 +1,9 @@
 // src/components/AdminDashboard.jsx
 // Cleaned up Admin Dashboard with Auto-Sequential ERP Requirement Formatting, High-Visibility Badge Styling, Account Suspension, & Transporter Deletion Engine 🗑️
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { buildBidIndexMap, calculateL1BidStats, fastDeduplicateStrings } from '../utils/dsaEngine';
 import { CreateRequirementModal } from './CreateRequirementModal';
 import { TransporterManagerModal } from './TransporterManagerModal';
 import { RateComparisonView } from './RateComparisonView';
@@ -1130,6 +1131,11 @@ export const AdminDashboard = () => {
   const totalSubmissions = (db?.rate_submissions || []).length;
   const totalTransporters = (db?.transporters || []).length;
   const totalAllocatedValue = (db?.allocations || []).reduce((acc, curr) => acc + (curr?.total_contract_value || 0), 0);
+
+  // ⚡ DSA OPTIMIZATION: Memoized O(1) Hash Map Index for Bids
+  const bidIndexMap = useMemo(() => {
+    return buildBidIndexMap(db?.rate_submissions || []);
+  }, [db?.rate_submissions]);
 
   // 🛑 TOGGLE TRANSPORTER ACCOUNT STATUS (ACTIVE / INACTIVE SUSPENSION)
   const toggleTransporterStatus = (transporterId) => {
