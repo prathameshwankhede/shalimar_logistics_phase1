@@ -42,11 +42,7 @@ export const INITIAL_SEED_DATA = {
       created_at: '2026-08-01T10:00:00Z'
     }
   ],
-  transporters: [
-    { id: 'tr_1', code: 'TR-NGP-01', company_name: 'SNPL Express Logistics', contact_person: 'Rajesh Sharma', mobile: '9823012345', email: 'rajesh@snpllogistics.com', gst_pan: '27AABCS1234F1ZP', username: 'snpl_trans', status: 'Active' },
-    { id: 'tr_2', code: 'TR-SLP-02', company_name: 'VRL Transport Corp', contact_person: 'Vijay Patel', mobile: '9890123456', email: 'vrl@vrlgroup.in', gst_pan: '27AABCV5678F1ZQ', username: 'vrl_trans', status: 'Active' },
-    { id: 'tr_3', code: 'TR-LTR-03', company_name: 'TCI Freight Services', contact_person: 'Sanjay Kumar', mobile: '9765432109', email: 'contact@tcifreight.in', gst_pan: '27AABCT9012F1ZR', username: 'tci_trans', status: 'Active' }
-  ],
+  transporters: [],
   rate_requests: [
     {
       id: 'req_init_1',
