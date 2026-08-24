@@ -1,10 +1,9 @@
 // src/utils/dsaEngine.js
-// Enterprise Data Structures & Algorithms (DSA) Engine for TransFlow ERP 🚀
-// Implements O(1) Hash Map Indexing, Memoized Math Filters, & O(N) Set Deduplication
+// Clean & Fast Lightweight Helper Engine for TransFlow ERP 🚀
 
 /**
- * 1. O(1) HASH MAP INDEXER FOR BIDS (rate_submissions)
- * Converts O(N) array filter into instant O(1) Map lookup by request ID / requisition code
+ * 1. HASH MAP INDEXER FOR BIDS (rate_submissions)
+ * Fast O(1) Map lookup by request ID / requisition code
  */
 export function buildBidIndexMap(submissions = []) {
   const map = new Map();
@@ -24,8 +23,8 @@ export function buildBidIndexMap(submissions = []) {
 }
 
 /**
- * 2. O(1) HASH MAP INDEXER FOR TRANSPORTERS
- * Maps Transporters by ID, Code, and Username for O(1) resolution
+ * 2. HASH MAP INDEXER FOR TRANSPORTERS
+ * Maps Transporters by ID, Code, and Username for fast lookup
  */
 export function buildTransporterIndexMap(transporters = []) {
   const map = new Map();
@@ -42,8 +41,7 @@ export function buildTransporterIndexMap(transporters = []) {
 }
 
 /**
- * 3. MEMOIZED L1 LOWEST BID & BID STATS CALCULATOR
- * O(N) single-pass scan with numerical parsing & Math.min
+ * 3. L1 LOWEST BID & BID STATS CALCULATOR
  */
 export function calculateL1BidStats(bids = []) {
   if (!Array.isArray(bids) || bids.length === 0) {
@@ -73,7 +71,7 @@ export function calculateL1BidStats(bids = []) {
 }
 
 /**
- * 4. O(N) FAST SET-BASED DEDUPLICATION FOR DROPDOWN OPTIONS
+ * 4. SET-BASED DEDUPLICATION FOR DROPDOWN OPTIONS
  */
 export function fastDeduplicateStrings(list = []) {
   if (!Array.isArray(list)) return [];
@@ -91,22 +89,4 @@ export function fastDeduplicateStrings(list = []) {
     }
   }
   return result;
-}
-
-/**
- * 5. FAST BINARY SEARCH FOR DATES / NUMERIC ARRAYS (O(log N))
- */
-export function binarySearchIndex(arr, targetKey, keyExtractor = (x) => x) {
-  let low = 0;
-  let high = arr.length - 1;
-
-  while (low <= high) {
-    const mid = (low + high) >> 1;
-    const midVal = keyExtractor(arr[mid]);
-
-    if (midVal === targetKey) return mid;
-    if (midVal < targetKey) low = mid + 1;
-    else high = mid - 1;
-  }
-  return -1;
 }
