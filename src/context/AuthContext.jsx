@@ -157,11 +157,8 @@ export const AuthProvider = ({ children }) => {
       }
     }
 
-    const handleStorageChange = (e) => {
-      if (e.key === 'transflow_logistics_db_live_v3' || e.key === 'transflow_logistics_db_prod_v2' || e.key === 'transflow_logistics_db_v1' || !e.key) {
-        const freshData = loadDB();
-        setDb((prevDb) => mergeDbStates(freshData, prevDb));
-      }
+    const handleStorageChange = () => {
+      fetchSharedServerDb();
     };
 
     let bc = null;

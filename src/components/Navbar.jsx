@@ -13,12 +13,7 @@ export const Navbar = () => {
   }, []);
 
   const handleForceCloudSync = () => {
-    try {
-      localStorage.removeItem('transflow_logistics_db_live_v3');
-      window.location.reload();
-    } catch (e) {
-      window.location.reload();
-    }
+    window.location.reload();
   };
 
   return (
