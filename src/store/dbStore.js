@@ -26,8 +26,18 @@ export const INITIAL_SEED_DATA = {
     dispatch_plant_address: 'Plot No. 12, Industrial Area, MIDC, Nagpur, Maharashtra - 440028',
     terms_conditions: '1. Food-grade tarpaulin covering mandatory for dry cargo.\n2. Automated 24x7 weighbridge tare and gross recorded at Shalimar Plant.'
   },
-  company_masters: [],
-  product_masters: [],
+  company_masters: [
+    { id: 'comp_solapur', name: 'Solapur (Shalimar Refinery)', drop_location_name: 'Solapur (Shalimar Refinery)', city: 'Solapur', code: 'SLP' },
+    { id: 'comp_latur', name: 'Latur (Shalimar Processing Hub)', drop_location_name: 'Latur (Shalimar Processing Hub)', city: 'Latur', code: 'LTR' },
+    { id: 'comp_nagpur', name: 'Nagpur (Shalimar Plant MIDC)', drop_location_name: 'Nagpur (Shalimar Plant MIDC)', city: 'Nagpur', code: 'NGP' },
+    { id: 'comp_akola', name: 'Akola (Shalimar Grain Depot)', drop_location_name: 'Akola (Shalimar Grain Depot)', city: 'Akola', code: 'AKL' }
+  ],
+  product_masters: [
+    { id: 'prod_doc', name: 'Soybean Meal De-Oiled Cake (DOC)', code: 'DOC-01' },
+    { id: 'prod_oil', name: 'Refined Soybean Oil (Bulk)', code: 'OIL-01' },
+    { id: 'prod_mustard', name: 'Mustard Oil (Bulk Tanker)', code: 'MUST-01' },
+    { id: 'prod_cpo', name: 'Crude Palm Oil (CPO)', code: 'CPO-01' }
+  ],
   cargo_masters: [],
   title_masters: [],
   city_masters: [],

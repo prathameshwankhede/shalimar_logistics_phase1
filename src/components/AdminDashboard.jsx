@@ -1823,56 +1823,59 @@ export const AdminDashboard = () => {
                           />
                         </div>
 
-                        {/* 2. Drop Location */}
+                        {/* 2. Drop Location Dropdown */}
                         <div>
                           <label style={{ fontSize: '0.7rem', fontWeight: '900', color: '#d97706', marginBottom: '6px', display: 'block', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
                             🎯 DROP LOCATION
                           </label>
-                          <input
-                            type="text"
-                            list={`dest_datalist_${row.id}`}
+                          <select
                             className="form-control"
-                            placeholder="Select or Type Drop Location"
                             value={row.dest_city || ''}
-                            onChange={(e) => handleUpdateBulkRow(row.id, 'dest_city', e.target.value)}
-                            style={{ fontSize: '0.85rem', height: '42px', border: '1.5px solid rgba(245, 158, 11, 0.8)', color: 'var(--text-main)', borderRadius: '8px', fontWeight: '700', width: '100%' }}
-                          />
-                          <datalist id={`dest_datalist_${row.id}`}>
+                            onChange={(e) => {
+                              if (e.target.value === '__ADD_NEW__') {
+                                handleQuickAddCompany();
+                              } else {
+                                handleUpdateBulkRow(row.id, 'dest_city', e.target.value);
+                              }
+                            }}
+                            style={{ fontSize: '0.85rem', height: '42px', border: '1.5px solid rgba(245, 158, 11, 0.8)', color: 'var(--text-main)', borderRadius: '8px', fontWeight: '700', width: '100%', background: 'var(--bg-card)' }}
+                          >
+                            <option value="">-- Select Drop Location (Master) --</option>
                             {Array.from(
                               new Set([
                                 ...(db.company_masters || []).map((c) => c.drop_location_name || c.name || c.city).filter(Boolean),
-                                ...(db.title_masters || []).map((tm) => tm.dest_city || tm.title).filter(Boolean),
                                 ...(db.city_masters || []).map((c) => c.city).filter(Boolean)
                               ])
                             ).map((destName, i) => (
-                              <option key={`dest_${i}`} value={destName} />
+                              <option key={`dest_${i}`} value={destName}>🎯 {destName}</option>
                             ))}
-                          </datalist>
+                            <option value="__ADD_NEW__" style={{ color: '#38bdf8', fontWeight: '900' }}>➕ Add New Location in Master Directory...</option>
+                          </select>
                         </div>
 
-                        {/* 3. PRODUCT NAME */}
+                        {/* 3. PRODUCT NAME DROPDOWN */}
                         <div>
                           <label style={{ fontSize: '0.7rem', fontWeight: '900', color: '#38bdf8', marginBottom: '6px', display: 'block', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
                             📦 PRODUCT NAME
                           </label>
-                          <input
-                            type="text"
-                            list={`prod_datalist_${row.id}`}
+                          <select
                             className="form-control"
-                            placeholder="Select or Type Product Name"
                             value={row.material_type || ''}
-                            onChange={(e) => handleUpdateBulkRow(row.id, 'material_type', e.target.value)}
-                            style={{ fontSize: '0.82rem', height: '42px', border: '1.5px solid #38bdf8', color: 'var(--text-main)', borderRadius: '8px', fontWeight: '800' }}
-                          />
-                          <datalist id={`prod_datalist_${row.id}`}>
-                            {Array.from(
-                              new Set([
-                                ...(db.product_masters || []).map((p) => p.name).filter(Boolean)
-                              ])
-                            ).map((prodName, i) => (
-                              <option key={`prod_${i}`} value={prodName} />
+                            onChange={(e) => {
+                              if (e.target.value === '__ADD_NEW__') {
+                                handleQuickAddProduct();
+                              } else {
+                                handleUpdateBulkRow(row.id, 'material_type', e.target.value);
+                              }
+                            }}
+                            style={{ fontSize: '0.82rem', height: '42px', border: '1.5px solid #38bdf8', color: 'var(--text-main)', borderRadius: '8px', fontWeight: '800', background: 'var(--bg-card)' }}
+                          >
+                            <option value="">-- Select Product Name (Master) --</option>
+                            {(db.product_masters || []).map((prod, i) => (
+                              <option key={`prod_${i}`} value={prod.name}>📦 {prod.name}</option>
                             ))}
-                          </datalist>
+                            <option value="__ADD_NEW__" style={{ color: '#38bdf8', fontWeight: '900' }}>➕ Add New Product in Master Directory...</option>
+                          </select>
                         </div>
 
                         {/* 4. Qty (MT) */}
