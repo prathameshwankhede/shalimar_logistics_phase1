@@ -828,7 +828,7 @@ export const AdminDashboard = () => {
       material_type: '',
       hsn_code: '',
       required_qty: '',
-      target_date: ''
+      target_date: todayStr
     };
   };
 
