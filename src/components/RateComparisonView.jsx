@@ -19,8 +19,11 @@ export const RateComparisonView = ({ rateRequest, onBack }) => {
 
   const [notice, setNotice] = useState('');
 
-  // Fetch all submissions for this rate request
-  const submissions = (db.rate_submissions || []).filter((s) => s.rate_request_id === rateRequest?.id);
+  // Fetch all submissions for this rate request (Flexible ID & Request No matching 🛡️)
+  const submissions = (db.rate_submissions || []).filter((s) =>
+    String(s.rate_request_id) === String(rateRequest?.id) ||
+    String(s.rate_request_id) === String(rateRequest?.request_no)
+  );
 
   // Identify lowest rate (L1)
   const validRates = submissions.map((s) => s.rate_per_unit).filter((r) => r && !isNaN(r));
@@ -29,9 +32,16 @@ export const RateComparisonView = ({ rateRequest, onBack }) => {
   const potentialSavings = lowestRate && highestRate ? (highestRate - lowestRate) * (rateRequest?.required_qty || 0) : 0;
 
   // Check if requirement is already awarded
-  const existingAllocation = (db.allocations || []).find((a) => a.rate_request_id === rateRequest?.id);
+  const existingAllocation = (db.allocations || []).find((a) =>
+    String(a.rate_request_id) === String(rateRequest?.id) ||
+    String(a.rate_request_id) === String(rateRequest?.request_no)
+  );
   const allocatedTransporter = existingAllocation
-    ? (db.transporters || []).find((t) => t.id === existingAllocation.transporter_id)
+    ? (db.transporters || []).find((t) =>
+        String(t.id) === String(existingAllocation.transporter_id) ||
+        String(t.code) === String(existingAllocation.transporter_id) ||
+        String(t.username) === String(existingAllocation.transporter_id)
+      )
     : null;
 
   // Admin Sends Counter Rate (Broadcast to ALL Transporters for this requirement 📡)
@@ -443,7 +453,13 @@ export const RateComparisonView = ({ rateRequest, onBack }) => {
             </thead>
             <tbody>
               {submissions.map((sub) => {
-                const transporter = db.transporters.find((t) => t.id === sub.transporter_id);
+                const transporter = (db.transporters || []).find(
+                  (t) =>
+                    String(t.id) === String(sub.transporter_id) ||
+                    String(t.code) === String(sub.transporter_id) ||
+                    String(t.username) === String(sub.transporter_id) ||
+                    (t.company_name && sub.transporter_id && String(t.company_name).toLowerCase().includes(String(sub.transporter_id).toLowerCase()))
+                );
                 const isL1 = sub.rate_per_unit === lowestRate;
                 const isSelected = sub.status === 'Selected';
                 const isNegotiating = sub.status === 'Negotiating' && sub.counter_rate_per_unit && !sub.is_frozen;
