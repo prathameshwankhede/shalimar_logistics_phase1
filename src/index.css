@@ -28,6 +28,16 @@
   --glass-backdrop: blur(12px);
 }
 
+/* 🙈 HIDE BROWSER NATIVE DUPLICATE PASSWORD REVEAL ICONS (EDGE / CHROME / SAFARI) */
+input::-ms-reveal,
+input::-ms-clear,
+input::-webkit-contacts-auto-fill-button,
+input::-webkit-credentials-auto-fill-button {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
 /* ☀️ LIGHT MODE COMPREHENSIVE OVERRIDES & COLOR MAPPING */
 [data-theme="light"] {
   color-scheme: light;
