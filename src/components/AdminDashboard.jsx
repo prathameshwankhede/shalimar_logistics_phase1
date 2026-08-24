@@ -3,7 +3,6 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { buildBidIndexMap, calculateL1BidStats, fastDeduplicateStrings } from '../utils/dsaEngine';
 import { CreateRequirementModal } from './CreateRequirementModal';
 import { TransporterManagerModal } from './TransporterManagerModal';
 import { RateComparisonView } from './RateComparisonView';
@@ -1132,9 +1131,17 @@ export const AdminDashboard = () => {
   const totalTransporters = (db?.transporters || []).length;
   const totalAllocatedValue = (db?.allocations || []).reduce((acc, curr) => acc + (curr?.total_contract_value || 0), 0);
 
-  // ⚡ DSA OPTIMIZATION: Memoized O(1) Hash Map Index for Bids
+  // ⚡ Native O(1) Hash Map Index for Bids
   const bidIndexMap = useMemo(() => {
-    return buildBidIndexMap(db?.rate_submissions || []);
+    const map = new Map();
+    (db?.rate_submissions || []).forEach((s) => {
+      if (s?.rate_request_id) {
+        const key = String(s.rate_request_id);
+        if (!map.has(key)) map.set(key, []);
+        map.get(key).push(s);
+      }
+    });
+    return map;
   }, [db?.rate_submissions]);
 
   // 🛑 TOGGLE TRANSPORTER ACCOUNT STATUS (ACTIVE / INACTIVE SUSPENSION)
