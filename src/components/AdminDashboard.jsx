@@ -1815,59 +1815,56 @@ export const AdminDashboard = () => {
                           <label style={{ fontSize: '0.7rem', fontWeight: '900', color: '#d97706', marginBottom: '6px', display: 'block', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
                             🎯 DROP LOCATION
                           </label>
-                          <select
+                          <input
+                            type="text"
+                            list={`dest_datalist_${row.id}`}
                             className="form-control"
-                            value={row.dest_city}
+                            placeholder="Select or Type Drop Location"
+                            value={row.dest_city || ''}
                             onChange={(e) => handleUpdateBulkRow(row.id, 'dest_city', e.target.value)}
                             style={{ fontSize: '0.85rem', height: '42px', border: '1.5px solid rgba(245, 158, 11, 0.8)', color: 'var(--text-main)', borderRadius: '8px', fontWeight: '700', width: '100%' }}
-                          >
-                            {(() => {
-                              const dropList = Array.from(
-                                new Set([
-                                  ...(db.company_masters || []).map((c) => c.drop_location_name || c.name || c.city).filter(Boolean),
-                                  ...(db.title_masters || []).map((tm) => tm.dest_city || tm.title).filter(Boolean),
-                                  ...(db.city_masters || []).map((c) => c.city).filter(Boolean)
-                                ])
-                              );
-                              if (dropList.length === 0) {
-                                return <option value="">-- No Drop Location in Master (Add in Master Directory) --</option>;
-                              }
-                              return [
-                                <option key="dest_default" value="">-- Select Drop Location (From Master) --</option>,
-                                ...dropList.map((destName, i) => (
-                                  <option key={`dest_${i}`} value={destName}>{destName}</option>
-                                ))
-                              ];
-                            })()}
-                          </select>
+                          />
+                          <datalist id={`dest_datalist_${row.id}`}>
+                            {Array.from(
+                              new Set([
+                                'Solapur (Shalimar Refinery)',
+                                'Latur (Shalimar Processing Hub)',
+                                'Nagpur (Shalimar Plant MIDC)',
+                                ...(db.company_masters || []).map((c) => c.drop_location_name || c.name || c.city).filter(Boolean),
+                                ...(db.title_masters || []).map((tm) => tm.dest_city || tm.title).filter(Boolean),
+                                ...(db.city_masters || []).map((c) => c.city).filter(Boolean)
+                              ])
+                            ).map((destName, i) => (
+                              <option key={`dest_${i}`} value={destName} />
+                            ))}
+                          </datalist>
                         </div>
 
-                        {/* 3. PRODUCT NAME DROPDOWN */}
+                        {/* 3. PRODUCT NAME */}
                         <div>
                           <label style={{ fontSize: '0.7rem', fontWeight: '900', color: '#38bdf8', marginBottom: '6px', display: 'block', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
                             📦 PRODUCT NAME
                           </label>
-                          <select
+                          <input
+                            type="text"
+                            list={`prod_datalist_${row.id}`}
                             className="form-control"
-                            value={row.material_type}
+                            placeholder="Select or Type Product Name"
+                            value={row.material_type || ''}
                             onChange={(e) => handleUpdateBulkRow(row.id, 'material_type', e.target.value)}
                             style={{ fontSize: '0.82rem', height: '42px', border: '1.5px solid #38bdf8', color: 'var(--text-main)', borderRadius: '8px', fontWeight: '800' }}
-                          >
-                            {(() => {
-                              const prods = db.product_masters || [];
-                              if (prods.length === 0) {
-                                return <option value="">-- No Product in Master (Add in Master Directory) --</option>;
-                              }
-                              return [
-                                <option key="prod_default" value="">-- Select Product Name (From Master) --</option>,
-                                ...prods.map((prod, i) => (
-                                  <option key={`prod_${prod.id || i}`} value={prod.name}>
-                                    📦 {prod.name}
-                                  </option>
-                                ))
-                              ];
-                            })()}
-                          </select>
+                          />
+                          <datalist id={`prod_datalist_${row.id}`}>
+                            {Array.from(
+                              new Set([
+                                'Soybean Meal De-Oiled Cake (DOC)',
+                                'Refined Soybean Oil (Bulk)',
+                                ...(db.product_masters || []).map((p) => p.name).filter(Boolean)
+                              ])
+                            ).map((prodName, i) => (
+                              <option key={`prod_${i}`} value={prodName} />
+                            ))}
+                          </datalist>
                         </div>
 
                         {/* 4. Qty (MT) */}
