@@ -217,16 +217,23 @@ export const AuthProvider = ({ children }) => {
   };
 
   const updateDB = async (newDb) => {
-    const updatedData = { ...newDb, _updatedAt: Date.now() + 1000 };
-    setDb((prevDb) => mergeDbStates(updatedData, prevDb));
-    try {
-      const mergedResult = await saveDB(updatedData);
-      if (mergedResult) {
-        setDb((prevDb) => mergeDbStates(mergedResult, prevDb));
-      }
-    } catch (e) {
-      console.error('Supabase save failed in updateDB:', e);
-    }
+    if (!newDb) return;
+    setDb((prevDb) => {
+      const mergedData = mergeDbStates(newDb, prevDb);
+      const updatedData = { ...mergedData, _updatedAt: Date.now() + 1000 };
+      
+      // Asynchronously persist to Cloud DB (Supabase + Turso)
+      saveDB(updatedData).then((mergedResult) => {
+        if (mergedResult) {
+          setDb((latestPrev) => mergeDbStates(mergedResult, latestPrev));
+        }
+      }).catch((e) => {
+        console.error('Supabase save failed in updateDB:', e);
+      });
+
+      return updatedData;
+    });
+
     try {
       if (typeof BroadcastChannel !== 'undefined') {
         const bc = new BroadcastChannel('transflow_live_sync_v1');
