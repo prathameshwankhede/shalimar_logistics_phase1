@@ -904,6 +904,30 @@ export const AdminDashboard = () => {
       return;
     }
 
+    // 🛡️ STRICT VALIDATION: Check that all filled rows have Drop Location, Product Name, and valid Qty MT
+    for (let i = 0; i < bulkReqRows.length; i++) {
+      const row = bulkReqRows[i];
+      const rowNum = i + 1;
+
+      const hasDest = row.dest_city && !row.dest_city.includes('-- Select') && !row.dest_city.includes('-- No') && row.dest_city.trim().length > 0;
+      if (!hasDest) {
+        alert(`🛑 MISSING DROP LOCATION (Row #${rowNum}): Please select a Drop Location from the dropdown before broadcasting.`);
+        return;
+      }
+
+      const hasProd = row.material_type && !row.material_type.includes('-- Select') && !row.material_type.includes('-- No') && row.material_type.trim().length > 0;
+      if (!hasProd) {
+        alert(`🛑 MISSING PRODUCT NAME (Row #${rowNum}): Please select a Product Name from the dropdown before broadcasting.`);
+        return;
+      }
+
+      const qtyVal = parseFloat(row.required_qty);
+      if (!qtyVal || isNaN(qtyVal) || qtyVal <= 0) {
+        alert(`🛑 MISSING QUANTITY (Row #${rowNum}): Please enter a valid tonnage quantity in MT (e.g. 500) before broadcasting.`);
+        return;
+      }
+    }
+
     const currentBatchNum = getNextBatchNum();
     const batchCode = `SNPL/26-27/REQ-${currentBatchNum.toString().padStart(2, '0')}`;
     const newRequests = [];
@@ -912,15 +936,10 @@ export const AdminDashboard = () => {
       const row = bulkReqRows[i];
 
       const defaultOrigin = masterPickupCity || db.company_masters?.[0]?.pickup_location_name || db.city_masters?.[0]?.city || 'Nagpur (MIDC)';
-      const originVal = (row.origin_city && !row.origin_city.includes('-- Select') && !row.origin_city.includes('-- No') ? row.origin_city : defaultOrigin).trim();
-
-      const defaultDest = db.company_masters?.[0]?.drop_location_name || db.city_masters?.[1]?.city || db.city_masters?.[0]?.city || 'Solapur (Shalimar Refinery)';
-      const destVal = (row.dest_city && !row.dest_city.includes('-- Select') && !row.dest_city.includes('-- No') ? row.dest_city : defaultDest).trim();
-
-      const defaultProd = db.product_masters?.[0]?.name || 'Soybean Meal De-Oiled Cake (DOC)';
-      const prodVal = (row.material_type && !row.material_type.includes('-- Select') && !row.material_type.includes('-- No') ? row.material_type : defaultProd).trim();
-
-      const qtyVal = parseFloat(row.required_qty) || 500;
+      const originVal = row.origin_city.trim() || defaultOrigin;
+      const destVal = row.dest_city.trim();
+      const prodVal = row.material_type.trim();
+      const qtyVal = parseFloat(row.required_qty);
       const dateVal = (row.target_date || todayStr).trim() < todayStr ? todayStr : (row.target_date || todayStr).trim();
 
       const subNum = (i + 1).toString().padStart(2, '0');
