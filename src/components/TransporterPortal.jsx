@@ -974,25 +974,27 @@ export const TransporterPortal = () => {
                               {isExpanded && (
                                 <tr key={`expanded_${group.batchKey}`}>
                                   <td colSpan="6" style={{ padding: '16px 20px 24px 20px' }}>
-                                    <div className="glass-panel-glow" style={{
-                                      border: '1.5px solid #0284c7',
+                                    <div style={{
+                                      border: '2px solid #38bdf8',
                                       borderRadius: '16px',
-                                      padding: '20px 22px'
+                                      padding: '20px 22px',
+                                      background: 'linear-gradient(135deg, rgba(15,23,42,0.95) 0%, rgba(30,41,59,0.95) 100%)',
+                                      boxShadow: '0 20px 50px rgba(0,0,0,0.5), 0 0 30px rgba(56, 189, 248, 0.3)'
                                     }}>
                                       {/* Drawer Header Toolbar */}
-                                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', borderBottom: '1px solid var(--border-color)', paddingBottom: '12px', flexWrap: 'wrap', gap: '12px' }}>
+                                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', borderBottom: '1.5px solid rgba(56, 189, 248, 0.3)', paddingBottom: '12px', flexWrap: 'wrap', gap: '12px' }}>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                                           <div style={{ background: 'linear-gradient(135deg, #0284c7 0%, #38bdf8 100%)', padding: '8px 12px', borderRadius: '10px', boxShadow: '0 0 14px rgba(56, 189, 248, 0.4)' }}>
                                             <FolderOpen size={20} color="#ffffff" />
                                           </div>
                                           <div>
-                                            <div style={{ fontSize: '1rem', fontWeight: '900', color: 'var(--text-main)', letterSpacing: '0.02em', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                            <div style={{ fontSize: '1rem', fontWeight: '900', color: '#ffffff', letterSpacing: '0.02em', display: 'flex', alignItems: 'center', gap: '10px' }}>
                                               <span>📂 BATCH FOLDER CONTENTS:</span>
-                                              <span style={{ fontFamily: 'monospace', color: '#0284c7', background: 'rgba(56, 189, 248, 0.15)', border: '1px solid #0284c7', padding: '2px 10px', borderRadius: '8px', fontSize: '0.9rem' }}>
+                                              <span style={{ fontFamily: 'monospace', color: '#38bdf8', background: 'rgba(56, 189, 248, 0.15)', border: '1px solid #38bdf8', padding: '2px 10px', borderRadius: '8px', fontSize: '0.9rem' }}>
                                                 {group.batchKey}
                                               </span>
                                             </div>
-                                            <div style={{ fontSize: '0.76rem', color: 'var(--text-muted)', fontWeight: '600', marginTop: '2px' }}>
+                                            <div style={{ fontSize: '0.76rem', color: '#94a3b8', fontWeight: '600', marginTop: '2px' }}>
                                               Showing all {group.items.length} sub-indents ({group.batchKey}/01 to {group.batchKey}/{group.items.length.toString().padStart(2, '0')})
                                             </div>
                                           </div>
@@ -1022,10 +1024,10 @@ export const TransporterPortal = () => {
                                              <Send size={15} /> 🚀 Submit All Batch Bids ({group.items.length})
                                            </button>
 
-                                          <span style={{ fontSize: '0.78rem', background: 'rgba(56, 189, 248, 0.15)', color: '#0284c7', border: '1px solid rgba(56, 189, 248, 0.4)', padding: '4px 12px', borderRadius: '20px', fontWeight: '800' }}>
-                                            📍 {firstItem?.origin_city || 'Origin'} ➔ 🎯 <strong style={{ color: '#d97706', fontWeight: '900' }}>{firstItem?.dest_city || 'Destination'}</strong>
+                                          <span style={{ fontSize: '0.78rem', background: 'rgba(56, 189, 248, 0.15)', color: '#38bdf8', border: '1px solid rgba(56, 189, 248, 0.4)', padding: '4px 12px', borderRadius: '20px', fontWeight: '800' }}>
+                                            📍 {firstItem?.origin_city || 'Origin'} ➔ 🎯 <strong style={{ color: '#fbbf24', fontWeight: '900' }}>{firstItem?.dest_city || 'Destination'}</strong>
                                           </span>
-                                          <span style={{ fontSize: '0.78rem', background: 'rgba(16, 185, 129, 0.15)', color: '#059669', border: '1px solid rgba(16, 185, 129, 0.4)', padding: '4px 12px', borderRadius: '20px', fontWeight: '800' }}>
+                                          <span style={{ fontSize: '0.78rem', background: 'rgba(16, 185, 129, 0.15)', color: '#34d399', border: '1px solid rgba(16, 185, 129, 0.4)', padding: '4px 12px', borderRadius: '20px', fontWeight: '800' }}>
                                             ⚖️ {(totalBatchQty || 0).toLocaleString()} MT Batch Total
                                           </span>
                                           <button
@@ -1053,12 +1055,12 @@ export const TransporterPortal = () => {
                                         <table className="custom-table" style={{ width: '100%', margin: 0 }}>
                                           <thead>
                                             <tr>
-                                              <th style={{ color: '#0284c7', padding: '10px 14px' }}>REQUISITION CODE</th>
-                                              <th style={{ color: '#0284c7', padding: '10px 14px' }}>ROUTE / COMPANY</th>
-                                              <th style={{ color: '#0284c7', padding: '10px 14px' }}>CARGO / QTY</th>
-                                              <th style={{ color: '#0284c7', padding: '10px 14px' }}>TARGET DATE</th>
-                                              <th style={{ color: '#0284c7', padding: '10px 14px' }}>SUBMIT YOUR RATE / BID</th>
-                                              <th style={{ color: '#0284c7', padding: '10px 14px', textAlign: 'right' }}>STATUS</th>
+                                              <th style={{ color: '#38bdf8', padding: '10px 14px', fontWeight: '900' }}>REQUISITION CODE</th>
+                                              <th style={{ color: '#38bdf8', padding: '10px 14px', fontWeight: '900' }}>ROUTE / COMPANY</th>
+                                              <th style={{ color: '#38bdf8', padding: '10px 14px', fontWeight: '900' }}>CARGO / QTY</th>
+                                              <th style={{ color: '#38bdf8', padding: '10px 14px', fontWeight: '900' }}>TARGET DATE</th>
+                                              <th style={{ color: '#38bdf8', padding: '10px 14px', fontWeight: '900' }}>SUBMIT YOUR RATE / BID</th>
+                                              <th style={{ color: '#38bdf8', padding: '10px 14px', textAlign: 'right', fontWeight: '900' }}>STATUS</th>
                                             </tr>
                                           </thead>
                                           <tbody>
@@ -1071,17 +1073,18 @@ export const TransporterPortal = () => {
                                               return (
                                                 <tr
                                                   key={req.id || `sub_trans_${rIdx}`}
+                                                  style={{ background: rIdx % 2 === 0 ? 'rgba(255,255,255,0.03)' : 'transparent' }}
                                                 >
                                                   <td style={{ padding: '10px 14px' }}>
                                                     <span style={{
                                                       fontFamily: 'monospace',
                                                       fontSize: '0.84rem',
                                                       fontWeight: '900',
-                                                      color: '#0284c7',
-                                                      background: 'rgba(2, 132, 199, 0.12)',
+                                                      color: '#38bdf8',
+                                                      background: 'rgba(56, 189, 248, 0.15)',
                                                       padding: '3px 10px',
                                                       borderRadius: '6px',
-                                                      border: '1px solid #0284c7',
+                                                      border: '1px solid #38bdf8',
                                                       letterSpacing: '0.04em'
                                                     }}>
                                                       {displayCode}
@@ -1089,28 +1092,28 @@ export const TransporterPortal = () => {
                                                   </td>
 
                                                   <td style={{ padding: '10px 14px' }}>
-                                                    <div style={{ fontWeight: '800', color: 'var(--text-main)', fontSize: '0.86rem' }}>
+                                                    <div style={{ fontWeight: '800', color: '#ffffff', fontSize: '0.9rem' }}>
                                                       {req.company_unit || 'Shalimar Nutrients'}
                                                     </div>
-                                                    <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                                      <MapPin size={12} color="#0284c7" /> 📍 {req.origin_city || 'N/A'} ➔ 🎯 <strong style={{ color: '#d97706', fontWeight: '900', fontSize: '0.92rem', letterSpacing: '0.01em' }}>{req.dest_city || 'N/A'}</strong>
+                                                    <div style={{ fontSize: '0.8rem', color: '#e2e8f0', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: '700', marginTop: '2px' }}>
+                                                      <MapPin size={12} color="#38bdf8" /> 📍 {req.origin_city || 'N/A'} ➔ 🎯 <strong style={{ color: '#fbbf24', fontWeight: '900', fontSize: '0.92rem', letterSpacing: '0.01em' }}>{req.dest_city || 'N/A'}</strong>
                                                     </div>
                                                     {req.admin_counter_rate && (
-                                                       <span style={{ fontSize: '0.72rem', background: 'rgba(217, 119, 6, 0.12)', color: '#d97706', border: '1px solid #d97706', padding: '2px 8px', borderRadius: '6px', fontWeight: '800', display: 'inline-flex', alignItems: 'center', gap: '4px', marginTop: '4px' }}>
+                                                       <span style={{ fontSize: '0.72rem', background: 'rgba(245, 158, 11, 0.2)', color: '#fbbf24', border: '1px solid #f59e0b', padding: '2px 8px', borderRadius: '6px', fontWeight: '800', display: 'inline-flex', alignItems: 'center', gap: '4px', marginTop: '4px' }}>
                                                          🔥 Competing Transporter Bid: ₹{req.admin_counter_rate}/MT
                                                        </span>
                                                      )}
                                                    </td>
 
                                                    <td style={{ padding: '10px 14px' }}>
-                                                     <div style={{ fontWeight: '800', color: '#0284c7', fontSize: '0.86rem' }}>
+                                                     <div style={{ fontWeight: '900', color: '#38bdf8', fontSize: '0.9rem' }}>
                                                        {req.required_qty ? Number(req.required_qty).toLocaleString() : 0} {req.unit || 'MT'}
                                                      </div>
-                                                     <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>{req.material_type || 'Cargo'}</div>
+                                                     <div style={{ fontSize: '0.76rem', color: '#cbd5e1', fontWeight: '600' }}>{req.material_type || 'Cargo'}</div>
                                                    </td>
 
                                                    <td style={{ padding: '10px 14px' }}>
-                                                     <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)', fontWeight: '600' }}>{req.target_date || '-'}</div>
+                                                     <div style={{ fontSize: '0.84rem', color: '#f8fafc', fontWeight: '700' }}>{req.target_date || '-'}</div>
                                                    </td>
 
                                                    <td style={{ padding: '10px 14px' }}>
