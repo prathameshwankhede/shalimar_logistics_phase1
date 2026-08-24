@@ -970,150 +970,141 @@ export const TransporterPortal = () => {
                               </tr>
                             )}
 
-                              {/* EXPANDED SUB-ITEMS ACCORDION DRAWER CONTAINER (/01 to /50) */}
-                              {isExpanded && (
-                                <tr key={`expanded_${group.batchKey}`}>
-                                  <td colSpan="6" className="preserve-dark-wrapper" style={{ padding: '16px 20px 24px 20px', background: '#0f172a' }}>
-                                    <div className="preserve-dark-card" style={{
-                                      border: '2px solid #38bdf8',
-                                      borderRadius: '16px',
-                                      padding: '20px 22px',
-                                      background: 'linear-gradient(135deg, rgba(15,23,42,0.95) 0%, rgba(30,41,59,0.95) 100%)',
-                                      boxShadow: '0 20px 50px rgba(0,0,0,0.5), 0 0 30px rgba(56, 189, 248, 0.3)'
-                                    }}>
-                                      {/* Drawer Header Toolbar */}
-                                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', borderBottom: '1.5px solid rgba(56, 189, 248, 0.3)', paddingBottom: '12px', flexWrap: 'wrap', gap: '12px' }}>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                          <div style={{ background: 'linear-gradient(135deg, #0284c7 0%, #38bdf8 100%)', padding: '8px 12px', borderRadius: '10px', boxShadow: '0 0 14px rgba(56, 189, 248, 0.4)' }}>
-                                            <FolderOpen size={20} color="#ffffff" />
-                                          </div>
-                                          <div>
-                                            <div style={{ fontSize: '1rem', fontWeight: '900', color: '#ffffff', letterSpacing: '0.02em', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                              <span>📂 BATCH FOLDER CONTENTS:</span>
-                                              <span style={{ fontFamily: 'monospace', color: '#38bdf8', background: 'rgba(56, 189, 248, 0.15)', border: '1px solid #38bdf8', padding: '2px 10px', borderRadius: '8px', fontSize: '0.9rem' }}>
-                                                {group.batchKey}
-                                              </span>
-                                            </div>
-                                            <div style={{ fontSize: '0.76rem', color: '#94a3b8', fontWeight: '600', marginTop: '2px' }}>
-                                              Showing all {group.items.length} sub-indents ({group.batchKey}/01 to {group.batchKey}/{group.items.length.toString().padStart(2, '0')})
-                                            </div>
-                                          </div>
-                                        </div>
+                               {/* EXPANDED SUB-ITEMS ACCORDION DRAWER CONTAINER (/01 to /50) */}
+                               {isExpanded && (
+                                 <tr key={`expanded_${group.batchKey}`}>
+                                   <td colSpan="6" style={{ padding: '16px 20px 24px 20px', background: '#f8fafc' }}>
+                                     <div style={{
+                                       border: '1.5px solid #cbd5e1',
+                                       borderRadius: '16px',
+                                       padding: '20px 22px',
+                                       background: '#ffffff',
+                                       boxShadow: '0 10px 30px rgba(15, 23, 42, 0.08)'
+                                     }}>
+                                       {/* Drawer Header Toolbar */}
+                                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', borderBottom: '1.5px solid #e2e8f0', paddingBottom: '12px', flexWrap: 'wrap', gap: '12px' }}>
+                                         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                           <div style={{ background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)', padding: '8px 12px', borderRadius: '10px' }}>
+                                             <FolderOpen size={20} color="#ffffff" />
+                                           </div>
+                                           <div>
+                                             <div style={{ fontSize: '1rem', fontWeight: '900', color: '#0f172a', letterSpacing: '0.02em', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                               <span>📂 BATCH FOLDER CONTENTS:</span>
+                                               <span style={{ fontFamily: 'monospace', color: '#0284c7', background: '#e0f2fe', border: '1px solid #7dd3fc', padding: '2px 10px', borderRadius: '8px', fontSize: '0.9rem', fontWeight: '900' }}>
+                                                 {group.batchKey}
+                                               </span>
+                                             </div>
+                                             <div style={{ fontSize: '0.76rem', color: '#64748b', fontWeight: '600', marginTop: '2px' }}>
+                                               Showing all {group.items.length} sub-indents ({group.batchKey}/01 to {group.batchKey}/{group.items.length.toString().padStart(2, '0')})
+                                             </div>
+                                           </div>
+                                         </div>
 
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-                                          {/* ⚡ 1-CLICK BULK BATCH QUOTE ALL CONTROL BAR */}
+                                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                                           {/* ⚡ 1-CLICK BULK BATCH QUOTE ALL CONTROL BAR */}
+                                            <button
+                                              type="button"
+                                              onClick={() => handleBatchSubmitAll(group.batchKey, group.items)}
+                                              className="btn btn-primary"
+                                              style={{
+                                                padding: '6px 14px',
+                                                fontSize: '0.82rem',
+                                                fontWeight: '900',
+                                                background: 'linear-gradient(135deg, #0284c7 0%, #059669 100%)',
+                                                border: 'none',
+                                                borderRadius: '10px',
+                                                cursor: 'pointer',
+                                                display: 'inline-flex',
+                                                alignItems: 'center',
+                                                gap: '6px'
+                                              }}
+                                              title="Submit individual typed rates for all batch sub-indents in 1-Click"
+                                            >
+                                              <Send size={15} /> 🚀 Submit All Batch Bids ({group.items.length})
+                                            </button>
+
+                                           <span style={{ fontSize: '0.78rem', background: '#e0f2fe', color: '#0284c7', border: '1px solid #7dd3fc', padding: '4px 12px', borderRadius: '20px', fontWeight: '800' }}>
+                                             📍 {firstItem?.origin_city || 'Origin'} ➔ 🎯 <strong style={{ color: '#d97706', fontWeight: '900' }}>{firstItem?.dest_city || 'Destination'}</strong>
+                                           </span>
+                                           <span style={{ fontSize: '0.78rem', background: '#dcfce7', color: '#059669', border: '1px solid #6ee7b7', padding: '4px 12px', borderRadius: '20px', fontWeight: '800' }}>
+                                             ⚖️ {(totalBatchQty || 0).toLocaleString()} MT Batch Total
+                                           </span>
                                            <button
                                              type="button"
-                                             onClick={() => handleBatchSubmitAll(group.batchKey, group.items)}
-                                             className="btn btn-primary"
+                                             onClick={() => toggleBatchExpand(group.batchKey)}
+                                             className="btn"
                                              style={{
-                                               padding: '6px 14px',
-                                               fontSize: '0.82rem',
-                                               fontWeight: '900',
-                                               background: 'linear-gradient(135deg, #0284c7 0%, #059669 100%)',
-                                               border: '1.5px solid #34d399',
-                                               borderRadius: '10px',
-                                               cursor: 'pointer',
-                                               display: 'inline-flex',
-                                               alignItems: 'center',
-                                               gap: '6px',
-                                               boxShadow: '0 0 14px rgba(5, 150, 105, 0.4)'
+                                               background: '#0284c7',
+                                               color: '#ffffff',
+                                               border: 'none',
+                                               padding: '5px 14px',
+                                               fontSize: '0.8rem',
+                                               fontWeight: '800',
+                                               borderRadius: '8px',
+                                               cursor: 'pointer'
                                              }}
-                                             title="Submit individual typed rates for all batch sub-indents in 1-Click"
                                            >
-                                             <Send size={15} /> 🚀 Submit All Batch Bids ({group.items.length})
+                                             📂 Close Batch 🔼
                                            </button>
+                                         </div>
+                                       </div>
 
-                                          <span style={{ fontSize: '0.78rem', background: 'rgba(56, 189, 248, 0.15)', color: '#38bdf8', border: '1px solid rgba(56, 189, 248, 0.4)', padding: '4px 12px', borderRadius: '20px', fontWeight: '800' }}>
-                                            📍 {firstItem?.origin_city || 'Origin'} ➔ 🎯 <strong style={{ color: '#fbbf24', fontWeight: '900' }}>{firstItem?.dest_city || 'Destination'}</strong>
-                                          </span>
-                                          <span style={{ fontSize: '0.78rem', background: 'rgba(16, 185, 129, 0.15)', color: '#34d399', border: '1px solid rgba(16, 185, 129, 0.4)', padding: '4px 12px', borderRadius: '20px', fontWeight: '800' }}>
-                                            ⚖️ {(totalBatchQty || 0).toLocaleString()} MT Batch Total
-                                          </span>
-                                          <button
-                                            type="button"
-                                            onClick={() => toggleBatchExpand(group.batchKey)}
-                                            className="btn"
-                                            style={{
-                                              background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)',
-                                              color: '#ffffff',
-                                              border: '1px solid #0284c7',
-                                              padding: '5px 14px',
-                                              fontSize: '0.8rem',
-                                              fontWeight: '800',
-                                              borderRadius: '8px',
-                                              cursor: 'pointer'
-                                            }}
-                                          >
-                                            📂 Close Batch 🔼
-                                          </button>
-                                        </div>
-                                      </div>
+                                       {/* Sub-Items Clean Table (Matching User Reference Image 🚀) */}
+                                       <div style={{ maxHeight: '80vh', overflowY: 'auto', borderRadius: '12px', border: '1px solid #cbd5e1' }}>
+                                         <table className="custom-table" style={{ width: '100%', margin: 0, background: '#ffffff' }}>
+                                           <thead>
+                                             <tr style={{ background: '#f1f5f9' }}>
+                                               <th style={{ color: '#0f172a', padding: '10px 14px', fontWeight: '900', borderBottom: '2px solid #cbd5e1' }}>REQUISITION CODE</th>
+                                               <th style={{ color: '#0f172a', padding: '10px 14px', fontWeight: '900', borderBottom: '2px solid #cbd5e1' }}>ROUTE / COMPANY</th>
+                                               <th style={{ color: '#0f172a', padding: '10px 14px', fontWeight: '900', borderBottom: '2px solid #cbd5e1' }}>CARGO / QTY</th>
+                                               <th style={{ color: '#0f172a', padding: '10px 14px', fontWeight: '900', borderBottom: '2px solid #cbd5e1' }}>TARGET DATE</th>
+                                               <th style={{ color: '#0f172a', padding: '10px 14px', fontWeight: '900', borderBottom: '2px solid #cbd5e1' }}>SUBMIT YOUR RATE / BID</th>
+                                               <th style={{ color: '#0f172a', padding: '10px 14px', textAlign: 'right', fontWeight: '900', borderBottom: '2px solid #cbd5e1' }}>STATUS</th>
+                                             </tr>
+                                           </thead>
+                                           <tbody>
+                                             {(group.items || []).map((req, rIdx) => {
+                                               const myExistingBid = (mySubmissions || []).find((s) => String(s.rate_request_id) === String(req.id) || String(s.rate_request_id) === String(req.request_no));
+                                               const isAwarded = req.status === 'Awarded';
+                                               const currentInputRate = quickRates[req.id] || '';
+                                               const displayCode = req.request_no || req.title || 'REQ';
 
-                                      {/* Sub-Items Scrollable Clean Table (Expanded Full View 🚀) */}
-                                      <div style={{ maxHeight: '80vh', overflowY: 'auto', borderRadius: '12px', border: '1.5px solid rgba(56, 189, 248, 0.3)' }}>
-                                        <table className="custom-table" style={{ width: '100%', margin: 0 }}>
-                                          <thead>
-                                            <tr>
-                                              <th style={{ color: '#38bdf8', padding: '10px 14px', fontWeight: '900' }}>REQUISITION CODE</th>
-                                              <th style={{ color: '#38bdf8', padding: '10px 14px', fontWeight: '900' }}>ROUTE / COMPANY</th>
-                                              <th style={{ color: '#38bdf8', padding: '10px 14px', fontWeight: '900' }}>CARGO / QTY</th>
-                                              <th style={{ color: '#38bdf8', padding: '10px 14px', fontWeight: '900' }}>TARGET DATE</th>
-                                              <th style={{ color: '#38bdf8', padding: '10px 14px', fontWeight: '900' }}>SUBMIT YOUR RATE / BID</th>
-                                              <th style={{ color: '#38bdf8', padding: '10px 14px', textAlign: 'right', fontWeight: '900' }}>STATUS</th>
-                                            </tr>
-                                          </thead>
-                                          <tbody>
-                                            {(group.items || []).map((req, rIdx) => {
-                                              const myExistingBid = (mySubmissions || []).find((s) => String(s.rate_request_id) === String(req.id) || String(s.rate_request_id) === String(req.request_no));
-                                              const isAwarded = req.status === 'Awarded';
-                                              const currentInputRate = quickRates[req.id] || '';
-                                              const displayCode = req.request_no || req.title || 'REQ';
-
-                                              return (
-                                                <tr
-                                                  key={req.id || `sub_trans_${rIdx}`}
-                                                  style={{ background: rIdx % 2 === 0 ? 'rgba(255,255,255,0.03)' : 'transparent' }}
-                                                >
-                                                  <td style={{ padding: '10px 14px' }}>
-                                                    <span style={{
-                                                      fontFamily: 'monospace',
-                                                      fontSize: '0.84rem',
-                                                      fontWeight: '900',
-                                                      color: '#38bdf8',
-                                                      background: 'rgba(56, 189, 248, 0.15)',
-                                                      padding: '3px 10px',
-                                                      borderRadius: '6px',
-                                                      border: '1px solid #38bdf8',
-                                                      letterSpacing: '0.04em'
-                                                    }}>
-                                                      {displayCode}
-                                                    </span>
-                                                  </td>
-
-                                                  <td style={{ padding: '10px 14px' }}>
-                                                    <div style={{ fontWeight: '800', color: '#ffffff', fontSize: '0.9rem' }}>
-                                                      {req.company_unit || 'Shalimar Nutrients'}
-                                                    </div>
-                                                    <div style={{ fontSize: '0.8rem', color: '#e2e8f0', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: '700', marginTop: '2px' }}>
-                                                      <MapPin size={12} color="#38bdf8" /> 📍 {req.origin_city || 'N/A'} ➔ 🎯 <strong style={{ color: '#fbbf24', fontWeight: '900', fontSize: '0.92rem', letterSpacing: '0.01em' }}>{req.dest_city || 'N/A'}</strong>
-                                                    </div>
-                                                    {req.admin_counter_rate && (
-                                                       <span style={{ fontSize: '0.72rem', background: 'rgba(245, 158, 11, 0.2)', color: '#fbbf24', border: '1px solid #f59e0b', padding: '2px 8px', borderRadius: '6px', fontWeight: '800', display: 'inline-flex', alignItems: 'center', gap: '4px', marginTop: '4px' }}>
-                                                         🔥 Competing Transporter Bid: ₹{req.admin_counter_rate}/MT
-                                                       </span>
-                                                     )}
+                                               return (
+                                                 <tr
+                                                   key={req.id || `sub_trans_${rIdx}`}
+                                                   style={{ background: rIdx % 2 === 0 ? '#ffffff' : '#f8fafc', borderBottom: '1px solid #e2e8f0' }}
+                                                 >
+                                                   <td style={{ padding: '10px 14px' }}>
+                                                     <div style={{
+                                                       fontSize: '0.92rem',
+                                                       fontWeight: '900',
+                                                       color: '#0f172a',
+                                                       letterSpacing: '0.01em'
+                                                     }}>
+                                                       {displayCode}
+                                                     </div>
                                                    </td>
 
                                                    <td style={{ padding: '10px 14px' }}>
-                                                     <div style={{ fontWeight: '900', color: '#38bdf8', fontSize: '0.9rem' }}>
+                                                     <div style={{ fontSize: '0.82rem', color: '#475569', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: '600' }}>
+                                                       <MapPin size={12} color="#0284c7" /> 📍 {req.origin_city || 'N/A'} ➔ 🎯 <strong style={{ color: '#d97706', fontWeight: '800', fontSize: '0.88rem' }}>{req.dest_city || 'N/A'}</strong>
+                                                     </div>
+                                                     {req.admin_counter_rate && (
+                                                        <span style={{ fontSize: '0.72rem', background: '#fef3c7', color: '#d97706', border: '1px solid #f59e0b', padding: '2px 8px', borderRadius: '6px', fontWeight: '800', display: 'inline-flex', alignItems: 'center', gap: '4px', marginTop: '4px' }}>
+                                                          🔥 Competing Transporter Bid: ₹{req.admin_counter_rate}/MT
+                                                        </span>
+                                                      )}
+                                                   </td>
+
+                                                   <td style={{ padding: '10px 14px' }}>
+                                                     <div style={{ fontWeight: '900', color: '#0284c7', fontSize: '0.9rem' }}>
                                                        {req.required_qty ? Number(req.required_qty).toLocaleString() : 0} {req.unit || 'MT'}
                                                      </div>
-                                                     <div style={{ fontSize: '0.76rem', color: '#cbd5e1', fontWeight: '600' }}>{req.material_type || 'Cargo'}</div>
+                                                     <div style={{ fontSize: '0.74rem', color: '#64748b', fontWeight: '600', textTransform: 'uppercase' }}>{req.material_type || 'Cargo'}</div>
                                                    </td>
 
                                                    <td style={{ padding: '10px 14px' }}>
-                                                     <div style={{ fontSize: '0.84rem', color: '#f8fafc', fontWeight: '700' }}>{req.target_date || '-'}</div>
+                                                     <div style={{ fontSize: '0.84rem', color: '#334155', fontWeight: '700' }}>{req.target_date || '-'}</div>
                                                    </td>
 
                                                    <td style={{ padding: '10px 14px' }}>
