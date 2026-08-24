@@ -94,8 +94,21 @@ export async function loadDBFromSupabase() {
       .eq('id', CLOUD_ROW_ID)
       .maybeSingle();
 
-    if (error || !data || !data.data) {
-      console.warn('Initializing initial seed in Supabase Cloud...');
+    if (error) {
+      console.warn('Supabase fetch error, returning local cache fallback:', error);
+      try {
+        const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
+        if (raw) return JSON.parse(raw);
+      } catch (e) {}
+      return null;
+    }
+
+    if (!data || !data.data) {
+      console.warn('No cloud row found, attempting initial seed upload...');
+      try {
+        const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
+        if (raw) return JSON.parse(raw);
+      } catch (e) {}
       await saveDB(INITIAL_SEED_DATA);
       return INITIAL_SEED_DATA;
     }
