@@ -1048,8 +1048,8 @@ export const TransporterPortal = () => {
                                         </div>
                                       </div>
 
-                                      {/* Sub-Items Scrollable Clean Table */}
-                                      <div style={{ maxHeight: '420px', overflowY: 'auto', borderRadius: '12px', border: '1px solid var(--border-color)' }}>
+                                      {/* Sub-Items Scrollable Clean Table (Expanded Full View 🚀) */}
+                                      <div style={{ maxHeight: '80vh', overflowY: 'auto', borderRadius: '12px', border: '1.5px solid rgba(56, 189, 248, 0.3)' }}>
                                         <table className="custom-table" style={{ width: '100%', margin: 0 }}>
                                           <thead>
                                             <tr>

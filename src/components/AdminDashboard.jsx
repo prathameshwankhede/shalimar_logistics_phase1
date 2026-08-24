@@ -2305,8 +2305,8 @@ export const AdminDashboard = () => {
                                         </div>
                                       </div>
 
-                                      {/* Sub-Items Scrollable High-Tech Table */}
-                                      <div style={{ maxHeight: '450px', overflowY: 'auto', borderRadius: '14px', border: '1px solid rgba(255,255,255,0.15)', boxShadow: '0 10px 30px rgba(0,0,0,0.3)' }}>
+                                      {/* Sub-Items Scrollable High-Tech Table (Expanded Full View 🚀) */}
+                                      <div style={{ maxHeight: '80vh', overflowY: 'auto', borderRadius: '14px', border: '1.5px solid rgba(56, 189, 248, 0.3)', boxShadow: '0 10px 30px rgba(0,0,0,0.3)' }}>
                                         <table className="custom-table" style={{ width: '100%', margin: 0 }}>
                                           <thead>
                                             <tr>
@@ -2349,11 +2349,11 @@ export const AdminDashboard = () => {
                                                   </td>
 
                                                   <td style={{ padding: '12px 16px' }}>
-                                                    <div style={{ fontWeight: '800', color: '#ffffff', fontSize: '0.88rem' }}>
+                                                    <div style={{ fontWeight: '800', color: '#ffffff', fontSize: '0.9rem' }}>
                                                       {req.company_unit || 'Shalimar Nutrients'}
                                                     </div>
-                                                    <div style={{ fontSize: '0.78rem', color: '#94a3b8', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}>
-                                                      <MapPin size={13} color="#0284c7" /> {req.origin_city} ➔ 🎯 <strong style={{ color: '#fbbf24', fontWeight: '900' }}>{req.dest_city}</strong>
+                                                    <div style={{ fontSize: '0.8rem', color: '#e2e8f0', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px', fontWeight: '700' }}>
+                                                      <MapPin size={13} color="#38bdf8" /> {req.origin_city} ➔ 🎯 <strong style={{ color: '#fbbf24', fontWeight: '900' }}>{req.dest_city}</strong>
                                                     </div>
                                                   </td>
 
