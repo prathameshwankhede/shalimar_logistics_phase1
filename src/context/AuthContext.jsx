@@ -62,9 +62,11 @@ export const AuthProvider = ({ children }) => {
       if (!prevSub) {
         subMap.set(String(s.id), s);
       } else {
-        const timePrev = new Date(prevSub.submitted_at || prevSub.frozen_at || 0).getTime();
-        const timeCloud = new Date(s.submitted_at || s.frozen_at || 0).getTime();
-        if (timeCloud >= timePrev) {
+        const timePrev = new Date(prevSub.submitted_at || prevSub.frozen_at || 0).getTime() || 0;
+        const timeCloud = new Date(s.submitted_at || s.frozen_at || 0).getTime() || 0;
+        const safePrev = isNaN(timePrev) ? 0 : timePrev;
+        const safeCloud = isNaN(timeCloud) ? 0 : timeCloud;
+        if (safeCloud >= safePrev) {
           subMap.set(String(s.id), s);
         }
       }

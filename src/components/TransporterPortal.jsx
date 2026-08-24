@@ -170,22 +170,28 @@ export const TransporterPortal = () => {
     );
   }
 
-  // DATA ISOLATION: Fetch data associated with this Transporter ID, Code, or Username
-  const mySubmissions = (db.rate_submissions || []).filter((s) =>
-    String(s.transporter_id) === String(currentTransporter?.id) ||
-    String(s.transporter_id) === String(currentTransporter?.code) ||
-    String(s.transporter_id) === String(currentTransporter?.username)
-  );
-  const myAllocations = (db.allocations || []).filter((a) =>
-    String(a.transporter_id) === String(currentTransporter?.id) ||
-    String(a.transporter_id) === String(currentTransporter?.code) ||
-    String(a.transporter_id) === String(currentTransporter?.username)
-  );
-  const myDispatches = (db.truck_dispatches || []).filter((d) =>
-    String(d.transporter_id) === String(currentTransporter?.id) ||
-    String(d.transporter_id) === String(currentTransporter?.code) ||
-    String(d.transporter_id) === String(currentTransporter?.username)
-  );
+  // DATA ISOLATION: Fetch data associated with this Transporter ID, Code, or Username (Case-Insensitive 🛡️)
+  const mySubmissions = (db.rate_submissions || []).filter((s) => {
+    const sId = String(s.transporter_id || '').toLowerCase();
+    const cId = String(currentTransporter?.id || '').toLowerCase();
+    const cCode = String(currentTransporter?.code || '').toLowerCase();
+    const cUser = String(currentTransporter?.username || '').toLowerCase();
+    return (cId && sId === cId) || (cCode && sId === cCode) || (cUser && sId === cUser);
+  });
+  const myAllocations = (db.allocations || []).filter((a) => {
+    const aId = String(a.transporter_id || '').toLowerCase();
+    const cId = String(currentTransporter?.id || '').toLowerCase();
+    const cCode = String(currentTransporter?.code || '').toLowerCase();
+    const cUser = String(currentTransporter?.username || '').toLowerCase();
+    return (cId && aId === cId) || (cCode && aId === cCode) || (cUser && aId === cUser);
+  });
+  const myDispatches = (db.truck_dispatches || []).filter((d) => {
+    const dId = String(d.transporter_id || '').toLowerCase();
+    const cId = String(currentTransporter?.id || '').toLowerCase();
+    const cCode = String(currentTransporter?.code || '').toLowerCase();
+    const cUser = String(currentTransporter?.username || '').toLowerCase();
+    return (cId && dId === cId) || (cCode && dId === cCode) || (cUser && dId === cUser);
+  });
 
   // Available open rate requests (ONLY ACTIVE UNACCEPTED & UNAWARDED REQUIREMENTS)
   const openRateRequests = (db.rate_requests || []).filter((r) => {
