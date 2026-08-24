@@ -1884,10 +1884,9 @@ export const AdminDashboard = () => {
                           >
                             {(() => {
                               const dropList = Array.from(
-                                new Set([
-                                  ...(db.company_masters || []).map((c) => c.drop_location_name || c.name || c.city).filter(Boolean),
-                                  ...(db.city_masters || []).map((c) => c.city).filter(Boolean)
-                                ])
+                                new Set(
+                                  (db.company_masters || []).map((c) => c.drop_location_name || c.name || c.city).filter(Boolean)
+                                )
                               );
                               if (dropList.length === 0) {
                                 return <option value="">-- No Location in Master Directory (Add in Master Directory) --</option>;
