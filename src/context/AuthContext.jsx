@@ -129,7 +129,7 @@ export const AuthProvider = ({ children }) => {
         const sharedDb = await loadDBFromSupabase();
 
         if (sharedDb && isMounted) {
-          setDb(sharedDb);
+          setDb((prevDb) => mergeDbStates(sharedDb, prevDb));
         }
       } catch (e) {
         console.error('Supabase load failed:', e);
@@ -215,12 +215,12 @@ export const AuthProvider = ({ children }) => {
   };
 
   const updateDB = async (newDb) => {
-    const updatedData = { ...newDb, _updatedAt: Date.now() };
-    setDb({ ...updatedData });
+    const updatedData = { ...newDb, _updatedAt: Date.now() + 1000 };
+    setDb((prevDb) => mergeDbStates(updatedData, prevDb));
     try {
       const mergedResult = await saveDB(updatedData);
       if (mergedResult) {
-        setDb({ ...mergedResult });
+        setDb((prevDb) => mergeDbStates(mergedResult, prevDb));
       }
     } catch (e) {
       console.error('Supabase save failed in updateDB:', e);
