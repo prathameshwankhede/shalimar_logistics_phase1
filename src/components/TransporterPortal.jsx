@@ -973,7 +973,7 @@ export const TransporterPortal = () => {
                               {/* EXPANDED SUB-ITEMS ACCORDION DRAWER CONTAINER (/01 to /50) */}
                               {isExpanded && (
                                 <tr key={`expanded_${group.batchKey}`}>
-                                  <td colSpan="6" style={{ padding: '16px 20px 24px 20px' }}>
+                                  <td colSpan="6" className="preserve-dark-wrapper" style={{ padding: '16px 20px 24px 20px', background: '#0f172a' }}>
                                     <div className="preserve-dark-card" style={{
                                       border: '2px solid #38bdf8',
                                       borderRadius: '16px',
