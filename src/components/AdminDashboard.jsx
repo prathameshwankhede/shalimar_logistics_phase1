@@ -195,43 +195,11 @@ export const AdminDashboard = () => {
 
   const handleAddCompanyMaster = (e) => {
     e.preventDefault();
-    if (!newCompanyMaster.name.trim()) return;
-
-    // 🛡️ Live Validation Rules
-    if (newCompanyMaster.pincode) {
-      const pinVal = validatePincode(newCompanyMaster.pincode);
-      if (!pinVal.valid) {
-        alert(`📍 Postal PIN Error: ${pinVal.message}`);
-        return;
-      }
-    }
-    if (newCompanyMaster.mobile_no) {
-      const mobVal = validateMobile(newCompanyMaster.mobile_no);
-      if (!mobVal.valid) {
-        alert(`📱 Mobile Number Error: ${mobVal.message}`);
-        return;
-      }
-    }
-    if (newCompanyMaster.gstin) {
-      const gstVal = validateGSTIN(newCompanyMaster.gstin);
-      if (!gstVal.valid) {
-        alert(`📄 GSTIN Number Error: ${gstVal.message}`);
-        return;
-      }
-    }
-    if (newCompanyMaster.pan_no) {
-      const panVal = validatePAN(newCompanyMaster.pan_no);
-      if (!panVal.valid) {
-        alert(`💳 PAN Number Error: ${panVal.message}`);
-        return;
-      }
-    }
-    if (newCompanyMaster.proprietor_name) {
-      const nameVal = validateName(newCompanyMaster.proprietor_name);
-      if (!nameVal.valid) {
-        alert(`👤 Proprietor Name Error: ${nameVal.message}`);
-        return;
-      }
+    // Clean company unit name
+    const compName = (newCompanyMaster.name || '').trim();
+    if (!compName) {
+      alert('🏢 Please enter a Company / Plant Unit or Location Name.');
+      return;
     }
 
     const newCompObj = {
