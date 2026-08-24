@@ -255,7 +255,7 @@ export const TransporterPortal = () => {
     document.body.removeChild(link);
   };
 
-  // FAST 1-LINE INLINE SUBMIT HANDLER
+  // FAST 1-LINE INLINE SUBMIT HANDLER (Supports Double/Re-Quoted Bids 🚀)
   const handleExpressQuickSubmit = (e, req) => {
     e.preventDefault();
     if (!currentTransporter) {
@@ -270,14 +270,19 @@ export const TransporterPortal = () => {
       return;
     }
 
-    const existingBid = mySubmissions.find((s) => String(s.rate_request_id) === String(req.id) || String(s.rate_request_id) === String(req.request_no));
-    if (existingBid) {
-      alert(`🛑 RATE BID LOCKED: You have already submitted ₹${existingBid.rate_per_unit}/MT for ${req.request_no}. Rates cannot be modified once submitted.`);
+    let updatedSubmissions = [...(db.rate_submissions || [])];
+    const existingIdx = updatedSubmissions.findIndex(
+      (s) => (String(s.rate_request_id) === String(req.id) || String(s.rate_request_id) === String(req.request_no)) &&
+             (String(s.transporter_id) === String(currentTransporter.id) || String(s.transporter_id) === String(currentTransporter.code) || String(s.transporter_id) === String(currentTransporter.username))
+    );
+
+    if (existingIdx >= 0 && updatedSubmissions[existingIdx].is_frozen) {
+      alert(`🛑 RATE FROZEN: Your agreed rate of ₹${updatedSubmissions[existingIdx].rate_per_unit}/MT has already been accepted/awarded and cannot be changed.`);
       return;
     }
 
-    const newSubId = `sub_${(currentTransporter?.code || "tr").toLowerCase()}_${Date.now()}`;
-    const newSubmission = {
+    const newSubId = existingIdx >= 0 ? updatedSubmissions[existingIdx].id : `sub_${(currentTransporter?.code || "tr").toLowerCase()}_${Date.now()}`;
+    const subObj = {
       id: newSubId,
       rate_request_id: req.id,
       transporter_id: currentTransporter.id,
@@ -289,20 +294,26 @@ export const TransporterPortal = () => {
       submitted_at: new Date().toISOString()
     };
 
+    if (existingIdx >= 0) {
+      updatedSubmissions[existingIdx] = subObj;
+    } else {
+      updatedSubmissions.unshift(subObj);
+    }
+
     const updatedDb = addSecurityLog(
       {
         ...db,
-        rate_submissions: [newSubmission, ...(db.rate_submissions || [])]
+        rate_submissions: updatedSubmissions
       },
-      `SUBMIT_RATE_BID (LOCKED: ₹${rateVal}/MT for ${req.request_no})`,
+      `SUBMIT_RATE_BID (Updated ₹${rateVal}/MT for ${req.request_no})`,
       currentTransporter.company_name,
       'transporter',
       'BID_SUBMITTED 🛡️'
     );
 
     updateDB(updatedDb);
-    alert(`🎉 SUCCESS: Fast Quote ₹${rateVal.toLocaleString()}/MT submitted & locked 🔒 for ${req.request_no}!`);
-    setSuccessNotice(`⚡ Fast Quote ₹${rateVal.toLocaleString()}/MT submitted & locked 🔒 for ${req.request_no}!`);
+    alert(`🎉 SUCCESS: Quote rate ₹${rateVal.toLocaleString()}/MT saved & updated for ${req.request_no}!`);
+    setSuccessNotice(`⚡ Quote rate ₹${rateVal.toLocaleString()}/MT saved & updated for ${req.request_no}!`);
     setQuickRates((prev) => ({ ...prev, [req.id]: '' }));
     setTimeout(() => setSuccessNotice(''), 5000);
   };
@@ -323,22 +334,26 @@ export const TransporterPortal = () => {
       return;
     }
 
-    // Check if already submitted (Anti-modification check)
-    const existingBid = mySubmissions.find((s) => String(s.rate_request_id) === String(selectedReqForBid.id) || String(s.rate_request_id) === String(selectedReqForBid.request_no));
-    if (existingBid) {
-      alert(`🛑 RATE BID LOCKED: You have already submitted a rate of ₹${existingBid.rate_per_unit}/MT for ${selectedReqForBid.request_no}. Rates cannot be modified once submitted.`);
-      setSelectedReqForBid(null);
-      return;
-    }
-
     const rateVal = parseFloat(String(bidForm.rate_per_unit || '').replace(/,/g, '').trim());
     if (!rateVal || isNaN(rateVal) || rateVal <= 0) {
       alert('Please enter a valid freight rate per MT (e.g. 2450).');
       return;
     }
 
-    const newSubId = `sub_${(currentTransporter?.code || "tr").toLowerCase()}_${Date.now()}`;
-    const newSubmission = {
+    let updatedSubmissions = [...(db.rate_submissions || [])];
+    const existingIdx = updatedSubmissions.findIndex(
+      (s) => (String(s.rate_request_id) === String(selectedReqForBid.id) || String(s.rate_request_id) === String(selectedReqForBid.request_no)) &&
+             (String(s.transporter_id) === String(currentTransporter.id) || String(s.transporter_id) === String(currentTransporter.code) || String(s.transporter_id) === String(currentTransporter.username))
+    );
+
+    if (existingIdx >= 0 && updatedSubmissions[existingIdx].is_frozen) {
+      alert(`🛑 RATE FROZEN: Your agreed rate of ₹${updatedSubmissions[existingIdx].rate_per_unit}/MT has already been accepted/awarded and cannot be changed.`);
+      setSelectedReqForBid(null);
+      return;
+    }
+
+    const newSubId = existingIdx >= 0 ? updatedSubmissions[existingIdx].id : `sub_${(currentTransporter?.code || "tr").toLowerCase()}_${Date.now()}`;
+    const subObj = {
       id: newSubId,
       rate_request_id: selectedReqForBid.id,
       transporter_id: currentTransporter.id,
@@ -350,20 +365,26 @@ export const TransporterPortal = () => {
       submitted_at: new Date().toISOString()
     };
 
+    if (existingIdx >= 0) {
+      updatedSubmissions[existingIdx] = subObj;
+    } else {
+      updatedSubmissions.unshift(subObj);
+    }
+
     const updatedDb = addSecurityLog(
       {
         ...db,
-        rate_submissions: [newSubmission, ...(db.rate_submissions || [])]
+        rate_submissions: updatedSubmissions
       },
-      `SUBMIT_RATE_BID (LOCKED: ₹${rateVal}/MT for ${selectedReqForBid.request_no})`,
+      `SUBMIT_RATE_BID (Updated ₹${rateVal}/MT for ${selectedReqForBid.request_no})`,
       currentTransporter.company_name,
       'transporter',
       'BID_SUBMITTED 🛡️'
     );
 
     updateDB(updatedDb);
-    alert(`🎉 SUCCESS: Rate quote ₹${rateVal.toLocaleString()}/MT submitted & locked 🔒 for ${selectedReqForBid.request_no}!`);
-    setSuccessNotice(`Rate quote ₹${rateVal.toLocaleString()}/MT submitted & locked 🔒 for ${selectedReqForBid.request_no}!`);
+    alert(`🎉 SUCCESS: Rate quote ₹${rateVal.toLocaleString()}/MT saved & updated for ${selectedReqForBid.request_no}!`);
+    setSuccessNotice(`Rate quote ₹${rateVal.toLocaleString()}/MT saved & updated for ${selectedReqForBid.request_no}!`);
     setSelectedReqForBid(null);
     setBidForm({ rate_per_unit: '', transit_days: '2', notes: '' });
 
