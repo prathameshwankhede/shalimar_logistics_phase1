@@ -392,6 +392,15 @@ export const AuthProvider = ({ children }) => {
           status: 'Active'
         };
       }
+    } else if (currentUser.role === 'admin') {
+      // 🛡️ ADMIN EMBEDDED TEST TRANSPORTER PROFILE (Allows Admin to test bidding seamlessly)
+      currentTransporter = (db.transporters || [])[0] || {
+        id: 'trans_s001',
+        company_name: 'Shalimar Express Logistics (Admin Test)',
+        code: 'S001',
+        contact_person: 'Logistics Desk',
+        mobile: '+91 98230 11223'
+      };
     }
   }
 
