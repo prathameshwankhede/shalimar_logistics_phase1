@@ -406,59 +406,74 @@ export async function saveDB(data) {
       if (cloudRows && cloudRows.length > 0 && cloudRows[0].data) {
         const existingCloudDb = cloudRows[0].data;
 
-        // Merge rate_submissions by ID so no bid from any mobile or laptop is ever deleted
-        const subMap = new Map();
-        (existingCloudDb.rate_submissions || []).forEach((s) => subMap.set(String(s.id), s));
-        (dataToSave.rate_submissions || []).forEach((s) => subMap.set(String(s.id), s));
+        // 🛑 Check if this is an intentional Clear / Reset operation
+        const isResetOp = data._isResetOperation === true || (
+          Array.isArray(data.rate_requests) && data.rate_requests.length === 0 &&
+          Array.isArray(data.rate_submissions) && data.rate_submissions.length === 0 &&
+          Array.isArray(data.allocations) && data.allocations.length === 0
+        );
 
-        // Merge rate_requests by ID
-        const reqMap = new Map();
-        (existingCloudDb.rate_requests || []).forEach((r) => reqMap.set(String(r.id), r));
-        (dataToSave.rate_requests || []).forEach((r) => reqMap.set(String(r.id), r));
+        if (isResetOp) {
+          // For intentional reset operations, DO NOT merge old operational records from cloud!
+          mergedData = {
+            ...existingCloudDb,
+            ...dataToSave,
+            _updatedAt: Date.now(),
+            rate_requests: [],
+            rate_submissions: [],
+            allocations: [],
+            contracts: [],
+            truck_dispatches: [],
+            whatsapp_notifications: []
+          };
+        } else {
+          // Normal concurrent save: merge records by ID
+          const subMap = new Map();
+          (existingCloudDb.rate_submissions || []).forEach((s) => subMap.set(String(s.id), s));
+          (dataToSave.rate_submissions || []).forEach((s) => subMap.set(String(s.id), s));
 
-        // Merge transporters by ID
-        const transMap = new Map();
-        (existingCloudDb.transporters || []).forEach((t) => transMap.set(String(t.id || t.code), t));
-        (dataToSave.transporters || []).forEach((t) => transMap.set(String(t.id || t.code), t));
+          const reqMap = new Map();
+          (existingCloudDb.rate_requests || []).forEach((r) => reqMap.set(String(r.id), r));
+          (dataToSave.rate_requests || []).forEach((r) => reqMap.set(String(r.id), r));
 
-        // Merge users by ID
-        const userMap = new Map();
-        (existingCloudDb.users || []).forEach((u) => userMap.set(String(u.id || u.username), u));
-        (dataToSave.users || []).forEach((u) => userMap.set(String(u.id || u.username), u));
+          const transMap = new Map();
+          (existingCloudDb.transporters || []).forEach((t) => transMap.set(String(t.id || t.code), t));
+          (dataToSave.transporters || []).forEach((t) => transMap.set(String(t.id || t.code), t));
 
-        // Merge allocations by ID
-        const allocMap = new Map();
-        (existingCloudDb.allocations || []).forEach((a) => allocMap.set(String(a.id), a));
-        (dataToSave.allocations || []).forEach((a) => allocMap.set(String(a.id), a));
+          const userMap = new Map();
+          (existingCloudDb.users || []).forEach((u) => userMap.set(String(u.id || u.username), u));
+          (dataToSave.users || []).forEach((u) => userMap.set(String(u.id || u.username), u));
 
-        // Merge contracts by ID
-        const contractMap = new Map();
-        (existingCloudDb.contracts || []).forEach((c) => contractMap.set(String(c.id), c));
-        (dataToSave.contracts || []).forEach((c) => contractMap.set(String(c.id), c));
+          const allocMap = new Map();
+          (existingCloudDb.allocations || []).forEach((a) => allocMap.set(String(a.id), a));
+          (dataToSave.allocations || []).forEach((a) => allocMap.set(String(a.id), a));
 
-        // Merge truck_dispatches by ID
-        const dispatchMap = new Map();
-        (existingCloudDb.truck_dispatches || []).forEach((d) => dispatchMap.set(String(d.id), d));
-        (dataToSave.truck_dispatches || []).forEach((d) => dispatchMap.set(String(d.id), d));
+          const contractMap = new Map();
+          (existingCloudDb.contracts || []).forEach((c) => contractMap.set(String(c.id), c));
+          (dataToSave.contracts || []).forEach((c) => contractMap.set(String(c.id), c));
 
-        // Merge security_audit_logs by ID
-        const logMap = new Map();
-        (existingCloudDb.security_audit_logs || []).forEach((l) => logMap.set(String(l.id), l));
-        (dataToSave.security_audit_logs || []).forEach((l) => logMap.set(String(l.id), l));
+          const dispatchMap = new Map();
+          (existingCloudDb.truck_dispatches || []).forEach((d) => dispatchMap.set(String(d.id), d));
+          (dataToSave.truck_dispatches || []).forEach((d) => dispatchMap.set(String(d.id), d));
 
-        mergedData = {
-          ...existingCloudDb,
-          ...dataToSave,
-          _updatedAt: Date.now(),
-          rate_requests: Array.from(reqMap.values()),
-          rate_submissions: Array.from(subMap.values()),
-          transporters: Array.from(transMap.values()),
-          users: Array.from(userMap.values()),
-          allocations: Array.from(allocMap.values()),
-          contracts: Array.from(contractMap.values()),
-          truck_dispatches: Array.from(dispatchMap.values()),
-          security_audit_logs: Array.from(logMap.values()).slice(0, 100)
-        };
+          const logMap = new Map();
+          (existingCloudDb.security_audit_logs || []).forEach((l) => logMap.set(String(l.id), l));
+          (dataToSave.security_audit_logs || []).forEach((l) => logMap.set(String(l.id), l));
+
+          mergedData = {
+            ...existingCloudDb,
+            ...dataToSave,
+            _updatedAt: Date.now(),
+            rate_requests: Array.from(reqMap.values()),
+            rate_submissions: Array.from(subMap.values()),
+            transporters: Array.from(transMap.values()),
+            users: Array.from(userMap.values()),
+            allocations: Array.from(allocMap.values()),
+            contracts: Array.from(contractMap.values()),
+            truck_dispatches: Array.from(dispatchMap.values()),
+            security_audit_logs: Array.from(logMap.values()).slice(0, 100)
+          };
+        }
       }
     } catch (fetchErr) {
       console.warn('Pre-fetch cloud DB failed, fallback to local dataToSave:', fetchErr);

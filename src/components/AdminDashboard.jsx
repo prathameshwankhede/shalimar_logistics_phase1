@@ -601,6 +601,7 @@ export const AdminDashboard = () => {
       {
         ...db,
         _updatedAt: Date.now() + 100000,
+        _isResetOperation: true,
         rate_requests: [],
         rate_submissions: [],
         allocations: [],
