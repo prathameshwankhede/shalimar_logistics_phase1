@@ -11,9 +11,9 @@ export const WhatsAppBroadcastModal = ({ isOpen, onClose, batchData, transporter
 
   if (!isOpen || !batchData) return null;
 
-  const { batchCode, itemsCount, origin, dest, totalQty, materialType, targetDate, companyUnit, rawMessage } = batchData;
+  const { batchCode, itemsCount, origin, dest, totalQty, materialType, targetDate, rawMessage } = batchData;
 
-  const defaultMessage = rawMessage || `🚨 *SHALIMAR NUTRIENTS — NEW FREIGHT BID BROADCAST* 🚨\n\n🏢 *Company Unit*: ${companyUnit || 'Shalimar Nutrients Pvt Ltd'}\n📦 *Batch Ref*: ${batchCode} (${itemsCount || 1} Indent Items)\n📍 *Route*: ${origin} ➔ ${dest}\n⚖️ *Total Volume*: ${totalQty} MT (${materialType})\n📅 *Target Dispatch Date*: ${targetDate}\n\n👉 *Log in to TransFlow Logistics Portal to submit your competitive freight rates:* \n🔗 https://transflow-logistics.vercel.app/\n\n*Shalimar Group Transport Procurement Desk*`;
+  const defaultMessage = rawMessage || `🚨 *SHALIMAR NUTRIENTS — NEW FREIGHT BID BROADCAST* 🚨\n\n📦 *Batch Ref*: ${batchCode} (${itemsCount || 1} Indent Items)\n📍 *Route*: ${origin} ➔ ${dest}\n⚖️ *Total Volume*: ${totalQty} MT (${materialType})\n📅 *Target Dispatch Date*: ${targetDate}\n\n👉 *Log in to TransFlow Logistics Portal to submit your competitive freight rates:* \n🔗 https://transflow-logistics.vercel.app/\n\n*Shalimar Group Transport Procurement Desk*`;
 
   const groupWebLink = `https://web.whatsapp.com/send?text=${encodeURIComponent(defaultMessage)}`;
   const groupAppLink = `whatsapp://send?text=${encodeURIComponent(defaultMessage)}`;

@@ -1017,7 +1017,7 @@ export const AdminDashboard = () => {
           recipientPhone: transporter.mobile,
           recipientName: transporter.company_name,
           title: `🚨 New Freight Bid Broadcast: ${batchCode}`,
-          message: `🚨 *SHALIMAR LOGISTICS BID ALERT* 🚨\n\n🏢 Company: ${newRequests[0].company_unit}\n📦 Batch: ${batchCode} (${newRequests.length} Items)\n📍 Route: ${newRequests[0].origin_city} ➔ ${newRequests[0].dest_city}\n⚖️ Volume: ${newRequests.reduce((a, b) => a + (Number(b.required_qty) || 0), 0)} MT\n📅 Target Date: ${newRequests[0].target_date}\n\nSubmit rates: https://transflow-logistics.vercel.app/`
+          message: `🚨 *SHALIMAR LOGISTICS BID ALERT* 🚨\n\n📦 Batch: ${batchCode} (${newRequests.length} Items)\n📍 Route: ${newRequests[0].origin_city} ➔ ${newRequests[0].dest_city}\n⚖️ Volume: ${newRequests.reduce((a, b) => a + (Number(b.required_qty) || 0), 0)} MT\n📅 Target Date: ${newRequests[0].target_date}\n\nSubmit rates: https://transflow-logistics.vercel.app/`
         });
       }
     });
@@ -1035,8 +1035,7 @@ export const AdminDashboard = () => {
         dest: newRequests[0].dest_city,
         totalQty: newRequests.reduce((a, b) => a + (Number(b.required_qty) || 0), 0),
         materialType: newRequests[0].material_type,
-        targetDate: newRequests[0].target_date,
-        companyUnit: newRequests[0].company_unit
+        targetDate: newRequests[0].target_date
       }
     });
 
@@ -2241,8 +2240,7 @@ export const AdminDashboard = () => {
                                                 dest: firstItem?.dest_city || 'Destination',
                                                 totalQty: totalBatchQty || 0,
                                                 materialType: firstItem?.material_type || 'Cargo',
-                                                targetDate: firstItem?.target_date || 'Target Date',
-                                                companyUnit: firstItem?.company_unit || 'Shalimar Nutrients'
+                                                targetDate: firstItem?.target_date || 'Target Date'
                                               }
                                             })}
                                             className="btn"
