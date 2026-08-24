@@ -1012,7 +1012,7 @@ export const AdminDashboard = () => {
     (db.transporters || []).forEach((transporter) => {
       if (transporter.mobile) {
         sendWhatsAppAlert({
-          db,
+          db: updatedDb,
           updateDB,
           recipientPhone: transporter.mobile,
           recipientName: transporter.company_name,
