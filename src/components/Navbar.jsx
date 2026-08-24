@@ -48,7 +48,7 @@ export const Navbar = () => {
           </div>
         </div>
 
-        {/* Clean Portal Role Status Badge & 1-Click Tester Switcher */}
+        {/* Clean Portal Role Status Badge */}
         {isAdmin ? (
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <div style={{ background: 'rgba(56, 189, 248, 0.12)', border: '1px solid rgba(56, 189, 248, 0.35)', padding: '6px 14px', borderRadius: '10px', display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -57,22 +57,24 @@ export const Navbar = () => {
                 👑 Shalimar Admin Control Center
               </span>
             </div>
-            <button
-              type="button"
-              onClick={() => quickSwitchUser('W001')}
-              className="btn btn-primary"
-              style={{ padding: '6px 14px', fontSize: '0.8rem', fontWeight: '900', borderRadius: '8px', background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)', border: 'none', color: '#ffffff', boxShadow: '0 0 12px rgba(16, 185, 129, 0.4)', cursor: 'pointer' }}
-              title="Switch to Transporter Bidding Portal (wankhede chakki) to test quotes"
-            >
-              🚛 Switch to Transporter Bidding View (W001)
-            </button>
+            {currentTransporter && (
+              <button
+                type="button"
+                onClick={() => quickSwitchUser(currentTransporter.username || currentTransporter.code)}
+                className="btn btn-primary"
+                style={{ padding: '6px 14px', fontSize: '0.8rem', fontWeight: '900', borderRadius: '8px', background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)', border: 'none', color: '#ffffff', boxShadow: '0 0 12px rgba(16, 185, 129, 0.4)', cursor: 'pointer' }}
+                title={`Switch to Transporter View (${currentTransporter.code})`}
+              >
+                🚛 Switch to Transporter View ({currentTransporter.code})
+              </button>
+            )}
           </div>
         ) : (
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <div style={{ background: 'rgba(16, 185, 129, 0.12)', border: '1px solid rgba(16, 185, 129, 0.35)', padding: '6px 14px', borderRadius: '10px', display: 'flex', alignItems: 'center', gap: '8px' }}>
               <Lock size={15} color="#10b981" />
               <span style={{ fontSize: '0.82rem', color: '#10b981', fontWeight: '800' }}>
-                🚛 Transporter Bidding Session ({currentTransporter?.code || 'W001'})
+                🚛 Transporter Bidding Session ({currentTransporter?.code || 'Transporter'})
               </span>
             </div>
             <button
