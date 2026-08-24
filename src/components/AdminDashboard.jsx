@@ -3081,7 +3081,7 @@ export const AdminDashboard = () => {
                 <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
                   <button
                     type="button"
-                    onClick={handleDownloadDatabaseBackup}
+                    onClick={handleExportBiddingReportCSV}
                     className="btn btn-success"
                     style={{
                       background: 'linear-gradient(135deg, #059669 0%, #10b981 100%)',
@@ -3096,6 +3096,28 @@ export const AdminDashboard = () => {
                       alignItems: 'center',
                       gap: '8px',
                       boxShadow: '0 4px 14px rgba(16, 185, 129, 0.4)'
+                    }}
+                  >
+                    <Download size={18} /> 📥 Download Report (Excel / CSV)
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleDownloadDatabaseBackup}
+                    className="btn btn-success"
+                    style={{
+                      background: 'linear-gradient(135deg, #0284c7 0%, #38bdf8 100%)',
+                      color: '#ffffff',
+                      border: 'none',
+                      padding: '12px 22px',
+                      fontSize: '0.9rem',
+                      fontWeight: '900',
+                      borderRadius: '12px',
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      boxShadow: '0 4px 14px rgba(56, 189, 248, 0.4)'
                     }}
                   >
                     <Download size={18} /> 📥 Download Full Database Backup (.json)
