@@ -2449,7 +2449,7 @@ export const AdminDashboard = () => {
                         // SINGLE REQUIREMENT ROW (non-batch)
                         const req = group.items[0];
                         const bids = (db.rate_submissions || []).filter((s) => String(s.rate_request_id) === String(req.id) || String(s.rate_request_id) === String(req.request_no));
-                        const validRates = bids.map((b) => b.rate_per_unit);
+                        const validRates = bids.map((b) => parseFloat(b.rate_per_unit)).filter((r) => !isNaN(r));
                         const lowestRate = validRates.length > 0 ? Math.min(...validRates) : null;
                         const displayCode = req.request_no || req.title;
 

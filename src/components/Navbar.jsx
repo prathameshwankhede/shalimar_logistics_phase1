@@ -4,7 +4,7 @@ import { ShieldCheck, LogOut, Lock, RefreshCw } from 'lucide-react';
 import { SHALIMAR_LOGO_BASE64 } from '../assets/logoBase64';
 
 export const Navbar = () => {
-  const { currentUser, currentTransporter, logout } = useAuth();
+  const { currentUser, currentTransporter, logout, quickSwitchUser } = useAuth();
   const isAdmin = currentUser?.role === 'admin';
 
   useEffect(() => {
@@ -48,20 +48,42 @@ export const Navbar = () => {
           </div>
         </div>
 
-        {/* Clean Portal Role Status Badge */}
+        {/* Clean Portal Role Status Badge & 1-Click Tester Switcher */}
         {isAdmin ? (
-          <div style={{ background: 'rgba(56, 189, 248, 0.12)', border: '1px solid rgba(56, 189, 248, 0.35)', padding: '6px 14px', borderRadius: '10px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <ShieldCheck size={16} color="#0284c7" />
-            <span style={{ fontSize: '0.82rem', color: 'var(--text-main)', fontWeight: '800' }}>
-              👑 Shalimar Admin Control Center
-            </span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <div style={{ background: 'rgba(56, 189, 248, 0.12)', border: '1px solid rgba(56, 189, 248, 0.35)', padding: '6px 14px', borderRadius: '10px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <ShieldCheck size={16} color="#0284c7" />
+              <span style={{ fontSize: '0.82rem', color: 'var(--text-main)', fontWeight: '800' }}>
+                👑 Shalimar Admin Control Center
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => quickSwitchUser('W001')}
+              className="btn btn-primary"
+              style={{ padding: '6px 14px', fontSize: '0.8rem', fontWeight: '900', borderRadius: '8px', background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)', border: 'none', color: '#ffffff', boxShadow: '0 0 12px rgba(16, 185, 129, 0.4)', cursor: 'pointer' }}
+              title="Switch to Transporter Bidding Portal (wankhede chakki) to test quotes"
+            >
+              🚛 Switch to Transporter Bidding View (W001)
+            </button>
           </div>
         ) : (
-          <div style={{ background: 'rgba(16, 185, 129, 0.12)', border: '1px solid rgba(16, 185, 129, 0.35)', padding: '6px 14px', borderRadius: '10px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Lock size={15} color="#10b981" />
-            <span style={{ fontSize: '0.82rem', color: '#10b981', fontWeight: '800' }}>
-              🚛 Isolated Transporter Session ({currentTransporter?.code})
-            </span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <div style={{ background: 'rgba(16, 185, 129, 0.12)', border: '1px solid rgba(16, 185, 129, 0.35)', padding: '6px 14px', borderRadius: '10px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Lock size={15} color="#10b981" />
+              <span style={{ fontSize: '0.82rem', color: '#10b981', fontWeight: '800' }}>
+                🚛 Transporter Bidding Session ({currentTransporter?.code || 'W001'})
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => quickSwitchUser('admin')}
+              className="btn btn-primary"
+              style={{ padding: '6px 14px', fontSize: '0.8rem', fontWeight: '900', borderRadius: '8px', background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)', border: 'none', color: '#ffffff', boxShadow: '0 0 12px rgba(2, 132, 199, 0.4)', cursor: 'pointer' }}
+              title="Switch back to Admin Control Center"
+            >
+              👑 Switch to Admin View
+            </button>
           </div>
         )}
 
