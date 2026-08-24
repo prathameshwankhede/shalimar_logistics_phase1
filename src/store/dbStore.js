@@ -1,25 +1,8 @@
 // src/store/dbStore.js
-// Restored Standard LocalStorage Database Store Engine with Complete ERP Master Directories (Company, Product, Cargo Masters) 💾🛡️
+// 100% Pure Enterprise Supabase Cloud Database Store Engine ☁️🛡️
 import { supabase } from '../supabaseClient.js';
-const DB_KEY = 'transflow_logistics_db_live_v3';
-const USER_SESSION_KEY = 'transflow_current_user';
 
-function safeGetLocalStorage(key) {
-  try {
-    if (typeof localStorage !== 'undefined') {
-      return localStorage.getItem(key);
-    }
-  } catch (e) {}
-  return null;
-}
-
-function safeSetLocalStorage(key, value) {
-  try {
-    if (typeof localStorage !== 'undefined') {
-      localStorage.setItem(key, value);
-    }
-  } catch (e) {}
-}
+const CLOUD_ROW_ID = 'transflow-live-prod-v3';
 
 export const INITIAL_SEED_DATA = {
   _updatedAt: 1,
@@ -33,8 +16,6 @@ export const INITIAL_SEED_DATA = {
     contact_email: 'logistics@shalimarnutrients.com',
     contact_phone: '+91 712 2567890'
   },
-
-  // 📄 100% AUTOMATED DELIVERY ORDER (DO) DOCUMENT MASTER SETTINGS
   do_master_settings: {
     hsn_code: '23040010',
     igst_rate: 5,
@@ -43,26 +24,11 @@ export const INITIAL_SEED_DATA = {
     state_code: '27 (MAHARASHTRA)',
     dispatch_plant_name: 'Shalimar Nutrients MIDC Processing Unit',
     dispatch_plant_address: 'Plot No. 12, Industrial Area, MIDC, Nagpur, Maharashtra - 440028',
-    terms_conditions: '1. Food-grade tarpaulin covering mandatory for dry cargo.\n2. Automated 24x7 weighbridge tare and gross recorded at Shalimar Plant.\n3. Sound single-use tamper-evident seals mandatory for oil tankers.\n4. Transit unloading expected within 4 hours of arrival.'
+    terms_conditions: '1. Food-grade tarpaulin covering mandatory for dry cargo.\n2. Automated 24x7 weighbridge tare and gross recorded at Shalimar Plant.'
   },
-
-  // 🏢 1. COMPANY & PLANT UNITS MASTER DIRECTORY (10 ENTERPRISE CORPORATE FIELDS)
   company_masters: [],
   product_masters: [],
   cargo_masters: [],
-  security_audit_logs: [],
-  whatsapp_api_settings: {
-    enabled: false,
-    mode: 'group',
-    group_name: 'Shalimar Transporters Official Group 👥',
-    group_invite_link: 'https://chat.whatsapp.com/JKGnlA860A7JYVKJnHG6Xb',
-    group_id: 'JKGnlA860A7JYVKJnHG6Xb@g.us',
-    provider: 'ultramsg',
-    instance_id: 'instance98411',
-    token: 'ultramsg_token_demo_8834',
-    phone_number_id: ''
-  },
-  whatsapp_notifications: [],
   title_masters: [],
   city_masters: [],
   users: [
@@ -81,193 +47,54 @@ export const INITIAL_SEED_DATA = {
   rate_submissions: [],
   allocations: [],
   truck_dispatches: [],
-  contracts: []
+  contracts: [],
+  security_audit_logs: [],
+  whatsapp_notifications: []
 };
 
+/**
+ * ☁️ Load Database directly from Supabase Cloud Server
+ */
 export async function loadDBFromSupabase() {
-  console.log('LOAD START');
-  if (!supabase) {
-    console.warn('Supabase not configured, returning local database fallback');
-    return loadDB();
-  }
+  if (!supabase) return INITIAL_SEED_DATA;
 
   try {
     const { data, error } = await supabase
       .from('app_database')
       .select('data')
-      .eq('id', 'transflow-live-prod-v3')
+      .eq('id', CLOUD_ROW_ID)
       .maybeSingle();
 
-    if (error) {
-      console.error('Supabase load failed:', error);
-      return loadDB();
+    if (error || !data || !data.data) {
+      console.warn('Initializing initial seed in Supabase Cloud...');
+      await saveDB(INITIAL_SEED_DATA);
+      return INITIAL_SEED_DATA;
     }
 
-    if (!data || !data.data) {
-      console.log('No data found in Supabase, initializing shared seed data...');
-      const seedToSave = { ...INITIAL_SEED_DATA, _updatedAt: Date.now() };
-      
-      console.log('SUPABASE UPSERT START (INITIAL SEED)');
-      const { data: resData, error: insertErr } = await supabase
-        .from('app_database')
-        .upsert(
-          {
-            id: 'transflow-live-prod-v3',
-            data: seedToSave,
-            updated_at: new Date().toISOString()
-          },
-          { onConflict: 'id' }
-        )
-        .select();
-
-      console.log('SUPABASE UPSERT RESULT', { resData, error: insertErr });
-
-      if (insertErr) {
-        console.error('Supabase save failed:', insertErr);
-      } else {
-        console.log('Supabase save successful');
-      }
-
-      safeSetLocalStorage(DB_KEY, JSON.stringify(seedToSave));
-      saveToPermanentIndexedDB(seedToSave);
-      console.log('Supabase load successful');
-      return seedToSave;
-    }
-
-    const supabaseDb = data.data;
-
-    let localDb = null;
-    try {
-      const localStr = safeGetLocalStorage(DB_KEY);
-      if (localStr) localDb = JSON.parse(localStr);
-    } catch (e) {}
-
-    if (supabaseDb && typeof supabaseDb === 'object') {
-      safeSetLocalStorage(DB_KEY, JSON.stringify(supabaseDb));
-      saveToPermanentIndexedDB(supabaseDb);
-      console.log('Supabase load successful');
-      return supabaseDb;
-    }
-    return loadDB();
+    return data.data;
   } catch (error) {
-    console.error('Supabase load failed:', error);
-    return loadDB();
+    console.error('Supabase Cloud Load Error:', error);
+    return INITIAL_SEED_DATA;
   }
 }
 
-export function loadDB() {
-  try {
-    const dataStr = safeGetLocalStorage(DB_KEY);
-    if (!dataStr) {
-      const seedWithTimestamp = { ...INITIAL_SEED_DATA, _updatedAt: 1 };
-      safeSetLocalStorage(DB_KEY, JSON.stringify(seedWithTimestamp));
-      return { ...seedWithTimestamp };
-    }
-    const parsed = JSON.parse(dataStr);
-
-    if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.rate_requests)) {
-      const seedWithTimestamp = { ...INITIAL_SEED_DATA, _updatedAt: 1 };
-      safeSetLocalStorage(DB_KEY, JSON.stringify(seedWithTimestamp));
-      return { ...seedWithTimestamp };
-    }
-
-    const loadedTransporters = Array.isArray(parsed.transporters) ? parsed.transporters : [];
-    const loadedUsers = Array.isArray(parsed.users) && parsed.users.length > 0
-      ? parsed.users
-      : [
-          {
-            id: 'usr_admin',
-            username: 'admin',
-            password: 'admin123',
-            name: 'Shalimar Admin (Logistics Head)',
-            role: 'admin',
-            transporter_id: null,
-            created_at: new Date().toISOString()
-          }
-        ];
-
-    return {
-      _updatedAt: parsed._updatedAt || 1,
-      company: parsed.company || INITIAL_SEED_DATA.company,
-      do_master_settings: parsed.do_master_settings || INITIAL_SEED_DATA.do_master_settings,
-      company_masters: Array.isArray(parsed.company_masters) ? parsed.company_masters : [],
-      product_masters: Array.isArray(parsed.product_masters) ? parsed.product_masters : [],
-      cargo_masters: Array.isArray(parsed.cargo_masters) ? parsed.cargo_masters : [],
-      title_masters: Array.isArray(parsed.title_masters) ? parsed.title_masters : [],
-      city_masters: Array.isArray(parsed.city_masters) ? parsed.city_masters : [],
-      users: loadedUsers,
-      transporters: loadedTransporters,
-      rate_requests: Array.isArray(parsed.rate_requests) ? parsed.rate_requests : [],
-      rate_submissions: Array.isArray(parsed.rate_submissions) ? parsed.rate_submissions : [],
-      allocations: Array.isArray(parsed.allocations) ? parsed.allocations : [],
-      truck_dispatches: Array.isArray(parsed.truck_dispatches) ? parsed.truck_dispatches : [],
-      contracts: Array.isArray(parsed.contracts) ? parsed.contracts : [],
-      security_audit_logs: Array.isArray(parsed.security_audit_logs) ? parsed.security_audit_logs : [],
-      whatsapp_api_settings: parsed.whatsapp_api_settings || INITIAL_SEED_DATA.whatsapp_api_settings,
-      whatsapp_notifications: Array.isArray(parsed.whatsapp_notifications) ? parsed.whatsapp_notifications : []
-    };
-  } catch (err) {
-    console.error('Failed to load DB from localStorage, using seed data', err);
-    const seedWithTimestamp = { ...INITIAL_SEED_DATA, _updatedAt: 1 };
-    safeSetLocalStorage(DB_KEY, JSON.stringify(seedWithTimestamp));
-    return { ...seedWithTimestamp };
-  }
-}
-
-// ----------------------------------------------------
-// 🏛️ PERMANENT ZERO-DELETION INDEXEDDB BACKUP ENGINE (UP TO 50 GB)
-// ----------------------------------------------------
-const INDEXED_DB_NAME = 'transflow_permanent_db_v1';
-const INDEXED_DB_STORE = 'enterprise_full_archive';
-
-function openIndexedDB() {
-  return new Promise((resolve) => {
-    if (typeof window === 'undefined' || !window.indexedDB) {
-      resolve(null);
-      return;
-    }
-    const request = window.indexedDB.open(INDEXED_DB_NAME, 1);
-    request.onupgradeneeded = (e) => {
-      const db = e.target.result;
-      if (!db.objectStoreNames.contains(INDEXED_DB_STORE)) {
-        db.createObjectStore(INDEXED_DB_STORE);
-      }
-    };
-    request.onsuccess = (e) => resolve(e.target.result);
-    request.onerror = () => resolve(null);
-  });
-}
-
-export async function saveToPermanentIndexedDB(data) {
-  try {
-    const idb = await openIndexedDB();
-    if (!idb) return;
-    const tx = idb.transaction(INDEXED_DB_STORE, 'readwrite');
-    const store = tx.objectStore(INDEXED_DB_STORE);
-    store.put(data, 'full_data_snapshot');
-  } catch (e) {
-    console.error('IndexedDB save status:', e);
-  }
-}
-
+/**
+ * ☁️ Save Database directly to Supabase Cloud Server
+ */
 export async function saveDB(data) {
-  console.log('SUPABASE DIRECT CLOUD SAVE START');
   try {
     const dataToSave = {
       ...data,
       _updatedAt: Date.now()
     };
 
-    if (!supabase) {
-      safeSetLocalStorage(DB_KEY, JSON.stringify(dataToSave));
-      return dataToSave;
-    }
+    if (!supabase) return dataToSave;
 
     const { data: resData, error } = await supabase
       .from('app_database')
       .upsert(
         {
-          id: 'transflow-live-prod-v3',
+          id: CLOUD_ROW_ID,
           data: dataToSave,
           updated_at: new Date().toISOString()
         },
@@ -276,27 +103,32 @@ export async function saveDB(data) {
       .select();
 
     if (error) {
-      console.error('Supabase cloud save error:', error);
-      safeSetLocalStorage(DB_KEY, JSON.stringify(dataToSave));
+      console.error('Supabase Cloud Save Error:', error);
       return dataToSave;
     }
 
-    const savedResult = resData && resData[0]?.data ? resData[0].data : dataToSave;
-    safeSetLocalStorage(DB_KEY, JSON.stringify(savedResult));
-    console.log('SUPABASE DIRECT CLOUD SAVE SUCCESS');
-    return savedResult;
+    return resData && resData[0]?.data ? resData[0].data : dataToSave;
   } catch (err) {
-    console.error('Supabase save failed:', err);
+    console.error('Supabase Cloud Save Exception:', err);
     return data;
   }
 }
 
+/**
+ * ☁️ Load Fallback DB
+ */
+export function loadDB() {
+  return { ...INITIAL_SEED_DATA };
+}
+
+/**
+ * ☁️ Reset Operational Data in Cloud
+ */
 export function resetDB() {
-  const seedToSave = { ...INITIAL_SEED_DATA, _updatedAt: Date.now() };
-  safeSetLocalStorage(DB_KEY, JSON.stringify(seedToSave));
-  if (typeof localStorage !== 'undefined') {
-    localStorage.removeItem(USER_SESSION_KEY);
-  }
-  saveDB(seedToSave);
-  return seedToSave;
+  const cleanData = {
+    ...INITIAL_SEED_DATA,
+    _updatedAt: Date.now()
+  };
+  saveDB(cleanData);
+  return cleanData;
 }
