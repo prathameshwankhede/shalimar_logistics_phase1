@@ -73,18 +73,21 @@ export const TransporterPortal = () => {
 
     let updatedSubmissions = [...(db.rate_submissions || [])];
 
+    const transId = currentTransporter?.id || currentTransporter?.code || currentTransporter?.username || 'transporter';
+
     filledItems.forEach((req) => {
       const rateVal = parseFloat(quickRates[req.id]);
       const existingIdx = updatedSubmissions.findIndex(
-        (s) => (String(s.rate_request_id) === String(req.id) || String(s.rate_request_id) === String(req.request_no)) && String(s.transporter_id) === String(currentTransporter.id)
+        (s) => (String(s.rate_request_id) === String(req.id) || String(s.rate_request_id) === String(req.request_no)) &&
+               (String(s.transporter_id) === String(transId) || String(s.transporter_id) === String(currentTransporter?.code) || String(s.transporter_id) === String(currentTransporter?.username))
       );
 
       const totalValue = rateVal * (Number(req.required_qty) || 0);
 
       const subObj = {
-        id: existingIdx >= 0 ? updatedSubmissions[existingIdx].id : `sub_${Date.now()}_${Math.floor(Math.random() * 10000)}`,
+        id: existingIdx >= 0 ? updatedSubmissions[existingIdx].id : `sub_${(transId).toLowerCase()}_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
         rate_request_id: req.id,
-        transporter_id: currentTransporter.id,
+        transporter_id: transId,
         rate_per_unit: rateVal,
         total_estimated_amount: totalValue,
         transit_days: '2',
@@ -281,11 +284,13 @@ export const TransporterPortal = () => {
       return;
     }
 
-    const newSubId = existingIdx >= 0 ? updatedSubmissions[existingIdx].id : `sub_${(currentTransporter?.code || "tr").toLowerCase()}_${Date.now()}`;
+    const transId = currentTransporter?.id || currentTransporter?.code || currentTransporter?.username || 'transporter';
+
+    const newSubId = existingIdx >= 0 ? updatedSubmissions[existingIdx].id : `sub_${(transId).toLowerCase()}_${Date.now()}`;
     const subObj = {
       id: newSubId,
       rate_request_id: req.id,
-      transporter_id: currentTransporter.id,
+      transporter_id: transId,
       rate_per_unit: rateVal,
       total_estimated_amount: rateVal * (Number(req.required_qty) || 0),
       transit_days: 2,
@@ -341,9 +346,10 @@ export const TransporterPortal = () => {
     }
 
     let updatedSubmissions = [...(db.rate_submissions || [])];
+    const transIdForModal = currentTransporter?.id || currentTransporter?.code || currentTransporter?.username || 'transporter';
     const existingIdx = updatedSubmissions.findIndex(
       (s) => (String(s.rate_request_id) === String(selectedReqForBid.id) || String(s.rate_request_id) === String(selectedReqForBid.request_no)) &&
-             (String(s.transporter_id) === String(currentTransporter.id) || String(s.transporter_id) === String(currentTransporter.code) || String(s.transporter_id) === String(currentTransporter.username))
+             (String(s.transporter_id) === String(transIdForModal) || String(s.transporter_id) === String(currentTransporter?.code) || String(s.transporter_id) === String(currentTransporter?.username))
     );
 
     if (existingIdx >= 0 && updatedSubmissions[existingIdx].is_frozen) {
@@ -352,11 +358,11 @@ export const TransporterPortal = () => {
       return;
     }
 
-    const newSubId = existingIdx >= 0 ? updatedSubmissions[existingIdx].id : `sub_${(currentTransporter?.code || "tr").toLowerCase()}_${Date.now()}`;
+    const newSubId = existingIdx >= 0 ? updatedSubmissions[existingIdx].id : `sub_${(transIdForModal).toLowerCase()}_${Date.now()}`;
     const subObj = {
       id: newSubId,
       rate_request_id: selectedReqForBid.id,
-      transporter_id: currentTransporter.id,
+      transporter_id: transIdForModal,
       rate_per_unit: rateVal,
       total_estimated_amount: rateVal * (Number(selectedReqForBid.required_qty) || 0),
       transit_days: parseInt(bidForm.transit_days) || 2,
