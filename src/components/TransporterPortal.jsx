@@ -272,7 +272,7 @@ export const TransporterPortal = () => {
       return;
     }
 
-    const rawInput = quickRates[req.id];
+    const rawInput = quickRates[req.id] || quickRates[String(req.id)] || (req.request_no ? quickRates[req.request_no] : null);
     const rateVal = parseFloat(String(rawInput || '').replace(/,/g, '').trim());
     if (!rateVal || isNaN(rateVal) || rateVal <= 0) {
       alert('Please enter a valid freight rate per MT (e.g. 2450).');
@@ -1136,7 +1136,15 @@ export const TransporterPortal = () => {
                                                                  placeholder={`New Rate`}
                                                                  className="form-control"
                                                                  value={currentInputRate}
-                                                                 onChange={(e) => setQuickRates({ ...quickRates, [req.id]: e.target.value })}
+                                                                 onChange={(e) => {
+                                                                  const val = e.target.value;
+                                                                  setQuickRates((prev) => ({
+                                                                    ...prev,
+                                                                    [req.id]: val,
+                                                                    [String(req.id)]: val,
+                                                                    ...(req.request_no ? { [req.request_no]: val } : {})
+                                                                  }));
+                                                                }}
                                                                  style={{ paddingLeft: '22px', fontSize: '0.82rem', fontWeight: '800', height: '32px', width: '100px' }}
                                                                />
                                                              </div>
