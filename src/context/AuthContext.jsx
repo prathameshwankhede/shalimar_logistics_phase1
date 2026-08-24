@@ -129,7 +129,7 @@ export const AuthProvider = ({ children }) => {
         const sharedDb = await loadDBFromSupabase();
 
         if (sharedDb && isMounted) {
-          setDb((prevDb) => mergeDbStates(sharedDb, prevDb));
+          setDb(sharedDb);
         }
       } catch (e) {
         console.error('Supabase load failed:', e);

@@ -380,134 +380,43 @@ export async function saveToPermanentIndexedDB(data) {
 }
 
 export async function saveDB(data) {
-  console.log('SAVE START');
+  console.log('SUPABASE DIRECT CLOUD SAVE START');
   try {
     const dataToSave = {
       ...data,
       _updatedAt: Date.now()
     };
 
-    safeSetLocalStorage(DB_KEY, JSON.stringify(dataToSave));
-    saveToPermanentIndexedDB(dataToSave);
-
     if (!supabase) {
-      console.warn('Supabase client not configured, saved to local cache');
+      safeSetLocalStorage(DB_KEY, JSON.stringify(dataToSave));
       return dataToSave;
     }
 
-    // 🛡️ READ LATEST CLOUD STATE FIRST TO PREVENT OVERWRITING CONCURRENT BIDS
-    let mergedData = dataToSave;
-    try {
-      const { data: cloudRows } = await supabase
-        .from('app_database')
-        .select('*')
-        .eq('id', 'transflow-live-prod-v3');
-
-      if (cloudRows && cloudRows.length > 0 && cloudRows[0].data) {
-        const existingCloudDb = cloudRows[0].data;
-
-        // 🛑 Check if this is an intentional Clear / Reset operation
-        const isResetOp = data._isResetOperation === true || (
-          Array.isArray(data.rate_requests) && data.rate_requests.length === 0 &&
-          Array.isArray(data.rate_submissions) && data.rate_submissions.length === 0 &&
-          Array.isArray(data.allocations) && data.allocations.length === 0
-        );
-
-        if (isResetOp) {
-          // For intentional reset operations, DO NOT merge old operational records from cloud!
-          mergedData = {
-            ...existingCloudDb,
-            ...dataToSave,
-            _updatedAt: Date.now(),
-            rate_requests: [],
-            rate_submissions: [],
-            allocations: [],
-            contracts: [],
-            truck_dispatches: [],
-            whatsapp_notifications: []
-          };
-        } else {
-          // Normal concurrent save: merge records by ID
-          const subMap = new Map();
-          (existingCloudDb.rate_submissions || []).forEach((s) => subMap.set(String(s.id), s));
-          (dataToSave.rate_submissions || []).forEach((s) => subMap.set(String(s.id), s));
-
-          const reqMap = new Map();
-          (existingCloudDb.rate_requests || []).forEach((r) => reqMap.set(String(r.id), r));
-          (dataToSave.rate_requests || []).forEach((r) => reqMap.set(String(r.id), r));
-
-          const transMap = new Map();
-          (existingCloudDb.transporters || []).forEach((t) => transMap.set(String(t.id || t.code), t));
-          (dataToSave.transporters || []).forEach((t) => transMap.set(String(t.id || t.code), t));
-
-          const userMap = new Map();
-          (existingCloudDb.users || []).forEach((u) => userMap.set(String(u.id || u.username), u));
-          (dataToSave.users || []).forEach((u) => userMap.set(String(u.id || u.username), u));
-
-          const allocMap = new Map();
-          (existingCloudDb.allocations || []).forEach((a) => allocMap.set(String(a.id), a));
-          (dataToSave.allocations || []).forEach((a) => allocMap.set(String(a.id), a));
-
-          const contractMap = new Map();
-          (existingCloudDb.contracts || []).forEach((c) => contractMap.set(String(c.id), c));
-          (dataToSave.contracts || []).forEach((c) => contractMap.set(String(c.id), c));
-
-          const dispatchMap = new Map();
-          (existingCloudDb.truck_dispatches || []).forEach((d) => dispatchMap.set(String(d.id), d));
-          (dataToSave.truck_dispatches || []).forEach((d) => dispatchMap.set(String(d.id), d));
-
-          const logMap = new Map();
-          (existingCloudDb.security_audit_logs || []).forEach((l) => logMap.set(String(l.id), l));
-          (dataToSave.security_audit_logs || []).forEach((l) => logMap.set(String(l.id), l));
-
-          mergedData = {
-            ...existingCloudDb,
-            ...dataToSave,
-            _updatedAt: Date.now(),
-            rate_requests: Array.from(reqMap.values()),
-            rate_submissions: Array.from(subMap.values()),
-            transporters: Array.from(transMap.values()),
-            users: Array.from(userMap.values()),
-            allocations: Array.from(allocMap.values()),
-            contracts: Array.from(contractMap.values()),
-            truck_dispatches: Array.from(dispatchMap.values()),
-            security_audit_logs: Array.from(logMap.values()).slice(0, 100)
-          };
-        }
-      }
-    } catch (fetchErr) {
-      console.warn('Pre-fetch cloud DB failed, fallback to local dataToSave:', fetchErr);
-    }
-
-    console.log('SUPABASE UPSERT START');
     const { data: resData, error } = await supabase
       .from('app_database')
       .upsert(
         {
           id: 'transflow-live-prod-v3',
-          data: mergedData,
+          data: dataToSave,
           updated_at: new Date().toISOString()
         },
         { onConflict: 'id' }
       )
       .select();
 
-    console.log('SUPABASE UPSERT RESULT', { resData, error });
-
     if (error) {
-      console.error('Supabase save failed:', error);
-    } else {
-      console.log('Supabase save successful');
-      safeSetLocalStorage(DB_KEY, JSON.stringify(mergedData));
-      saveToPermanentIndexedDB(mergedData);
+      console.error('Supabase cloud save error:', error);
+      safeSetLocalStorage(DB_KEY, JSON.stringify(dataToSave));
+      return dataToSave;
     }
-    return mergedData;
+
+    const savedResult = resData && resData[0]?.data ? resData[0].data : dataToSave;
+    safeSetLocalStorage(DB_KEY, JSON.stringify(savedResult));
+    console.log('SUPABASE DIRECT CLOUD SAVE SUCCESS');
+    return savedResult;
   } catch (err) {
     console.error('Supabase save failed:', err);
-    saveToPermanentIndexedDB({ ...data, _updatedAt: Date.now() });
     return data;
-  } finally {
-    console.log('SAVE COMPLETE');
   }
 }
 
