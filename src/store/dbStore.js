@@ -1,8 +1,10 @@
 // src/store/dbStore.js
 // 100% Pure Enterprise Supabase Cloud Database Store Engine ☁️🛡️
 import { supabase } from '../supabaseClient.js';
+import { tursoClient, isTursoConfigured, initTursoSchema } from '../tursoClient.js';
 
 const CLOUD_ROW_ID = 'transflow-live-prod-v3';
+let isTursoInitialized = false;
 
 export const INITIAL_SEED_DATA = {
   _updatedAt: Date.now(),
@@ -145,6 +147,23 @@ export async function saveDB(data) {
     try {
       localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(dataToSave));
     } catch (e) {}
+
+    // Dual Turso SQLite Cloud Sync
+    if (isTursoConfigured && tursoClient) {
+      try {
+        if (!isTursoInitialized) {
+          await initTursoSchema();
+          isTursoInitialized = true;
+        }
+        await tursoClient.execute({
+          sql: `INSERT INTO app_database (id, data, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(id) DO UPDATE SET data = excluded.data, updated_at = CURRENT_TIMESTAMP`,
+          args: [CLOUD_ROW_ID, JSON.stringify(dataToSave)]
+        });
+      } catch (tErr) {
+        console.warn('Turso save error:', tErr);
+      }
+    }
 
     if (!supabase) return dataToSave;
 
