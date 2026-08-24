@@ -1321,8 +1321,10 @@ export const AdminDashboard = () => {
     const updatedDb = addSecurityLog(
       {
         ...db,
+        _isResetOperation: true,
+        _updatedAt: Date.now() + 100000,
         rate_requests: activeRequests,
-        rate_submissions: (db.rate_submissions || []).filter((s) => activeRequests.some((r) => r.id === s.rate_request_id)),
+        rate_submissions: (db.rate_submissions || []).filter((s) => activeRequests.some((r) => String(r.id) === String(s.rate_request_id) || String(r.request_no) === String(s.rate_request_id))),
         allocations: [],
         truck_dispatches: [],
         contracts: []
