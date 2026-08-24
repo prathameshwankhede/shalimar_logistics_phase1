@@ -1840,9 +1840,6 @@ export const AdminDashboard = () => {
                           <datalist id={`dest_datalist_${row.id}`}>
                             {Array.from(
                               new Set([
-                                'Solapur (Shalimar Refinery)',
-                                'Latur (Shalimar Processing Hub)',
-                                'Nagpur (Shalimar Plant MIDC)',
                                 ...(db.company_masters || []).map((c) => c.drop_location_name || c.name || c.city).filter(Boolean),
                                 ...(db.title_masters || []).map((tm) => tm.dest_city || tm.title).filter(Boolean),
                                 ...(db.city_masters || []).map((c) => c.city).filter(Boolean)
@@ -1870,8 +1867,6 @@ export const AdminDashboard = () => {
                           <datalist id={`prod_datalist_${row.id}`}>
                             {Array.from(
                               new Set([
-                                'Soybean Meal De-Oiled Cake (DOC)',
-                                'Refined Soybean Oil (Bulk)',
                                 ...(db.product_masters || []).map((p) => p.name).filter(Boolean)
                               ])
                             ).map((prodName, i) => (
