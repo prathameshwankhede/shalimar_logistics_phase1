@@ -1831,25 +1831,26 @@ export const AdminDashboard = () => {
                           <select
                             className="form-control"
                             value={row.dest_city || ''}
-                            onChange={(e) => {
-                              if (e.target.value === '__ADD_NEW__') {
-                                handleQuickAddCompany();
-                              } else {
-                                handleUpdateBulkRow(row.id, 'dest_city', e.target.value);
-                              }
-                            }}
+                            onChange={(e) => handleUpdateBulkRow(row.id, 'dest_city', e.target.value)}
                             style={{ fontSize: '0.85rem', height: '42px', border: '1.5px solid rgba(245, 158, 11, 0.8)', color: 'var(--text-main)', borderRadius: '8px', fontWeight: '700', width: '100%', background: 'var(--bg-card)' }}
                           >
-                            <option value="">-- Select Drop Location (Master) --</option>
-                            {Array.from(
-                              new Set([
-                                ...(db.company_masters || []).map((c) => c.drop_location_name || c.name || c.city).filter(Boolean),
-                                ...(db.city_masters || []).map((c) => c.city).filter(Boolean)
-                              ])
-                            ).map((destName, i) => (
-                              <option key={`dest_${i}`} value={destName}>🎯 {destName}</option>
-                            ))}
-                            <option value="__ADD_NEW__" style={{ color: '#38bdf8', fontWeight: '900' }}>➕ Add New Location in Master Directory...</option>
+                            {(() => {
+                              const dropList = Array.from(
+                                new Set([
+                                  ...(db.company_masters || []).map((c) => c.drop_location_name || c.name || c.city).filter(Boolean),
+                                  ...(db.city_masters || []).map((c) => c.city).filter(Boolean)
+                                ])
+                              );
+                              if (dropList.length === 0) {
+                                return <option value="">-- No Location in Master Directory (Add in Master Directory) --</option>;
+                              }
+                              return [
+                                <option key="dest_def" value="">-- Select Drop Location (From Master) --</option>,
+                                ...dropList.map((destName, i) => (
+                                  <option key={`dest_${i}`} value={destName}>🎯 {destName}</option>
+                                ))
+                              ];
+                            })()}
                           </select>
                         </div>
 
@@ -1861,20 +1862,21 @@ export const AdminDashboard = () => {
                           <select
                             className="form-control"
                             value={row.material_type || ''}
-                            onChange={(e) => {
-                              if (e.target.value === '__ADD_NEW__') {
-                                handleQuickAddProduct();
-                              } else {
-                                handleUpdateBulkRow(row.id, 'material_type', e.target.value);
-                              }
-                            }}
+                            onChange={(e) => handleUpdateBulkRow(row.id, 'material_type', e.target.value)}
                             style={{ fontSize: '0.82rem', height: '42px', border: '1.5px solid #38bdf8', color: 'var(--text-main)', borderRadius: '8px', fontWeight: '800', background: 'var(--bg-card)' }}
                           >
-                            <option value="">-- Select Product Name (Master) --</option>
-                            {(db.product_masters || []).map((prod, i) => (
-                              <option key={`prod_${i}`} value={prod.name}>📦 {prod.name}</option>
-                            ))}
-                            <option value="__ADD_NEW__" style={{ color: '#38bdf8', fontWeight: '900' }}>➕ Add New Product in Master Directory...</option>
+                            {(() => {
+                              const prods = (db.product_masters || []).map((p) => p.name).filter(Boolean);
+                              if (prods.length === 0) {
+                                return <option value="">-- No Product in Master Directory (Add in Master Directory) --</option>;
+                              }
+                              return [
+                                <option key="prod_def" value="">-- Select Product Name (From Master) --</option>,
+                                ...prods.map((prodName, i) => (
+                                  <option key={`prod_${i}`} value={prodName}>📦 {prodName}</option>
+                                ))
+                              ];
+                            })()}
                           </select>
                         </div>
 
