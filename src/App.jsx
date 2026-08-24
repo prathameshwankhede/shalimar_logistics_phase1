@@ -13,6 +13,14 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 function MainApp() {
   const { currentUser } = useAuth();
 
+  React.useEffect(() => {
+    // 🛡️ Auto-clean query params like ?reset= from address bar so page doesn't re-trigger reset
+    if (typeof window !== 'undefined' && window.location.search && (window.location.search.includes('reset=') || window.location.search.includes('sync='))) {
+      const cleanUrl = window.location.origin + window.location.pathname;
+      window.history.replaceState(null, '', cleanUrl);
+    }
+  }, []);
+
   if (!currentUser) {
     return <LoginModal />;
   }
