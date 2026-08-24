@@ -167,10 +167,22 @@ export const TransporterPortal = () => {
     );
   }
 
-  // DATA ISOLATION: Only fetch data associated with this Transporter ID
-  const mySubmissions = (db.rate_submissions || []).filter((s) => String(s.transporter_id) === String(currentTransporter.id));
-  const myAllocations = (db.allocations || []).filter((a) => String(a.transporter_id) === String(currentTransporter.id));
-  const myDispatches = (db.truck_dispatches || []).filter((d) => String(d.transporter_id) === String(currentTransporter.id));
+  // DATA ISOLATION: Fetch data associated with this Transporter ID, Code, or Username
+  const mySubmissions = (db.rate_submissions || []).filter((s) =>
+    String(s.transporter_id) === String(currentTransporter?.id) ||
+    String(s.transporter_id) === String(currentTransporter?.code) ||
+    String(s.transporter_id) === String(currentTransporter?.username)
+  );
+  const myAllocations = (db.allocations || []).filter((a) =>
+    String(a.transporter_id) === String(currentTransporter?.id) ||
+    String(a.transporter_id) === String(currentTransporter?.code) ||
+    String(a.transporter_id) === String(currentTransporter?.username)
+  );
+  const myDispatches = (db.truck_dispatches || []).filter((d) =>
+    String(d.transporter_id) === String(currentTransporter?.id) ||
+    String(d.transporter_id) === String(currentTransporter?.code) ||
+    String(d.transporter_id) === String(currentTransporter?.username)
+  );
 
   // Available open rate requests (ONLY ACTIVE UNACCEPTED & UNAWARDED REQUIREMENTS)
   const openRateRequests = (db.rate_requests || []).filter((r) => {
