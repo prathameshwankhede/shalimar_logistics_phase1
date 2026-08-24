@@ -49,10 +49,23 @@ export const AuthProvider = ({ children }) => {
     return null;
   });
 
-  // Helper function to merge Cloud DB and Local DB without losing bids or indents
   const mergeDbStates = (cloudDb, prevDb) => {
     if (!cloudDb) return prevDb;
     if (!prevDb) return cloudDb;
+
+    // 🧹 EXPLICIT RESET OPERATION OVERRIDE: If reset operation flag is present, accept clearing operational tables!
+    if (cloudDb._isResetOperation) {
+      return {
+        ...prevDb,
+        ...cloudDb,
+        _updatedAt: Math.max(cloudDb._updatedAt || 0, prevDb._updatedAt || 0, Date.now()),
+        rate_requests: cloudDb.rate_requests || [],
+        rate_submissions: cloudDb.rate_submissions || [],
+        allocations: cloudDb.allocations || [],
+        contracts: cloudDb.contracts || [],
+        truck_dispatches: cloudDb.truck_dispatches || []
+      };
+    }
 
     // Merge rate_submissions by id (taking newest submitted_at / counter_rate / is_frozen)
     const subMap = new Map();
