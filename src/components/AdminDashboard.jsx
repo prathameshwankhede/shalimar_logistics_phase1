@@ -1871,61 +1871,111 @@ export const AdminDashboard = () => {
                           />
                         </div>
 
-                        {/* 2. Drop Location Dropdown */}
+                        {/* 2. Drop Location Dropdown + Quick Add */}
                         <div>
-                          <label style={{ fontSize: '0.7rem', fontWeight: '900', color: '#d97706', marginBottom: '6px', display: 'block', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
-                            🎯 DROP LOCATION
-                          </label>
-                          <select
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                            <label style={{ fontSize: '0.7rem', fontWeight: '900', color: '#d97706', margin: 0, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+                              🎯 DROP LOCATION
+                            </label>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const newLoc = prompt('🎯 Enter New Drop Location / Destination Name:');
+                                if (newLoc && newLoc.trim()) {
+                                  const compObj = {
+                                    id: `comp_${Date.now()}`,
+                                    name: newLoc.trim(),
+                                    drop_location_name: newLoc.trim(),
+                                    city: newLoc.trim(),
+                                    code: `LOC${Date.now().toString().slice(-3)}`
+                                  };
+                                  const updatedDb = addSecurityLog(
+                                    { ...db, company_masters: [compObj, ...(db.company_masters || [])] },
+                                    'ADD_DROP_LOCATION_MASTER',
+                                    currentUser?.username || 'admin',
+                                    'admin',
+                                    'LOCATION_ADDED 🎯'
+                                  );
+                                  updateDB(updatedDb);
+                                  handleUpdateBulkRow(row.id, 'dest_city', newLoc.trim());
+                                }
+                              }}
+                              style={{ background: 'none', border: 'none', color: '#38bdf8', fontSize: '0.72rem', fontWeight: '900', cursor: 'pointer', padding: 0 }}
+                              title="Add new drop location to Master Directory"
+                            >
+                              ➕ Add New
+                            </button>
+                          </div>
+                          <input
+                            type="text"
+                            list={`drop_locations_list_${row.id}`}
                             className="form-control"
+                            placeholder="Select or Type Drop Location"
                             value={row.dest_city || ''}
                             onChange={(e) => handleUpdateBulkRow(row.id, 'dest_city', e.target.value)}
                             style={{ fontSize: '0.85rem', height: '42px', border: '1.5px solid rgba(245, 158, 11, 0.8)', color: 'var(--text-main)', borderRadius: '8px', fontWeight: '700', width: '100%', background: 'var(--bg-card)' }}
-                          >
-                            {(() => {
-                              const dropList = Array.from(
-                                new Set([
-                                  ...(db.company_masters || []).map((c) => c.drop_location_name || c.name || c.city).filter(Boolean),
-                                  ...(db.city_masters || []).map((c) => c.city).filter(Boolean)
-                                ])
-                              );
-                              if (dropList.length === 0) {
-                                return <option value="">-- No Location in Master Directory (Add in Master Directory) --</option>;
-                              }
-                              return [
-                                <option key="dest_def" value="">-- Select Drop Location (From Master) --</option>,
-                                ...dropList.map((destName, i) => (
-                                  <option key={`dest_${i}`} value={destName}>🎯 {destName}</option>
-                                ))
-                              ];
-                            })()}
-                          </select>
+                          />
+                          <datalist id={`drop_locations_list_${row.id}`}>
+                            {Array.from(
+                              new Set([
+                                ...(db.company_masters || []).map((c) => c.drop_location_name || c.name || c.city).filter(Boolean),
+                                ...(db.city_masters || []).map((c) => c.city).filter(Boolean)
+                              ])
+                            ).map((destName, i) => (
+                              <option key={`dest_${i}`} value={destName} />
+                            ))}
+                          </datalist>
                         </div>
 
-                        {/* 3. PRODUCT NAME DROPDOWN */}
+                        {/* 3. PRODUCT NAME DROPDOWN + Quick Add */}
                         <div>
-                          <label style={{ fontSize: '0.7rem', fontWeight: '900', color: '#38bdf8', marginBottom: '6px', display: 'block', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
-                            📦 PRODUCT NAME
-                          </label>
-                          <select
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                            <label style={{ fontSize: '0.7rem', fontWeight: '900', color: '#38bdf8', margin: 0, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+                              📦 PRODUCT NAME
+                            </label>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const newProd = prompt('📦 Enter New Cargo / Commodity Product Name:');
+                                if (newProd && newProd.trim()) {
+                                  const prodObj = {
+                                    id: `prod_${Date.now()}`,
+                                    name: newProd.trim(),
+                                    category: 'General Bulk Cargo',
+                                    hsn_code: '15071000',
+                                    unit: 'MT'
+                                  };
+                                  const updatedDb = addSecurityLog(
+                                    { ...db, product_masters: [prodObj, ...(db.product_masters || [])] },
+                                    'ADD_PRODUCT_MASTER',
+                                    currentUser?.username || 'admin',
+                                    'admin',
+                                    'PRODUCT_ADDED 📦'
+                                  );
+                                  updateDB(updatedDb);
+                                  handleUpdateBulkRow(row.id, 'material_type', newProd.trim());
+                                }
+                              }}
+                              style={{ background: 'none', border: 'none', color: '#38bdf8', fontSize: '0.72rem', fontWeight: '900', cursor: 'pointer', padding: 0 }}
+                              title="Add new product to Master Directory"
+                            >
+                              ➕ Add New
+                            </button>
+                          </div>
+                          <input
+                            type="text"
+                            list={`product_list_${row.id}`}
                             className="form-control"
+                            placeholder="Select or Type Product Name"
                             value={row.material_type || ''}
                             onChange={(e) => handleUpdateBulkRow(row.id, 'material_type', e.target.value)}
                             style={{ fontSize: '0.82rem', height: '42px', border: '1.5px solid #38bdf8', color: 'var(--text-main)', borderRadius: '8px', fontWeight: '800', background: 'var(--bg-card)' }}
-                          >
-                            {(() => {
-                              const prods = (db.product_masters || []).map((p) => p.name).filter(Boolean);
-                              if (prods.length === 0) {
-                                return <option value="">-- No Product in Master Directory (Add in Master Directory) --</option>;
-                              }
-                              return [
-                                <option key="prod_def" value="">-- Select Product Name (From Master) --</option>,
-                                ...prods.map((prodName, i) => (
-                                  <option key={`prod_${i}`} value={prodName}>📦 {prodName}</option>
-                                ))
-                              ];
-                            })()}
-                          </select>
+                          />
+                          <datalist id={`product_list_${row.id}`}>
+                            {(db.product_masters || []).map((prod, i) => (
+                              <option key={`prod_${i}`} value={prod.name} />
+                            ))}
+                          </datalist>
                         </div>
 
                         {/* 4. Qty (MT) */}
