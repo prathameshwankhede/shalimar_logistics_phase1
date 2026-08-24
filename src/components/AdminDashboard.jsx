@@ -510,13 +510,7 @@ export const AdminDashboard = () => {
   };
 
   const handleDownloadDatabaseBackup = () => {
-    setEnteredAuthPass('');
-    setAuthErrorMsg('');
-    setSecurityAuthModal({
-      isOpen: true,
-      actionTitle: 'Download Full Database Backup (.json)',
-      pendingAction: executeDownloadBackup
-    });
+    executeDownloadBackup();
   };
 
   const processUploadBackupFile = (file) => {
@@ -536,24 +530,27 @@ export const AdminDashboard = () => {
           return;
         }
 
+        const rawObj = parsed.data || parsed.db || parsed;
+
         const restoredDb = addSecurityLog(
           {
+            ...rawObj,
             _updatedAt: Date.now() + 100000,
-            company: parsed.company || db.company || {},
-            do_master_settings: parsed.do_master_settings || db.do_master_settings || {},
-            company_masters: Array.isArray(parsed.company_masters) ? parsed.company_masters : (db.company_masters || []),
-            product_masters: Array.isArray(parsed.product_masters) ? parsed.product_masters : (db.product_masters || []),
-            cargo_masters: Array.isArray(parsed.cargo_masters) ? parsed.cargo_masters : (db.cargo_masters || []),
-            title_masters: Array.isArray(parsed.title_masters) ? parsed.title_masters : (db.title_masters || []),
-            city_masters: Array.isArray(parsed.city_masters) ? parsed.city_masters : (db.city_masters || []),
-            transporters: Array.isArray(parsed.transporters) ? parsed.transporters : (db.transporters || []),
-            rate_requests: Array.isArray(parsed.rate_requests) ? parsed.rate_requests : (db.rate_requests || []),
-            rate_submissions: Array.isArray(parsed.rate_submissions) ? parsed.rate_submissions : (db.rate_submissions || []),
-            allocations: Array.isArray(parsed.allocations) ? parsed.allocations : (db.allocations || []),
-            contracts: Array.isArray(parsed.contracts) ? parsed.contracts : (db.contracts || []),
-            truck_dispatches: Array.isArray(parsed.truck_dispatches) ? parsed.truck_dispatches : (db.truck_dispatches || []),
-            users: Array.isArray(parsed.users) && parsed.users.length > 0 ? parsed.users : (db.users || []),
-            security_audit_logs: Array.isArray(parsed.security_audit_logs) ? parsed.security_audit_logs : (db.security_audit_logs || [])
+            company: rawObj.company || db.company || {},
+            do_master_settings: rawObj.do_master_settings || db.do_master_settings || {},
+            company_masters: Array.isArray(rawObj.company_masters) ? rawObj.company_masters : (db.company_masters || []),
+            product_masters: Array.isArray(rawObj.product_masters) ? rawObj.product_masters : (db.product_masters || []),
+            cargo_masters: Array.isArray(rawObj.cargo_masters) ? rawObj.cargo_masters : (db.cargo_masters || []),
+            title_masters: Array.isArray(rawObj.title_masters) ? rawObj.title_masters : (db.title_masters || []),
+            city_masters: Array.isArray(rawObj.city_masters) ? rawObj.city_masters : (db.city_masters || []),
+            transporters: Array.isArray(rawObj.transporters) ? rawObj.transporters : (db.transporters || []),
+            rate_requests: Array.isArray(rawObj.rate_requests) ? rawObj.rate_requests : (db.rate_requests || []),
+            rate_submissions: Array.isArray(rawObj.rate_submissions) ? rawObj.rate_submissions : (db.rate_submissions || []),
+            allocations: Array.isArray(rawObj.allocations) ? rawObj.allocations : (db.allocations || []),
+            contracts: Array.isArray(rawObj.contracts) ? rawObj.contracts : (db.contracts || []),
+            truck_dispatches: Array.isArray(rawObj.truck_dispatches) ? rawObj.truck_dispatches : (db.truck_dispatches || []),
+            users: Array.isArray(rawObj.users) && rawObj.users.length > 0 ? rawObj.users : (db.users || []),
+            security_audit_logs: Array.isArray(rawObj.security_audit_logs) ? rawObj.security_audit_logs : (db.security_audit_logs || [])
           },
           'RESTORE_DATABASE_FROM_JSON_BACKUP',
           currentUser?.username || 'admin',
@@ -562,8 +559,8 @@ export const AdminDashboard = () => {
         );
 
         updateDB(restoredDb);
-        setArchiveNotice('🎉 System Database successfully restored from JSON backup file & synced to Supabase Cloud!');
-        setTimeout(() => setArchiveNotice(''), 5000);
+        alert('🎉 SUCCESS: Database Backup Restored Successfully to Supabase Cloud! Page will now reload.');
+        window.location.reload();
       } catch (err) {
         alert(`Failed to parse backup JSON file: ${err.message}`);
       }
@@ -572,17 +569,10 @@ export const AdminDashboard = () => {
   };
 
   const handleInitiateRestoreBackup = () => {
-    setEnteredAuthPass('');
-    setAuthErrorMsg('');
-    setSecurityAuthModal({
-      isOpen: true,
-      actionTitle: 'Database Cloud Restore (.json)',
-      pendingAction: () => {
-        if (restoreFileInputRef.current) {
-          restoreFileInputRef.current.click();
-        }
-      }
-    });
+    if (restoreFileInputRef.current) {
+      restoreFileInputRef.current.value = '';
+      restoreFileInputRef.current.click();
+    }
   };
 
   const handleUploadDatabaseBackup = (e) => {
