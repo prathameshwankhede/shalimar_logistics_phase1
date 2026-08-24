@@ -1769,7 +1769,7 @@ export const AdminDashboard = () => {
                           borderRadius: '14px',
                           padding: '16px 18px',
                           display: 'grid',
-                          gridTemplateColumns: '1fr 2fr 2fr 1.3fr 0.9fr 1.1fr auto',
+                          gridTemplateColumns: '1.2fr 3.2fr 2.5fr 1fr 1.2fr auto',
                           gap: '12px',
                           alignItems: 'end',
                           transition: 'all 0.2s ease-in-out'
@@ -1799,7 +1799,7 @@ export const AdminDashboard = () => {
                             className="form-control"
                             value={row.dest_city}
                             onChange={(e) => handleUpdateBulkRow(row.id, 'dest_city', e.target.value)}
-                            style={{ fontSize: '0.85rem', height: '42px', border: '1px solid rgba(245, 158, 11, 0.6)', color: 'var(--text-main)', borderRadius: '8px', fontWeight: '700' }}
+                            style={{ fontSize: '0.85rem', height: '42px', border: '1.5px solid rgba(245, 158, 11, 0.8)', color: 'var(--text-main)', borderRadius: '8px', fontWeight: '700', width: '100%' }}
                           >
                             {(() => {
                               const dropList = Array.from(
@@ -1850,24 +1850,7 @@ export const AdminDashboard = () => {
                           </select>
                         </div>
 
-                        {/* 4. HSN CODE FIELD */}
-                        <div>
-                          <label style={{ fontSize: '0.7rem', fontWeight: '900', color: '#10b981', marginBottom: '6px', display: 'block', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
-                            🏷️ HSN CODE
-                          </label>
-                          <input
-                            type="text"
-                            className="form-control"
-                            placeholder="Auto from Master"
-                            value={row.hsn_code || (db.product_masters?.find((p) => p.name === row.material_type)?.hsn_code) || ''}
-                            readOnly
-                            tabIndex="-1"
-                            title="🔒 HSN Code is auto-selected from Product Master and locked"
-                            style={{ fontSize: '0.85rem', height: '42px', background: 'rgba(15, 23, 42, 0.7)', border: '1.5px solid #10b981', color: '#34d399', borderRadius: '8px', fontWeight: '800', fontFamily: 'monospace', cursor: 'not-allowed' }}
-                          />
-                        </div>
-
-                        {/* 5. Qty (MT) */}
+                        {/* 4. Qty (MT) */}
                         <div>
                           <label style={{ fontSize: '0.7rem', fontWeight: '900', color: '#c084fc', marginBottom: '6px', display: 'block', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
                             ⚖️ QTY (MT)
@@ -1883,7 +1866,7 @@ export const AdminDashboard = () => {
                           />
                         </div>
 
-                        {/* 6. Target Date */}
+                        {/* 5. Target Date */}
                         <div>
                           <label style={{ fontSize: '0.7rem', fontWeight: '900', color: '#38bdf8', marginBottom: '6px', display: 'block', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
                             📅 TARGET DATE
@@ -1898,7 +1881,7 @@ export const AdminDashboard = () => {
                           />
                         </div>
 
-                        {/* 7. Remove Row Button */}
+                        {/* 6. Remove Row Button */}
                         <div>
                           <button
                             type="button"
