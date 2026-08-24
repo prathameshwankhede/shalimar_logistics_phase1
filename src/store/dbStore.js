@@ -76,16 +76,16 @@ export const INITIAL_SEED_DATA = {
 const LOCAL_STORAGE_KEY = 'transflow_local_db_v3';
 
 /**
- * ☁️ Load Database directly from Supabase Cloud Server & Local Cache
+ * ☁️ Load Database directly from Supabase Cloud Server (Master Source of Truth for 50+ PCs)
  */
 export async function loadDBFromSupabase() {
-  let localCache = null;
-  try {
-    const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
-    if (raw) localCache = JSON.parse(raw);
-  } catch (e) {}
-
-  if (!supabase) return localCache || INITIAL_SEED_DATA;
+  if (!supabase) {
+    try {
+      const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
+      if (raw) return JSON.parse(raw);
+    } catch (e) {}
+    return INITIAL_SEED_DATA;
+  }
 
   try {
     const { data, error } = await supabase
@@ -96,47 +96,30 @@ export async function loadDBFromSupabase() {
 
     if (error || !data || !data.data) {
       console.warn('Initializing initial seed in Supabase Cloud...');
-      const fallback = localCache || INITIAL_SEED_DATA;
-      await saveDB(fallback);
-      return fallback;
+      await saveDB(INITIAL_SEED_DATA);
+      return INITIAL_SEED_DATA;
     }
 
     const cloudData = data.data;
-    if (localCache) {
-      // Merge Cloud DB with Local Cache so local bids are never lost
-      const reqMap = new Map();
-      (cloudData.rate_requests || []).forEach((r) => reqMap.set(String(r.id), r));
-      (localCache.rate_requests || []).forEach((r) => reqMap.set(String(r.id), r));
 
-      const subMap = new Map();
-      (cloudData.rate_submissions || []).forEach((s) => subMap.set(String(s.id), s));
-      (localCache.rate_submissions || []).forEach((s) => subMap.set(String(s.id), s));
-
-      const merged = {
-        ...localCache,
-        ...cloudData,
-        _updatedAt: Math.max(cloudData._updatedAt || 0, localCache._updatedAt || 0, Date.now()),
-        rate_requests: Array.from(reqMap.values()),
-        rate_submissions: Array.from(subMap.values())
-      };
-      try {
-        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(merged));
-      } catch (e) {}
-      return merged;
-    }
-
+    // Cache mirror for offline fallback only
     try {
       localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(cloudData));
     } catch (e) {}
+
     return cloudData;
   } catch (error) {
     console.error('Supabase Cloud Load Error:', error);
-    return localCache || INITIAL_SEED_DATA;
+    try {
+      const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
+      if (raw) return JSON.parse(raw);
+    } catch (e) {}
+    return INITIAL_SEED_DATA;
   }
 }
 
 /**
- * ☁️ Save Database directly to Supabase Cloud Server & Local Storage
+ * ☁️ Save Database directly to Supabase Cloud Server (Master Write)
  */
 export async function saveDB(data) {
   try {
@@ -145,16 +128,13 @@ export async function saveDB(data) {
       _updatedAt: Date.now()
     };
 
-    // 1. Instant Local Storage Persistence (Zero latency)
+    // Cache mirror
     try {
       localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(dataToSave));
-    } catch (e) {
-      console.error('Local Storage Cache Error:', e);
-    }
+    } catch (e) {}
 
     if (!supabase) return dataToSave;
 
-    // 2. Supabase Cloud PostgreSQL Upsert
     const { data: resData, error } = await supabase
       .from('app_database')
       .upsert(
