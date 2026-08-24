@@ -974,7 +974,7 @@ export const TransporterPortal = () => {
                               {isExpanded && (
                                 <tr key={`expanded_${group.batchKey}`}>
                                   <td colSpan="6" style={{ padding: '16px 20px 24px 20px' }}>
-                                    <div style={{
+                                    <div className="preserve-dark-card" style={{
                                       border: '2px solid #38bdf8',
                                       borderRadius: '16px',
                                       padding: '20px 22px',

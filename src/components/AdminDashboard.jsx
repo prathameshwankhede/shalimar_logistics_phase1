@@ -2196,7 +2196,7 @@ export const AdminDashboard = () => {
                               {isExpanded && (
                                 <tr key={`expanded_${group.batchKey}`}>
                                   <td colSpan="7" style={{ padding: '18px 22px 28px 22px', background: 'rgba(15, 23, 42, 0.95)' }}>
-                                    <div className="glass-panel-glow drawer-expanded" style={{
+                                    <div className="preserve-dark-card drawer-expanded" style={{
                                       border: '2px solid #38bdf8',
                                       borderRadius: '20px',
                                       padding: '24px 26px',

@@ -96,19 +96,46 @@ input::-webkit-credentials-auto-fill-button {
 }
 
 /* Preserve Dark Card Utility Class - High Contrast across Light/Dark modes */
-.preserve-dark-card {
-  background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%) !important;
-  color: #ffffff !important;
-  border: 2px solid #0284c7 !important;
-  border-radius: 18px !important;
-}
-
+.preserve-dark-card,
 [data-theme="light"] .preserve-dark-card {
   background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%) !important;
   color: #ffffff !important;
-  border: 2px solid #0284c7 !important;
+  border: 2px solid #38bdf8 !important;
+  border-radius: 18px !important;
+  box-shadow: 0 20px 50px rgba(0,0,0,0.6), 0 0 35px rgba(56, 189, 248, 0.3) !important;
 }
 
+.preserve-dark-card table,
+[data-theme="light"] .preserve-dark-card table {
+  background: transparent !important;
+}
+
+.preserve-dark-card tr,
+[data-theme="light"] .preserve-dark-card tr {
+  background: rgba(15, 23, 42, 0.7) !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
+}
+
+.preserve-dark-card tr:nth-child(even),
+[data-theme="light"] .preserve-dark-card tr:nth-child(even) {
+  background: rgba(30, 41, 59, 0.7) !important;
+}
+
+.preserve-dark-card td,
+[data-theme="light"] .preserve-dark-card td {
+  color: #ffffff !important;
+}
+
+.preserve-dark-card th,
+[data-theme="light"] .preserve-dark-card th {
+  color: #38bdf8 !important;
+  background: rgba(15, 23, 42, 0.95) !important;
+}
+
+.preserve-dark-card h1,
+.preserve-dark-card h2,
+.preserve-dark-card h3,
+.preserve-dark-card h4,
 [data-theme="light"] .preserve-dark-card h1,
 [data-theme="light"] .preserve-dark-card h2,
 [data-theme="light"] .preserve-dark-card h3,
@@ -116,6 +143,7 @@ input::-webkit-credentials-auto-fill-button {
   color: #ffffff !important;
 }
 
+.preserve-dark-card p,
 [data-theme="light"] .preserve-dark-card p {
   color: #cbd5e1 !important;
 }
