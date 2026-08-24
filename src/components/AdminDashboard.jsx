@@ -3503,6 +3503,111 @@ export const AdminDashboard = () => {
               </div>
             </div>
           )}
+
+          {/* TAB 6: System Backup & Restore (.json / .csv) Engine 🗄️ */}
+          {activeTab === 'db_backup' && (
+            <div className="glass-panel" style={{ padding: '28px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>
+                <div>
+                  <h3 style={{ fontSize: '1.2rem', fontWeight: '900', color: '#38bdf8', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <Database size={24} color="#38bdf8" /> 🗄️ Cloud Database Backup & Restore Engine
+                  </h3>
+                  <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+                    Export full system data into JSON/CSV backup files, or restore previous system backups directly to Supabase Cloud Server.
+                  </p>
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '20px' }}>
+                {/* 1. EXPORT / DOWNLOAD BACKUP */}
+                <div style={{ background: 'rgba(15, 23, 42, 0.8)', border: '1.5px solid #38bdf8', borderRadius: '16px', padding: '24px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '14px' }}>
+                    <div style={{ background: 'rgba(56, 189, 248, 0.2)', padding: '10px', borderRadius: '12px' }}>
+                      <Download size={22} color="#38bdf8" />
+                    </div>
+                    <div>
+                      <h4 style={{ fontSize: '1rem', fontWeight: '900', color: '#ffffff', margin: 0 }}>Export Full System Backup</h4>
+                      <div style={{ fontSize: '0.76rem', color: '#94a3b8' }}>Download all ERP tables & Master Directories</div>
+                    </div>
+                  </div>
+                  <p style={{ fontSize: '0.8rem', color: '#cbd5e1', lineHeight: '1.5', marginBottom: '18px' }}>
+                    Downloads a complete raw `.json` file containing all Master Directories, Transporters, Rate Requests, Submitted Bids, and Awarded Contracts.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(db, null, 2));
+                      const downloadAnchor = document.createElement('a');
+                      downloadAnchor.setAttribute('href', dataStr);
+                      downloadAnchor.setAttribute('download', `TransFlow_Full_Backup_${new Date().toISOString().slice(0, 10)}.json`);
+                      document.body.appendChild(downloadAnchor);
+                      downloadAnchor.click();
+                      downloadAnchor.remove();
+                    }}
+                    className="btn btn-primary"
+                    style={{ width: '100%', padding: '12px', fontWeight: '900', fontSize: '0.9rem', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
+                  >
+                    <Download size={18} /> Download Backup File (.json)
+                  </button>
+                </div>
+
+                {/* 2. IMPORT / RESTORE BACKUP */}
+                <div style={{ background: 'rgba(15, 23, 42, 0.8)', border: '1.5px solid #10b981', borderRadius: '16px', padding: '24px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '14px' }}>
+                    <div style={{ background: 'rgba(16, 185, 129, 0.2)', padding: '10px', borderRadius: '12px' }}>
+                      <Upload size={22} color="#10b981" />
+                    </div>
+                    <div>
+                      <h4 style={{ fontSize: '1rem', fontWeight: '900', color: '#ffffff', margin: 0 }}>Restore System Backup (.json)</h4>
+                      <div style={{ fontSize: '0.76rem', color: '#94a3b8' }}>Upload previously saved JSON backup file</div>
+                    </div>
+                  </div>
+                  <p style={{ fontSize: '0.8rem', color: '#cbd5e1', lineHeight: '1.5', marginBottom: '18px' }}>
+                    Select a `.json` backup file to restore all Master Directories, Transporter Accounts, Indents, and Rate Submissions to Supabase Cloud Server.
+                  </p>
+                  
+                  <label className="btn btn-success" style={{ width: '100%', padding: '12px', fontWeight: '900', fontSize: '0.9rem', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', cursor: 'pointer', boxSizing: 'border-box' }}>
+                    <Upload size={18} /> 📤 Upload & Restore Backup File (.json)
+                    <input
+                      type="file"
+                      accept=".json"
+                      style={{ display: 'none' }}
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+
+                        const reader = new FileReader();
+                        reader.onload = async (event) => {
+                          try {
+                            const parsed = JSON.parse(event.target.result);
+                            if (parsed && typeof parsed === 'object') {
+                              if (!window.confirm('⚠️ Are you sure you want to RESTORE this backup?\n\nThis will update all Master Directories, Users, Transporters, and Requisitions on Supabase Cloud Server.')) {
+                                return;
+                              }
+
+                              const restoredData = {
+                                ...parsed,
+                                _updatedAt: Date.now()
+                              };
+
+                              await updateDB(restoredData);
+                              alert('🎉 SUCCESS: Database Backup Restored Successfully to Supabase Cloud! Page will now reload.');
+                              window.location.reload();
+                            } else {
+                              alert('🛑 INVALID BACKUP FILE: The uploaded JSON file is invalid or corrupted.');
+                            }
+                          } catch (err) {
+                            alert('🛑 RESTORE ERROR: Failed to parse backup file. Please upload a valid .json backup file.');
+                          }
+                        };
+                        reader.readAsText(file);
+                      }}
+                    />
+                  </label>
+                </div>
+              </div>
+            </div>
+          )}
         </>
       )}
 
