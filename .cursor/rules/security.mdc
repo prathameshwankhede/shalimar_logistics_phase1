@@ -1,0 +1,24 @@
+---
+description: Security & Data Protection Rules for Shalimar Logistics
+globs: **/*.js, **/*.jsx
+---
+# Security & Data Protection Rules
+
+## 1. Zero Password Leakage Policy
+- Passwords (`password`, `password_hash`) MUST NEVER be included in API state payloads (`GET /api/state`, `POST /api/state`).
+- `sanitizeStateForClient()` MUST be called on all outgoing state JSON objects before returning `res.json()`.
+- Passwords MUST NEVER be stored in plain text in client state or `localStorage`.
+
+## 2. SQL & XSS Injection Protection
+- All database queries MUST use parameterized inputs (`?` placeholders).
+- Input fields MUST be sanitized using `sanitizeInput()` from `src/utils/securityEngine.js`.
+
+## 3. Brute Force Protection
+- Failed login attempts are tracked per username.
+- Lockout duration is set to **1 Minute (60 seconds)** after 5 consecutive failed attempts.
+- Rate limiting is enforced at 60 requests per minute per session.
+
+## 4. Environment Secrets Protection
+- Secrets (`DB_PASSWORD`, `JWT_SECRET`) MUST be read exclusively from `process.env`.
+- Hardcoding passwords or secrets in source code is strictly forbidden.
+- Diagnostic logs MUST log only `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `NODE_ENV` — NEVER `DB_PASSWORD`.

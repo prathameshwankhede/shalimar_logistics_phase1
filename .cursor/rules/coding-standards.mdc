@@ -1,0 +1,18 @@
+---
+description: Coding Standards & Best Practices for Shalimar Logistics
+globs: **/*.js, **/*.jsx, **/*.css
+---
+# Coding Standards & Best Practices
+
+## Code Style & Formatting
+- **Modules**: Standard ES Modules (`import`/`export`) across frontend and backend.
+- **Component Design**: Modular React 19 functional components using Hooks (`useState`, `useEffect`, `useContext`, `useCallback`).
+- **UI Styling**: Glassmorphism aesthetic, clean typography, CSS custom properties (`var(--primary)`, `var(--text-main)`), Lucide icons.
+- **Error Handling**: Wrap async route handlers in `try...catch` blocks with clean HTTP status codes (`400`, `401`, `403`, `500`).
+
+## Git Commit Conventions
+- Commit messages follow Conventional Commits standard:
+  - `fix: resolve ...` for bug fixes.
+  - `feat: add ...` for new features.
+  - `style: clean up ...` for UI/CSS changes.
+  - `refactor: update ...` for code reorganization.

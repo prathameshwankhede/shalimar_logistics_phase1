@@ -1,0 +1,24 @@
+---
+description: Database Standards & Query Rules for Shalimar Logistics
+globs: server/**/*.js, database/**/*.sql
+---
+# Database Standards & Schema Rules
+
+## MySQL Configuration
+1. **Connection Pool**: Uses `mysql2/promise` pool with `connectionLimit: 10`, `waitForConnections: true`, and `enableKeepAlive: true`.
+2. **Hostinger IPv4 Loopback Fix**: `DB_HOST` values of `'localhost'` or `'::1'` MUST be mapped to `'127.0.0.1'` to ensure Node.js connects over IPv4 loopback matching Hostinger user permissions.
+3. **Environment Variables**: Prioritize `DB_*` keys (`DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`), with `DATABASE_*` as fallbacks.
+
+## Schema Self-Healing
+`server/config/db.js` runs `initDatabaseSchema()` on server boot using `CREATE TABLE IF NOT EXISTS`:
+- `app_database`: Storage blob table (`id VARCHAR(64) PRIMARY KEY, data LONGTEXT`).
+- `users`: User authentication table (`id`, `username`, `password_hash`, `name`, `role`, `transporter_id`).
+- `transporters`: Vendor profiles table (`id`, `company_name`, `code`, `mobile`, `email`, `status`).
+- `rate_requests`: Freight indents table (`id`, `request_no`, `title`, `origin_city`, `dest_city`, `required_qty`, `target_date`, `status`).
+- `rate_submissions`: Transporter bids table (`id`, `request_id`, `request_no`, `transporter_id`, `rate_per_unit`, `status`, `counter_rate`).
+- `master_records`: Product, cargo, plant, city & title masters (`id`, `category`, `code`, `name`, `extra_data`).
+
+## Mandatory Query Rules
+- ALWAYS use parameterized queries with `?` placeholders for user-supplied data (`pool.query('SELECT ... WHERE col = ?', [val])`).
+- NEVER concatenate raw user input into SQL strings.
+- Operations that clear data MUST check `_isResetOperation` flag.

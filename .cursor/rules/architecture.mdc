@@ -1,0 +1,21 @@
+---
+description: System Architecture Guidelines for Shalimar Logistics (TransFlow)
+globs: **/*.js, **/*.jsx, **/*.json
+---
+# System Architecture Guidelines — Shalimar Logistics
+
+## Overview
+Shalimar Logistics (TransFlow) is an Enterprise Freight Procurement & Logistics Platform built with React 19 (Frontend Single Page Application), Node.js/Express (Backend REST API), and Hostinger Managed MySQL (Relational Database).
+
+## Core Architecture Principles
+1. **Frontend**: React 19 Single Page Application bundled with Vite. Styled using CSS variables and modern glassmorphism UI components.
+2. **Backend**: Node.js ES Modules (`"type": "module"`) running Express 5. Listens dynamically on `process.env.PORT` and `HOST=0.0.0.0`.
+3. **Database Layer**: Hostinger Managed MySQL connected via `mysql2/promise` pool. Dual storage engine with normalized relational tables (`rate_requests`, `rate_submissions`, `master_records`, `users`, `transporters`) and JSON state backup blob (`app_database`).
+4. **State Management**: React Context API (`AuthContext.jsx`) with automatic 3-second background polling (`GET /api/state`) and cross-tab synchronization via `BroadcastChannel`.
+
+## File Structure Rules
+- Backend API routes reside in `server/routes/` (`api.js`, `auth.js`).
+- Database pool & schema initialization reside in `server/config/db.js`.
+- Express app entry point resides in `server/index.js` (called by root `server.js`).
+- React components reside in `src/components/`.
+- Utility helpers reside in `src/utils/` (`securityEngine.js`, `whatsappEngine.js`).
