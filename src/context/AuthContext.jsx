@@ -84,10 +84,10 @@ export const AuthProvider = ({ children }) => {
       }
     });
 
-    // Merge rate_requests by id
+    // Merge rate_requests by request_no OR id
     const reqMap = new Map();
-    (prevDb.rate_requests || []).forEach((r) => reqMap.set(String(r.id), r));
-    (cloudDb.rate_requests || []).forEach((r) => reqMap.set(String(r.id), r));
+    (prevDb.rate_requests || []).forEach((r) => reqMap.set(String(r.request_no || r.id), r));
+    (cloudDb.rate_requests || []).forEach((r) => reqMap.set(String(r.request_no || r.id), r));
 
     // Merge transporters by id / code
     const transMap = new Map();

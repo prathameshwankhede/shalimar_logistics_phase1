@@ -54,7 +54,7 @@ export async function initDatabaseSchema() {
         hsn_code VARCHAR(50) DEFAULT NULL,
         required_qty DECIMAL(12,2) DEFAULT 0.00,
         unit VARCHAR(50) DEFAULT 'MT',
-        target_date DATE DEFAULT NULL,
+        target_date VARCHAR(50) DEFAULT NULL,
         status VARCHAR(50) DEFAULT 'Open',
         notes TEXT DEFAULT NULL,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,

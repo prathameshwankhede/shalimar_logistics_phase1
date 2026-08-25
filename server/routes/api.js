@@ -11,10 +11,10 @@ let IN_MEMORY_CACHE = null;
 function mergeArrayById(targetArr = [], sourceArr = [], keyProp = 'id') {
   const map = new Map();
   targetArr.forEach(item => {
-    if (item) map.set(String(item[keyProp] || item.name || item.code), item);
+    if (item) map.set(String(item[keyProp] || item.request_no || item.name || item.code), item);
   });
   sourceArr.forEach(item => {
-    if (item) map.set(String(item[keyProp] || item.name || item.code), item);
+    if (item) map.set(String(item[keyProp] || item.request_no || item.name || item.code), item);
   });
   return Array.from(map.values());
 }
@@ -43,9 +43,9 @@ router.get('/state', async (req, res) => {
     const [reqs] = await pool.query('SELECT * FROM rate_requests ORDER BY created_at DESC');
     if (reqs && reqs.length > 0) {
       const reqMap = new Map();
-      (state.rate_requests || []).forEach(r => reqMap.set(String(r.id), r));
+      (state.rate_requests || []).forEach(r => reqMap.set(String(r.request_no || r.id), r));
       reqs.forEach(r => {
-        reqMap.set(String(r.id), {
+        const reqObj = {
           id: r.id,
           request_no: r.request_no,
           title: r.title || r.request_no,
@@ -60,11 +60,12 @@ router.get('/state', async (req, res) => {
           hsn_code: r.hsn_code || '',
           required_qty: Number(r.required_qty),
           unit: r.unit || 'MT',
-          target_date: r.target_date ? new Date(r.target_date).toISOString().split('T')[0] : null,
+          target_date: r.target_date ? String(r.target_date).slice(0, 10) : null,
           status: r.status || 'Open',
           notes: r.notes || '',
           created_at: r.created_at ? new Date(r.created_at).toISOString() : new Date().toISOString()
-        });
+        };
+        reqMap.set(String(r.request_no || r.id), reqObj);
       });
       state.rate_requests = Array.from(reqMap.values());
     }
@@ -305,16 +306,32 @@ async function syncNormalizedTables(data) {
   // 2. Sync rate_requests (indents)
   if (Array.isArray(data.rate_requests)) {
     for (const r of data.rate_requests) {
-      if (r.id && r.request_no) {
+      if (r.id && (r.request_no || r.title)) {
+        const reqNo = r.request_no || r.title;
+        const targetDateVal = r.target_date ? String(r.target_date).slice(0, 10) : null;
+
         await pool.query(
           `INSERT INTO rate_requests (id, request_no, title, batch_no, sub_no, origin_city, origin_pin, dest_city, dest_pin, company_unit, material_type, hsn_code, required_qty, unit, target_date, status, notes)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-           ON DUPLICATE KEY UPDATE title = VALUES(title), status = VALUES(status), required_qty = VALUES(required_qty), notes = VALUES(notes)`,
+           ON DUPLICATE KEY UPDATE 
+           request_no = VALUES(request_no),
+           title = VALUES(title), 
+           origin_city = VALUES(origin_city),
+           dest_city = VALUES(dest_city),
+           company_unit = VALUES(company_unit),
+           material_type = VALUES(material_type),
+           hsn_code = VALUES(hsn_code),
+           required_qty = VALUES(required_qty), 
+           unit = VALUES(unit),
+           target_date = VALUES(target_date),
+           status = VALUES(status), 
+           notes = VALUES(notes),
+           updated_at = NOW()`,
           [
-            r.id, r.request_no, r.title || r.request_no, r.batch_no || '', r.sub_no || '',
+            r.id, reqNo, r.title || reqNo, r.batch_no || '', r.sub_no || '',
             r.origin_city || '', r.origin_pin || '', r.dest_city || '', r.dest_pin || '',
             r.company_unit || '', r.material_type || '', r.hsn_code || '',
-            r.required_qty || 0, r.unit || 'MT', r.target_date || null,
+            parseFloat(r.required_qty) || 0, r.unit || 'MT', targetDateVal,
             r.status || 'Open', r.notes || ''
           ]
         ).catch((err) => console.warn('rate_requests sync error:', err.message));
