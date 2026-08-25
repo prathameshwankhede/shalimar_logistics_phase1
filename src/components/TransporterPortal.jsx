@@ -29,12 +29,25 @@ import {
 export const TransporterPortal = () => {
   const { currentUser, currentTransporter, db, updateDB, quickSwitchUser, addSecurityLog } = useAuth();
 
-  const [activeTab, setActiveTab] = useState(() => {
+  // 🧭 TAB PERSISTENCE ENGINE: Read URL Hash or LocalStorage so browser refresh NEVER redirects to Home!
+  const getInitialTransporterTab = () => {
+    if (typeof window !== 'undefined' && window.location.hash) {
+      const hash = window.location.hash.replace('#', '');
+      if (hash.startsWith('my_bids')) return 'my_bids';
+      if (hash.startsWith('allocations')) return 'allocations';
+      if (hash.startsWith('month_end')) return 'month_end';
+      if (hash.startsWith('open_requests')) return 'open_requests';
+    }
     return localStorage.getItem('transflow_transporter_active_tab') || 'open_requests';
-  }); // 'open_requests', 'allocations', 'month_end', 'my_bids'
+  };
+
+  const [activeTab, setActiveTab] = useState(getInitialTransporterTab);
 
   React.useEffect(() => {
     localStorage.setItem('transflow_transporter_active_tab', activeTab);
+    if (typeof window !== 'undefined') {
+      window.history.replaceState(null, '', `#${activeTab}`);
+    }
   }, [activeTab]);
   const [biddingViewMode, setBiddingViewMode] = useState(() => {
     if (typeof window !== 'undefined' && window.innerWidth <= 768) {

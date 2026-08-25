@@ -50,25 +50,56 @@ import {
 export const AdminDashboard = () => {
   const { db, updateDB, currentUser, addSecurityLog } = useAuth();
 
-  const [activeTab, setActiveTab] = useState(() => {
+  // 🧭 TAB PERSISTENCE ENGINE: Read URL Hash or LocalStorage so browser refresh NEVER redirects to Home!
+  const getInitialAdminTab = () => {
+    if (typeof window !== 'undefined' && window.location.hash) {
+      const hash = window.location.hash.replace('#', '');
+      if (hash.startsWith('contracts')) return 'contracts';
+      if (hash.startsWith('masters') || hash.startsWith('title_masters')) return 'title_masters';
+      if (hash.startsWith('backup') || hash.startsWith('db_backup')) return 'db_backup';
+      if (hash.startsWith('security')) return 'security';
+      if (hash.startsWith('requirements')) return 'requirements';
+    }
     return localStorage.getItem('transflow_admin_active_tab') || 'requirements';
-  }); // 'requirements', 'transporters', 'contracts', 'title_masters', 'security'
+  };
+
+  const [activeTab, setActiveTab] = useState(getInitialAdminTab);
 
   const [masterFilterTab, setMasterFilterTab] = useState(() => {
     return localStorage.getItem('transflow_admin_master_sub_tab') || 'all';
-  }); // 'all', 'titles', 'transporters', 'company', 'products'
+  });
 
-  const [reqFilterTab, setReqFilterTab] = useState('all'); // 'all', 'open', 'done'
+  const [reqFilterTab, setReqFilterTab] = useState('all');
 
   useEffect(() => {
     localStorage.setItem('transflow_admin_active_tab', activeTab);
+    if (typeof window !== 'undefined') {
+      window.history.replaceState(null, '', `#${activeTab}`);
+    }
   }, [activeTab]);
 
   useEffect(() => {
     localStorage.setItem('transflow_admin_master_sub_tab', masterFilterTab);
   }, [masterFilterTab]);
+
   const todayStr = new Date().toISOString().split('T')[0];
-  const [selectedRequestForComparison, setSelectedRequestForComparison] = useState(null);
+
+  // Restore selected comparison request on refresh if present
+  const [selectedRequestForComparison, setSelectedRequestForComparison] = useState(() => {
+    const savedReqId = localStorage.getItem('transflow_admin_comparison_id');
+    if (savedReqId && db?.rate_requests) {
+      return db.rate_requests.find(r => String(r.id) === String(savedReqId) || String(r.request_no) === String(savedReqId)) || null;
+    }
+    return null;
+  });
+
+  useEffect(() => {
+    if (selectedRequestForComparison) {
+      localStorage.setItem('transflow_admin_comparison_id', selectedRequestForComparison.id || selectedRequestForComparison.request_no);
+    } else {
+      localStorage.removeItem('transflow_admin_comparison_id');
+    }
+  }, [selectedRequestForComparison]);
   const [selectedRequestForParticularReport, setSelectedRequestForParticularReport] = useState(null);
   const [whatsappModalData, setWhatsappModalData] = useState({ isOpen: false, data: null });
   
