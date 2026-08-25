@@ -25,6 +25,10 @@ function sanitizeStateForClient(rawState) {
   if (Array.isArray(copy.users)) {
     copy.users = copy.users.map(({ password, password_hash, ...u }) => u);
   }
+  if (copy.whatsapp_api_settings) {
+    delete copy.whatsapp_api_settings.token;
+    delete copy.whatsapp_api_settings.instance_id;
+  }
   return copy;
 }
 
