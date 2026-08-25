@@ -8,6 +8,17 @@ const CLOUD_ROW_ID = 'transflow-live-prod-v3';
 // In-memory state cache on server to guarantee 100% zero-data-loss persistence
 let IN_MEMORY_CACHE = null;
 
+function mergeArrayById(targetArr = [], sourceArr = [], keyProp = 'id') {
+  const map = new Map();
+  targetArr.forEach(item => {
+    if (item) map.set(String(item[keyProp] || item.name || item.code), item);
+  });
+  sourceArr.forEach(item => {
+    if (item) map.set(String(item[keyProp] || item.name || item.code), item);
+  });
+  return Array.from(map.values());
+}
+
 // -------------------------------------------------------------
 // GET /api/state — Fetch full state (MySQL primary + cache fallback)
 // -------------------------------------------------------------
@@ -56,6 +67,42 @@ router.get('/state', async (req, res) => {
     // ignore
   }
 
+  // Also query normalized master_records to guarantee zero lost product/cargo masters
+  try {
+    const [masters] = await pool.query('SELECT * FROM master_records ORDER BY id ASC');
+    if (masters && masters.length > 0) {
+      const prodList = [];
+      const cargoList = [];
+      const compList = [];
+      const cityList = [];
+      const titleList = [];
+
+      masters.forEach(m => {
+        const extra = typeof m.extra_data === 'string' ? JSON.parse(m.extra_data) : (m.extra_data || {});
+        const itemObj = {
+          id: extra.id || `master_${m.category}_${m.id}`,
+          code: m.code || extra.code,
+          name: m.name,
+          ...extra
+        };
+
+        if (m.category === 'product') prodList.push(itemObj);
+        else if (m.category === 'cargo') cargoList.push(itemObj);
+        else if (m.category === 'company') compList.push(itemObj);
+        else if (m.category === 'city') cityList.push(itemObj);
+        else if (m.category === 'title') titleList.push(itemObj);
+      });
+
+      if (prodList.length > 0) state.product_masters = mergeArrayById(state.product_masters || [], prodList, 'id');
+      if (cargoList.length > 0) state.cargo_masters = mergeArrayById(state.cargo_masters || [], cargoList, 'id');
+      if (compList.length > 0) state.company_masters = mergeArrayById(state.company_masters || [], compList, 'id');
+      if (cityList.length > 0) state.city_masters = mergeArrayById(state.city_masters || [], cityList, 'id');
+      if (titleList.length > 0) state.title_masters = mergeArrayById(state.title_masters || [], titleList, 'id');
+    }
+  } catch (err) {
+    // ignore
+  }
+
   return res.json({ success: true, data: state });
 });
 
@@ -91,6 +138,58 @@ router.post('/state', async (req, res) => {
   }
 
   return res.json({ success: true, timestamp: Date.now(), data: payload });
+});
+
+// -------------------------------------------------------------
+// GET /api/products — Dedicated Product Masters GET Endpoint
+// -------------------------------------------------------------
+router.get('/products', async (req, res) => {
+  try {
+    const [rows] = await pool.query("SELECT * FROM master_records WHERE category = 'product'");
+    const products = rows.map(r => {
+      const extra = typeof r.extra_data === 'string' ? JSON.parse(r.extra_data) : (r.extra_data || {});
+      return { id: extra.id || `prod_${r.id}`, name: r.name, category: extra.category || 'General', hsn_code: extra.hsn_code || '23040010', unit: extra.unit || 'MT', ...extra };
+    });
+    return res.json({ success: true, products });
+  } catch (err) {
+    const fallback = IN_MEMORY_CACHE?.product_masters || INITIAL_SEED_DATA.product_masters;
+    return res.json({ success: true, products: fallback });
+  }
+});
+
+// -------------------------------------------------------------
+// POST /api/products — Dedicated Product Master Insert Endpoint
+// -------------------------------------------------------------
+router.post('/products', async (req, res) => {
+  const { id, name, category, hsn_code, unit } = req.body;
+  if (!name) {
+    return res.status(400).json({ error: 'Product name required' });
+  }
+
+  const prodId = id || `prod_${Date.now()}`;
+  const prodObj = { id: prodId, name: name.trim(), category: category || 'General', hsn_code: hsn_code || '23040010', unit: unit || 'MT' };
+
+  if (IN_MEMORY_CACHE) {
+    const prods = IN_MEMORY_CACHE.product_masters || [];
+    const idx = prods.findIndex(p => p.id === prodId || p.name === name);
+    if (idx >= 0) prods[idx] = prodObj;
+    else prods.unshift(prodObj);
+    IN_MEMORY_CACHE.product_masters = prods;
+  }
+
+  try {
+    const jsonExtra = JSON.stringify(prodObj);
+    await pool.query(
+      `INSERT INTO master_records (category, code, name, extra_data)
+       VALUES ('product', ?, ?, ?)
+       ON DUPLICATE KEY UPDATE name = VALUES(name), extra_data = VALUES(extra_data)`,
+      [prodId, name.trim(), jsonExtra]
+    );
+  } catch (err) {
+    console.warn('MySQL Product Insert Warning:', err.message);
+  }
+
+  return res.json({ success: true, product: prodObj, message: 'Product Master saved to MySQL' });
 });
 
 // -------------------------------------------------------------
@@ -219,6 +318,35 @@ async function syncNormalizedTables(data) {
             new Date(submittedAt).toISOString().slice(0, 19).replace('T', ' ')
           ]
         ).catch((err) => console.warn('Bids sync error:', err.message));
+      }
+    }
+  }
+
+  // 4. Sync master_records (product_masters, cargo_masters, company_masters, city_masters, title_masters)
+  const masterCategories = [
+    { key: 'product_masters', cat: 'product' },
+    { key: 'cargo_masters', cat: 'cargo' },
+    { key: 'company_masters', cat: 'company' },
+    { key: 'city_masters', cat: 'city' },
+    { key: 'title_masters', cat: 'title' }
+  ];
+
+  for (const { key, cat } of masterCategories) {
+    const list = data[key];
+    if (Array.isArray(list)) {
+      for (const item of list) {
+        if (item && (item.name || item.title || item.city)) {
+          const itemCode = item.code || item.id || null;
+          const itemName = item.name || item.title || item.city || item.vehicle_type || 'Master Item';
+          const jsonExtra = JSON.stringify(item);
+
+          await pool.query(
+            `INSERT INTO master_records (category, code, name, extra_data)
+             VALUES (?, ?, ?, ?)
+             ON DUPLICATE KEY UPDATE name = VALUES(name), extra_data = VALUES(extra_data)`,
+            [cat, itemCode, itemName, jsonExtra]
+          ).catch((err) => console.warn(`Master ${cat} sync error:`, err.message));
+        }
       }
     }
   }

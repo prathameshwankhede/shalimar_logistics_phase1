@@ -58,6 +58,18 @@ export async function initDatabaseSchema() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
 
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS master_records (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        category VARCHAR(50) NOT NULL,
+        code VARCHAR(50) DEFAULT NULL,
+        name VARCHAR(255) NOT NULL,
+        extra_data JSON DEFAULT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        KEY idx_masters_category (category)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
     console.log('✅ MySQL Database tables initialized successfully!');
     return true;
   } catch (err) {

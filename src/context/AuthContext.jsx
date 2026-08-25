@@ -114,6 +114,27 @@ export const AuthProvider = ({ children }) => {
     (prevDb.truck_dispatches || []).forEach((d) => dispatchMap.set(String(d.id), d));
     (cloudDb.truck_dispatches || []).forEach((d) => dispatchMap.set(String(d.id), d));
 
+    // Merge master directories by id / name to prevent losing product & cargo masters on refresh
+    const prodMap = new Map();
+    (prevDb.product_masters || []).forEach((p) => prodMap.set(String(p.id || p.name), p));
+    (cloudDb.product_masters || []).forEach((p) => prodMap.set(String(p.id || p.name), p));
+
+    const cargoMap = new Map();
+    (prevDb.cargo_masters || []).forEach((c) => cargoMap.set(String(c.id || c.vehicle_type), c));
+    (cloudDb.cargo_masters || []).forEach((c) => cargoMap.set(String(c.id || c.vehicle_type), c));
+
+    const compMap = new Map();
+    (prevDb.company_masters || []).forEach((c) => compMap.set(String(c.id || c.name || c.code), c));
+    (cloudDb.company_masters || []).forEach((c) => compMap.set(String(c.id || c.name || c.code), c));
+
+    const cityMap = new Map();
+    (prevDb.city_masters || []).forEach((c) => cityMap.set(String(c.id || c.city || c.name), c));
+    (cloudDb.city_masters || []).forEach((c) => cityMap.set(String(c.id || c.city || c.name), c));
+
+    const titleMap = new Map();
+    (prevDb.title_masters || []).forEach((t) => titleMap.set(String(t.id || t.title || t.name), t));
+    (cloudDb.title_masters || []).forEach((t) => titleMap.set(String(t.id || t.title || t.name), t));
+
     // Merge security_audit_logs by id
     const logMap = new Map();
     (prevDb.security_audit_logs || []).forEach((l) => logMap.set(String(l.id), l));
@@ -130,11 +151,16 @@ export const AuthProvider = ({ children }) => {
       allocations: Array.from(allocMap.values()),
       contracts: Array.from(contractMap.values()),
       truck_dispatches: Array.from(dispatchMap.values()),
+      product_masters: Array.from(prodMap.values()),
+      cargo_masters: Array.from(cargoMap.values()),
+      company_masters: Array.from(compMap.values()),
+      city_masters: Array.from(cityMap.values()),
+      title_masters: Array.from(titleMap.values()),
       security_audit_logs: Array.from(logMap.values()).slice(0, 100)
     };
   };
 
-  // Listen to Window Storage, BroadcastChannel, & Supabase for real-time cross-device sync (Laptop <-> Mobile)
+  // Listen to Window Storage & BroadcastChannel for real-time cross-device sync
   useEffect(() => {
     let isMounted = true;
 
@@ -146,7 +172,7 @@ export const AuthProvider = ({ children }) => {
           setDb((prevDb) => mergeDbStates(sharedDb, prevDb));
         }
       } catch (e) {
-        console.error('Supabase load failed:', e);
+        console.error('API load failed:', e);
       }
     };
 
@@ -367,7 +393,7 @@ export const AuthProvider = ({ children }) => {
     localStorage.removeItem(USER_SESSION_KEY);
   };
 
-  // 🛡️ BULLETPROOF TRANSPORTER RESOLUTION ENGINE (NEVER RETURNS NULL FOR TRANSPORTER USER)
+  // 🛡️ BULLETPROOF TRANSPORTER RESOLUTION ENGINE
   let currentTransporter = null;
   if (currentUser) {
     if (currentUser.role === 'transporter' || currentUser.transporter_id) {
@@ -379,7 +405,6 @@ export const AuthProvider = ({ children }) => {
           (currentUser.id && t.id === currentUser.id)
       );
 
-      // Auto-fallback synthesis if transporter user exists but profile array entry is missing
       if (!currentTransporter && currentUser.username) {
         currentTransporter = {
           id: currentUser.transporter_id || `trans_${(currentUser?.username || "").toLowerCase()}`,
@@ -395,7 +420,6 @@ export const AuthProvider = ({ children }) => {
         };
       }
     } else if (currentUser.role === 'admin') {
-      // 🛡️ ADMIN EMBEDDED TEST TRANSPORTER PROFILE (Allows Admin to test bidding seamlessly)
       currentTransporter = (db.transporters || [])[0] || {
         id: 'trans_s001',
         company_name: 'Shalimar Express Logistics (Admin Test)',
