@@ -1048,7 +1048,7 @@ export const AdminDashboard = () => {
           recipientPhone: transporter.mobile,
           recipientName: transporter.company_name,
           title: `🚨 New Freight Bid Broadcast: ${batchCode}`,
-          message: `🚨 *SHALIMAR LOGISTICS BID ALERT* 🚨\n\n📦 Batch: ${batchCode} (${newRequests.length} Items)\n📍 Route: ${newRequests[0].origin_city} ➔ ${newRequests[0].dest_city}\n⚖️ Volume: ${newRequests.reduce((a, b) => a + (Number(b.required_qty) || 0), 0)} MT\n📅 Target Date: ${newRequests[0].target_date}\n\nSubmit rates: https://transflow-logistics.vercel.app/`
+          message: `🚨 *SHALIMAR LOGISTICS BID ALERT* 🚨\n\n📦 Batch: ${batchCode} (${newRequests.length} Items)\n📍 Route: ${newRequests[0].origin_city} ➔ ${newRequests[0].dest_city}\n⚖️ Volume: ${newRequests.reduce((a, b) => a + (Number(b.required_qty) || 0), 0)} MT\n📅 Target Date: ${newRequests[0].target_date}\n\nSubmit rates: ${typeof window !== 'undefined' ? window.location.origin : ''}/`
         });
       }
     });
