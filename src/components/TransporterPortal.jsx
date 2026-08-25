@@ -290,6 +290,14 @@ export const TransporterPortal = () => {
       return;
     }
 
+    // 🛡️ COUNTER BID VALIDATION RULE: Updated rate MUST be strictly lower than competing counter rate!
+    const existingBid = existingIdx >= 0 ? updatedSubmissions[existingIdx] : null;
+    const counterCeiling = parseFloat(existingBid?.counter_rate_per_unit || req.admin_counter_rate || (existingBid ? existingBid.rate_per_unit : 0));
+    if (existingBid && counterCeiling > 0 && rateVal >= counterCeiling) {
+      alert(`🛑 BID VALIDATION ERROR:\n\nYour updated rate (₹${rateVal.toLocaleString()}/MT) must be STRICTLY LOWER than the competing/counter rate (₹${counterCeiling.toLocaleString()}/MT)!\n\nYou cannot submit a higher or equal freight rate.`);
+      return;
+    }
+
     const transId = currentTransporter?.id || currentTransporter?.code || currentTransporter?.username || 'transporter';
 
     const newSubId = existingIdx >= 0 ? updatedSubmissions[existingIdx].id : `sub_${(transId).toLowerCase()}_${Date.now()}`;
@@ -1100,7 +1108,7 @@ export const TransporterPortal = () => {
                                                      <div style={{ fontWeight: '900', color: '#0284c7', fontSize: '0.9rem' }}>
                                                        {req.required_qty ? Number(req.required_qty).toLocaleString() : 0} {req.unit || 'MT'}
                                                      </div>
-                                                     <div style={{ fontSize: '0.74rem', color: '#64748b', fontWeight: '600', textTransform: 'uppercase' }}>{req.material_type || 'Cargo'}</div>
+                                     <div style={{ fontSize: '0.74rem', color: '#64748b', fontWeight: '600', textTransform: 'uppercase' }}>{req.material_type || 'Cargo'}</div>
                                                    </td>
 
                                                    <td style={{ padding: '10px 14px' }}>
@@ -1115,39 +1123,49 @@ export const TransporterPortal = () => {
                                                            <span style={{ fontSize: '0.74rem', color: '#047857', fontWeight: '800' }}>FROZEN:</span>
                                                            <strong style={{ color: '#064e3b', fontSize: '0.95rem', fontWeight: '900' }}>₹{myExistingBid.rate_per_unit}/MT</strong>
                                                          </div>
-                                                       ) : (
-                                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                                           <div className="current-bid-badge" style={{ background: '#dcfce7', border: '1.5px solid #16a34a', padding: '5px 10px', borderRadius: '8px', fontSize: '0.78rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                                                             <span style={{ color: '#047857', fontWeight: '900' }}>✓ Current Bid:</span>
-                                                             <strong style={{ color: '#064e3b', fontSize: '0.92rem', fontWeight: '900' }}>₹{myExistingBid.rate_per_unit}/MT</strong>
-                                                           </div>
-                                                           <form onSubmit={(e) => handleExpressQuickSubmit(e, req)} style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                                                             <div style={{ position: 'relative', width: '100%' }}>
-                                                               <span style={{ position: 'absolute', left: '8px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', fontSize: '0.85rem' }}>₹</span>
-                                                               <input
-                                                                 type="number"
-                                                                 min="1"
-                                                                 placeholder={`New Rate`}
-                                                                 className="form-control"
-                                                                 value={currentInputRate}
-                                                                 onChange={(e) => {
-                                                                  const val = e.target.value;
-                                                                  setQuickRates((prev) => ({
-                                                                    ...prev,
-                                                                    [req.id]: val,
-                                                                    [String(req.id)]: val,
-                                                                    ...(req.request_no ? { [req.request_no]: val } : {})
-                                                                  }));
-                                                                }}
-                                                                 style={{ paddingLeft: '22px', fontSize: '0.82rem', fontWeight: '800', height: '32px', width: '100px' }}
-                                                               />
-                                                             </div>
-                                                             <button type="submit" className="btn btn-primary" style={{ padding: '4px 10px', fontSize: '0.75rem', whiteSpace: 'nowrap', height: '32px', borderRadius: '6px', fontWeight: '900', background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)' }}>
-                                                               ✏️ Update
-                                                             </button>
-                                                           </form>
-                                                         </div>
-                                                       )
+                                                       ) : (() => {
+                                                          const hasCounterBid = Boolean(myExistingBid?.counter_rate_per_unit || req.admin_counter_rate);
+                                                          const counterCeiling = parseFloat(myExistingBid?.counter_rate_per_unit || req.admin_counter_rate || 0);
+
+                                                          return (
+                                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                                              <div className="current-bid-badge" style={{ background: '#dcfce7', border: '1.5px solid #16a34a', padding: '5px 10px', borderRadius: '8px', fontSize: '0.78rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                                                <span style={{ color: '#047857', fontWeight: '900' }}>✓ Current Bid:</span>
+                                                                <strong style={{ color: '#064e3b', fontSize: '0.92rem', fontWeight: '900' }}>₹{myExistingBid.rate_per_unit}/MT</strong>
+                                                              </div>
+
+                                                              {/* ⚡ ONLY SHOW UPDATE FORM IF THERE IS AN ACTIVE COUNTER RATE / COMPETING BID TO BEAT! */}
+                                                              {hasCounterBid && (
+                                                                <form onSubmit={(e) => handleExpressQuickSubmit(e, req)} style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                                                                  <div style={{ position: 'relative', width: '100%' }}>
+                                                                    <span style={{ position: 'absolute', left: '8px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', fontSize: '0.85rem' }}>₹</span>
+                                                                    <input
+                                                                      type="number"
+                                                                      min="1"
+                                                                      max={counterCeiling > 0 ? counterCeiling - 1 : undefined}
+                                                                      placeholder={counterCeiling > 0 ? `< ₹${counterCeiling}` : 'Lower Rate'}
+                                                                      className="form-control"
+                                                                      value={currentInputRate}
+                                                                      onChange={(e) => {
+                                                                        const val = e.target.value;
+                                                                        setQuickRates((prev) => ({
+                                                                          ...prev,
+                                                                          [req.id]: val,
+                                                                          [String(req.id)]: val,
+                                                                          ...(req.request_no ? { [req.request_no]: val } : {})
+                                                                        }));
+                                                                      }}
+                                                                      style={{ paddingLeft: '22px', fontSize: '0.82rem', fontWeight: '800', height: '32px', width: '105px' }}
+                                                                    />
+                                                                  </div>
+                                                                  <button type="submit" className="btn btn-primary" style={{ padding: '4px 10px', fontSize: '0.75rem', whiteSpace: 'nowrap', height: '32px', borderRadius: '6px', fontWeight: '900', background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)' }}>
+                                                                    ✏️ Update
+                                                                  </button>
+                                                                </form>
+                                                              )}
+                                                            </div>
+                                                          );
+                                                        })()
                                                      ) : isAwarded ? (
                                                        <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Requirements Closed</span>
                                                      ) : (
@@ -1271,31 +1289,41 @@ export const TransporterPortal = () => {
                                   <span style={{ fontSize: '0.74rem', color: '#047857', fontWeight: '800' }}>FROZEN:</span>
                                   <strong style={{ color: '#064e3b', fontSize: '0.95rem', fontWeight: '900' }}>₹{myExistingBid.rate_per_unit}/MT</strong>
                                 </div>
-                              ) : (
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                  <div className="current-bid-badge" style={{ background: '#dcfce7', border: '1.5px solid #16a34a', padding: '5px 10px', borderRadius: '8px', fontSize: '0.78rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                                    <span style={{ color: '#047857', fontWeight: '900' }}>✓ Current Bid:</span>
-                                    <strong style={{ color: '#064e3b', fontSize: '0.92rem', fontWeight: '900' }}>₹{myExistingBid.rate_per_unit}/MT</strong>
-                                  </div>
-                                  <form onSubmit={(e) => handleExpressQuickSubmit(e, req)} style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                                    <div style={{ position: 'relative', width: '100%' }}>
-                                      <span style={{ position: 'absolute', left: '8px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', fontSize: '0.85rem' }}>₹</span>
-                                      <input
-                                        type="number"
-                                        min="1"
-                                        placeholder={`New Rate`}
-                                        className="form-control"
-                                        value={currentInputRate}
-                                        onChange={(e) => setQuickRates({ ...quickRates, [req.id]: e.target.value })}
-                                        style={{ paddingLeft: '22px', fontSize: '0.82rem', fontWeight: '800', height: '32px', width: '100px' }}
-                                      />
+                              ) : (() => {
+                                const hasCounterBid = Boolean(myExistingBid?.counter_rate_per_unit || req.admin_counter_rate);
+                                const counterCeiling = parseFloat(myExistingBid?.counter_rate_per_unit || req.admin_counter_rate || 0);
+
+                                return (
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                    <div className="current-bid-badge" style={{ background: '#dcfce7', border: '1.5px solid #16a34a', padding: '5px 10px', borderRadius: '8px', fontSize: '0.78rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                      <span style={{ color: '#047857', fontWeight: '900' }}>✓ Current Bid:</span>
+                                      <strong style={{ color: '#064e3b', fontSize: '0.92rem', fontWeight: '900' }}>₹{myExistingBid.rate_per_unit}/MT</strong>
                                     </div>
-                                    <button type="submit" className="btn btn-primary" style={{ padding: '4px 10px', fontSize: '0.75rem', whiteSpace: 'nowrap', height: '32px', borderRadius: '6px', fontWeight: '900', background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)' }}>
-                                      ✏️ Update
-                                    </button>
-                                  </form>
-                                </div>
-                              )
+
+                                    {/* ⚡ ONLY SHOW UPDATE FORM IF THERE IS AN ACTIVE COUNTER RATE / COMPETING BID TO BEAT! */}
+                                    {hasCounterBid && (
+                                      <form onSubmit={(e) => handleExpressQuickSubmit(e, req)} style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                                        <div style={{ position: 'relative', width: '100%' }}>
+                                          <span style={{ position: 'absolute', left: '8px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', fontSize: '0.85rem' }}>₹</span>
+                                          <input
+                                            type="number"
+                                            min="1"
+                                            max={counterCeiling > 0 ? counterCeiling - 1 : undefined}
+                                            placeholder={counterCeiling > 0 ? `< ₹${counterCeiling}` : 'Lower Rate'}
+                                            className="form-control"
+                                            value={currentInputRate}
+                                            onChange={(e) => setQuickRates({ ...quickRates, [req.id]: e.target.value })}
+                                            style={{ paddingLeft: '22px', fontSize: '0.82rem', fontWeight: '800', height: '32px', width: '105px' }}
+                                          />
+                                        </div>
+                                        <button type="submit" className="btn btn-primary" style={{ padding: '4px 10px', fontSize: '0.75rem', whiteSpace: 'nowrap', height: '32px', borderRadius: '6px', fontWeight: '900', background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)' }}>
+                                          ✏️ Update
+                                        </button>
+                                      </form>
+                                    )}
+                                  </div>
+                                );
+                              })()
                             ) : isAwarded ? (
                               <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Requirements Closed</span>
                             ) : (
