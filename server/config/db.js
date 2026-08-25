@@ -30,6 +30,7 @@ export const pool = mysql.createPool({
 
 export async function initDatabaseSchema() {
   try {
+    // 1. Storage Blob Table
     await pool.query(`
       CREATE TABLE IF NOT EXISTS app_database (
         id VARCHAR(64) PRIMARY KEY,
@@ -38,6 +39,40 @@ export async function initDatabaseSchema() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
 
+    // 2. Users Table
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS users (
+        id VARCHAR(64) PRIMARY KEY,
+        username VARCHAR(100) NOT NULL,
+        password_hash VARCHAR(255) NOT NULL,
+        name VARCHAR(150) NOT NULL,
+        role ENUM('admin', 'transporter') NOT NULL DEFAULT 'transporter',
+        transporter_id VARCHAR(64) DEFAULT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY idx_users_username (username)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
+    // 3. Transporters Table
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS transporters (
+        id VARCHAR(64) PRIMARY KEY,
+        company_name VARCHAR(255) NOT NULL,
+        code VARCHAR(50) NOT NULL,
+        contact_person VARCHAR(150) DEFAULT NULL,
+        mobile VARCHAR(30) DEFAULT NULL,
+        email VARCHAR(150) DEFAULT NULL,
+        address TEXT DEFAULT NULL,
+        gst_pan VARCHAR(50) DEFAULT NULL,
+        username VARCHAR(100) DEFAULT NULL,
+        status ENUM('Active', 'Inactive') DEFAULT 'Active',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
+    // 4. Rate Requests Table
     await pool.query(`
       CREATE TABLE IF NOT EXISTS rate_requests (
         id VARCHAR(64) PRIMARY KEY,
@@ -64,6 +99,7 @@ export async function initDatabaseSchema() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
 
+    // 5. Rate Submissions Table
     await pool.query(`
       CREATE TABLE IF NOT EXISTS rate_submissions (
         id VARCHAR(64) PRIMARY KEY,
@@ -84,6 +120,7 @@ export async function initDatabaseSchema() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
 
+    // 6. Master Records Table
     await pool.query(`
       CREATE TABLE IF NOT EXISTS master_records (
         id INT AUTO_INCREMENT PRIMARY KEY,
