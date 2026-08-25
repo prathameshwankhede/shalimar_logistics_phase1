@@ -1110,16 +1110,16 @@ export const TransporterPortal = () => {
                                                    <td style={{ padding: '10px 14px' }}>
                                                      {myExistingBid ? (
                                                        myExistingBid.is_frozen ? (
-                                                         <div style={{ background: 'rgba(16, 185, 129, 0.15)', border: '1px solid #10b981', padding: '6px 10px', borderRadius: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                           <Lock size={12} color="#34d399" />
-                                                           <span style={{ fontSize: '0.72rem', color: '#34d399', fontWeight: '700' }}>FROZEN:</span>
-                                                           <strong style={{ color: '#ffffff', fontSize: '1rem' }}>₹{myExistingBid.rate_per_unit}/MT</strong>
+                                                         <div className="current-bid-badge" style={{ background: '#dcfce7', border: '1.5px solid #16a34a', padding: '6px 10px', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                           <Lock size={12} color="#047857" />
+                                                           <span style={{ fontSize: '0.74rem', color: '#047857', fontWeight: '800' }}>FROZEN:</span>
+                                                           <strong style={{ color: '#064e3b', fontSize: '0.95rem', fontWeight: '900' }}>₹{myExistingBid.rate_per_unit}/MT</strong>
                                                          </div>
                                                        ) : (
                                                          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                                           <div style={{ background: 'rgba(16, 185, 129, 0.15)', border: '1px solid #10b981', padding: '4px 8px', borderRadius: '6px', fontSize: '0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                                                             <span style={{ color: '#34d399', fontWeight: '800' }}>✓ Your Current Bid:</span>
-                                                             <strong style={{ color: '#ffffff', fontSize: '0.88rem' }}>₹{myExistingBid.rate_per_unit}/MT</strong>
+                                                           <div className="current-bid-badge" style={{ background: '#dcfce7', border: '1.5px solid #16a34a', padding: '5px 10px', borderRadius: '8px', fontSize: '0.78rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                                             <span style={{ color: '#047857', fontWeight: '900' }}>✓ Current Bid:</span>
+                                                             <strong style={{ color: '#064e3b', fontSize: '0.92rem', fontWeight: '900' }}>₹{myExistingBid.rate_per_unit}/MT</strong>
                                                            </div>
                                                            <form onSubmit={(e) => handleExpressQuickSubmit(e, req)} style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
                                                              <div style={{ position: 'relative', width: '100%' }}>
@@ -1266,16 +1266,16 @@ export const TransporterPortal = () => {
                           <td>
                             {myExistingBid ? (
                               myExistingBid.is_frozen ? (
-                                <div style={{ background: 'rgba(16, 185, 129, 0.15)', border: '1px solid #10b981', padding: '6px 10px', borderRadius: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                  <Lock size={12} color="#34d399" />
-                                  <span style={{ fontSize: '0.72rem', color: '#34d399', fontWeight: '700' }}>FROZEN:</span>
-                                  <strong style={{ color: '#ffffff', fontSize: '1rem' }}>₹{myExistingBid.rate_per_unit}/MT</strong>
+                                <div className="current-bid-badge" style={{ background: '#dcfce7', border: '1.5px solid #16a34a', padding: '6px 10px', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                  <Lock size={12} color="#047857" />
+                                  <span style={{ fontSize: '0.74rem', color: '#047857', fontWeight: '800' }}>FROZEN:</span>
+                                  <strong style={{ color: '#064e3b', fontSize: '0.95rem', fontWeight: '900' }}>₹{myExistingBid.rate_per_unit}/MT</strong>
                                 </div>
                               ) : (
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                  <div style={{ background: 'rgba(16, 185, 129, 0.15)', border: '1px solid #10b981', padding: '4px 8px', borderRadius: '6px', fontSize: '0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                                    <span style={{ color: '#34d399', fontWeight: '800' }}>✓ Current Bid:</span>
-                                    <strong style={{ color: '#ffffff', fontSize: '0.88rem' }}>₹{myExistingBid.rate_per_unit}/MT</strong>
+                                  <div className="current-bid-badge" style={{ background: '#dcfce7', border: '1.5px solid #16a34a', padding: '5px 10px', borderRadius: '8px', fontSize: '0.78rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                    <span style={{ color: '#047857', fontWeight: '900' }}>✓ Current Bid:</span>
+                                    <strong style={{ color: '#064e3b', fontSize: '0.92rem', fontWeight: '900' }}>₹{myExistingBid.rate_per_unit}/MT</strong>
                                   </div>
                                   <form onSubmit={(e) => handleExpressQuickSubmit(e, req)} style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
                                     <div style={{ position: 'relative', width: '100%' }}>

@@ -255,12 +255,30 @@ td.preserve-dark-wrapper,
 /* High Contrast Text & Accent overrides in Light Mode */
 [data-theme="light"] div[style*="color: #ffffff"]:not(.preserve-dark-card *):not(.preserve-dark-card),
 [data-theme="light"] span[style*="color: #ffffff"]:not(.preserve-dark-card *):not(.preserve-dark-card),
+[data-theme="light"] strong[style*="color: #ffffff"]:not(.preserve-dark-card *):not(.preserve-dark-card),
 [data-theme="light"] td[style*="color: #ffffff"]:not(.preserve-dark-card *):not(.preserve-dark-card),
 [data-theme="light"] p[style*="color: #ffffff"]:not(.preserve-dark-card *):not(.preserve-dark-card),
 [data-theme="light"] h3[style*="color: #ffffff"]:not(.preserve-dark-card *):not(.preserve-dark-card),
 [data-theme="light"] h2[style*="color: #ffffff"]:not(.preserve-dark-card *):not(.preserve-dark-card),
 [data-theme="light"] h1[style*="color: #ffffff"]:not(.preserve-dark-card *):not(.preserve-dark-card) {
   color: #0f172a !important;
+}
+
+.current-bid-badge {
+  background: #dcfce7 !important;
+  border: 1.5px solid #16a34a !important;
+}
+
+.current-bid-badge span,
+.current-bid-badge label {
+  color: #047857 !important;
+  font-weight: 900 !important;
+}
+
+.current-bid-badge strong,
+.current-bid-badge div {
+  color: #064e3b !important;
+  font-weight: 900 !important;
 }
 
 [data-theme="light"] div[style*="color: #38bdf8"],
