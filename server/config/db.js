@@ -39,6 +39,32 @@ export async function initDatabaseSchema() {
     `);
 
     await pool.query(`
+      CREATE TABLE IF NOT EXISTS rate_requests (
+        id VARCHAR(64) PRIMARY KEY,
+        request_no VARCHAR(100) NOT NULL,
+        title VARCHAR(255) DEFAULT NULL,
+        batch_no VARCHAR(100) DEFAULT NULL,
+        sub_no VARCHAR(50) DEFAULT NULL,
+        origin_city VARCHAR(100) DEFAULT NULL,
+        origin_pin VARCHAR(20) DEFAULT NULL,
+        dest_city VARCHAR(100) DEFAULT NULL,
+        dest_pin VARCHAR(20) DEFAULT NULL,
+        company_unit VARCHAR(255) DEFAULT NULL,
+        material_type VARCHAR(255) DEFAULT NULL,
+        hsn_code VARCHAR(50) DEFAULT NULL,
+        required_qty DECIMAL(12,2) DEFAULT 0.00,
+        unit VARCHAR(50) DEFAULT 'MT',
+        target_date DATE DEFAULT NULL,
+        status VARCHAR(50) DEFAULT 'Open',
+        notes TEXT DEFAULT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        KEY idx_requests_status (status),
+        KEY idx_requests_no (request_no)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
+    await pool.query(`
       CREATE TABLE IF NOT EXISTS rate_submissions (
         id VARCHAR(64) PRIMARY KEY,
         request_id VARCHAR(64) NOT NULL,

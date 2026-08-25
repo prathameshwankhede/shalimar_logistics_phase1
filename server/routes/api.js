@@ -38,6 +38,40 @@ router.get('/state', async (req, res) => {
     console.warn('MySQL state load warning:', err.message);
   }
 
+  // Also query normalized rate_requests to guarantee zero lost indents
+  try {
+    const [reqs] = await pool.query('SELECT * FROM rate_requests ORDER BY created_at DESC');
+    if (reqs && reqs.length > 0) {
+      const reqMap = new Map();
+      (state.rate_requests || []).forEach(r => reqMap.set(String(r.id), r));
+      reqs.forEach(r => {
+        reqMap.set(String(r.id), {
+          id: r.id,
+          request_no: r.request_no,
+          title: r.title || r.request_no,
+          batch_no: r.batch_no || '',
+          sub_no: r.sub_no || '',
+          origin_city: r.origin_city || '',
+          origin_pin: r.origin_pin || '',
+          dest_city: r.dest_city || '',
+          dest_pin: r.dest_pin || '',
+          company_unit: r.company_unit || '',
+          material_type: r.material_type || '',
+          hsn_code: r.hsn_code || '',
+          required_qty: Number(r.required_qty),
+          unit: r.unit || 'MT',
+          target_date: r.target_date ? new Date(r.target_date).toISOString().split('T')[0] : null,
+          status: r.status || 'Open',
+          notes: r.notes || '',
+          created_at: r.created_at ? new Date(r.created_at).toISOString() : new Date().toISOString()
+        });
+      });
+      state.rate_requests = Array.from(reqMap.values());
+    }
+  } catch (err) {
+    // ignore
+  }
+
   // Also query normalized rate_submissions to guarantee zero lost bids
   try {
     const [bids] = await pool.query('SELECT * FROM rate_submissions ORDER BY submitted_at DESC');
@@ -283,7 +317,7 @@ async function syncNormalizedTables(data) {
             r.required_qty || 0, r.unit || 'MT', r.target_date || null,
             r.status || 'Open', r.notes || ''
           ]
-        ).catch(() => {});
+        ).catch((err) => console.warn('rate_requests sync error:', err.message));
       }
     }
   }
