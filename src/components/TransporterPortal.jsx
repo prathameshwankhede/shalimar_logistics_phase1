@@ -302,6 +302,7 @@ export const TransporterPortal = () => {
 
     const newSubId = existingIdx >= 0 ? updatedSubmissions[existingIdx].id : `sub_${(transId).toLowerCase()}_${Date.now()}`;
     const subObj = {
+      ...(existingIdx >= 0 ? updatedSubmissions[existingIdx] : {}),
       id: newSubId,
       rate_request_id: req.id,
       transporter_id: transId,
@@ -310,7 +311,11 @@ export const TransporterPortal = () => {
       transit_days: 2,
       notes: 'Fast 1-line quote submitted.',
       status: 'Submitted',
-      submitted_at: new Date().toISOString()
+      submitted_at: new Date().toISOString(),
+      ...(counterCeiling > 0 ? {
+        has_responded_to_counter: true,
+        responded_counter_rate: counterCeiling
+      } : {})
     };
 
     if (existingIdx >= 0) {
@@ -1124,8 +1129,9 @@ export const TransporterPortal = () => {
                                                            <strong style={{ color: '#064e3b', fontSize: '0.95rem', fontWeight: '900' }}>₹{myExistingBid.rate_per_unit}/MT</strong>
                                                          </div>
                                                        ) : (() => {
-                                                          const hasCounterBid = Boolean(myExistingBid?.counter_rate_per_unit || req.admin_counter_rate);
                                                           const counterCeiling = parseFloat(myExistingBid?.counter_rate_per_unit || req.admin_counter_rate || 0);
+                                                          const alreadyResponded = Boolean(myExistingBid?.has_responded_to_counter && String(myExistingBid?.responded_counter_rate) === String(counterCeiling));
+                                                          const canUpdateOnce = Boolean(counterCeiling > 0 && !alreadyResponded);
 
                                                           return (
                                                             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
@@ -1134,8 +1140,8 @@ export const TransporterPortal = () => {
                                                                 <strong style={{ color: '#064e3b', fontSize: '0.92rem', fontWeight: '900' }}>₹{myExistingBid.rate_per_unit}/MT</strong>
                                                               </div>
 
-                                                              {/* ⚡ ONLY SHOW UPDATE FORM IF THERE IS AN ACTIVE COUNTER RATE / COMPETING BID TO BEAT! */}
-                                                              {hasCounterBid && (
+                                                              {/* ⚡ ALLOW EXACTLY 1 UPDATE ATTEMPT PER COUNTER BID! */}
+                                                              {canUpdateOnce ? (
                                                                 <form onSubmit={(e) => handleExpressQuickSubmit(e, req)} style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
                                                                   <div style={{ position: 'relative', width: '100%' }}>
                                                                     <span style={{ position: 'absolute', left: '8px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', fontSize: '0.85rem' }}>₹</span>
@@ -1162,7 +1168,11 @@ export const TransporterPortal = () => {
                                                                     ✏️ Update
                                                                   </button>
                                                                 </form>
-                                                              )}
+                                                              ) : alreadyResponded ? (
+                                                                <div style={{ fontSize: '0.72rem', color: '#0369a1', fontWeight: '800', textAlign: 'center', background: '#e0f2fe', border: '1px solid #7dd3fc', padding: '3px 8px', borderRadius: '6px' }}>
+                                                                  🔒 Updated Bid Submitted (1/1 Attempt Used)
+                                                                </div>
+                                                              ) : null}
                                                             </div>
                                                           );
                                                         })()
@@ -1290,8 +1300,9 @@ export const TransporterPortal = () => {
                                   <strong style={{ color: '#064e3b', fontSize: '0.95rem', fontWeight: '900' }}>₹{myExistingBid.rate_per_unit}/MT</strong>
                                 </div>
                               ) : (() => {
-                                const hasCounterBid = Boolean(myExistingBid?.counter_rate_per_unit || req.admin_counter_rate);
                                 const counterCeiling = parseFloat(myExistingBid?.counter_rate_per_unit || req.admin_counter_rate || 0);
+                                const alreadyResponded = Boolean(myExistingBid?.has_responded_to_counter && String(myExistingBid?.responded_counter_rate) === String(counterCeiling));
+                                const canUpdateOnce = Boolean(counterCeiling > 0 && !alreadyResponded);
 
                                 return (
                                   <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
@@ -1300,8 +1311,8 @@ export const TransporterPortal = () => {
                                       <strong style={{ color: '#064e3b', fontSize: '0.92rem', fontWeight: '900' }}>₹{myExistingBid.rate_per_unit}/MT</strong>
                                     </div>
 
-                                    {/* ⚡ ONLY SHOW UPDATE FORM IF THERE IS AN ACTIVE COUNTER RATE / COMPETING BID TO BEAT! */}
-                                    {hasCounterBid && (
+                                    {/* ⚡ ALLOW EXACTLY 1 UPDATE ATTEMPT PER COUNTER BID! */}
+                                    {canUpdateOnce ? (
                                       <form onSubmit={(e) => handleExpressQuickSubmit(e, req)} style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
                                         <div style={{ position: 'relative', width: '100%' }}>
                                           <span style={{ position: 'absolute', left: '8px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', fontSize: '0.85rem' }}>₹</span>
@@ -1320,7 +1331,11 @@ export const TransporterPortal = () => {
                                           ✏️ Update
                                         </button>
                                       </form>
-                                    )}
+                                    ) : alreadyResponded ? (
+                                      <div style={{ fontSize: '0.72rem', color: '#0369a1', fontWeight: '800', textAlign: 'center', background: '#e0f2fe', border: '1px solid #7dd3fc', padding: '3px 8px', borderRadius: '6px' }}>
+                                        🔒 Updated Bid Submitted (1/1 Attempt Used)
+                                      </div>
+                                    ) : null}
                                   </div>
                                 );
                               })()
