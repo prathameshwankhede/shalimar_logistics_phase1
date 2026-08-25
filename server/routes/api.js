@@ -137,11 +137,16 @@ router.get('/state', async (req, res) => {
       if (cityList.length > 0) state.city_masters = mergeArrayById(state.city_masters || [], cityList, 'id');
       if (titleList.length > 0) state.title_masters = mergeArrayById(state.title_masters || [], titleList, 'id');
     }
-  } catch (err) {
-    // ignore
+function sanitizeStateForClient(rawState) {
+  if (!rawState || typeof rawState !== 'object') return rawState;
+  const copy = JSON.parse(JSON.stringify(rawState));
+  if (Array.isArray(copy.users)) {
+    copy.users = copy.users.map(({ password, password_hash, ...u }) => u);
   }
+  return copy;
+}
 
-  return res.json({ success: true, data: state });
+  return res.json({ success: true, data: sanitizeStateForClient(state) });
 });
 
 // -------------------------------------------------------------
@@ -175,7 +180,7 @@ router.post('/state', async (req, res) => {
     console.warn('MySQL state save warning (cached in memory):', err.message);
   }
 
-  return res.json({ success: true, timestamp: Date.now(), data: payload });
+  return res.json({ success: true, timestamp: Date.now(), data: sanitizeStateForClient(payload) });
 });
 
 // -------------------------------------------------------------

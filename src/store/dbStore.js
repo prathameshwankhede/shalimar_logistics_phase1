@@ -157,7 +157,6 @@ export const INITIAL_SEED_DATA = {
     {
       id: 'usr_admin',
       username: 'admin',
-      password: 'admin123',
       name: 'Shalimar Admin (Logistics Head)',
       role: 'admin',
       transporter_id: null,
@@ -166,7 +165,6 @@ export const INITIAL_SEED_DATA = {
     {
       id: 'usr_abc',
       username: 'ABC001',
-      password: 'password123',
       name: 'ABC Transport Admin',
       role: 'transporter',
       transporter_id: 'trans_abc',
@@ -175,7 +173,6 @@ export const INITIAL_SEED_DATA = {
     {
       id: 'usr_xyz',
       username: 'XYZ001',
-      password: 'password123',
       name: 'XYZ Transport Admin',
       role: 'transporter',
       transporter_id: 'trans_xyz',
@@ -184,7 +181,6 @@ export const INITIAL_SEED_DATA = {
     {
       id: 'usr_pqr',
       username: 'PQR001',
-      password: 'password123',
       name: 'PQR Transport Admin',
       role: 'transporter',
       transporter_id: 'trans_pqr',
