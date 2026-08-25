@@ -210,21 +210,24 @@ export const AuthProvider = ({ children }) => {
 
   const updateDB = async (newDb) => {
     if (!newDb) return;
+    
+    let updatedData = null;
     setDb((prevDb) => {
       const mergedData = mergeDbStates(newDb, prevDb);
-      const updatedData = { ...mergedData, _updatedAt: Date.now() + 1000 };
-      
-      // Asynchronously persist to Cloud DB (Supabase + Turso)
-      saveDB(updatedData).then((mergedResult) => {
+      updatedData = { ...mergedData, _updatedAt: Date.now() + 1000 };
+      return updatedData;
+    });
+
+    if (updatedData) {
+      try {
+        const mergedResult = await saveDB(updatedData);
         if (mergedResult) {
           setDb((latestPrev) => mergeDbStates(mergedResult, latestPrev));
         }
-      }).catch((e) => {
-        console.error('Supabase save failed in updateDB:', e);
-      });
-
-      return updatedData;
-    });
+      } catch (e) {
+        console.error('MySQL save failed in updateDB:', e);
+      }
+    }
 
     try {
       if (typeof BroadcastChannel !== 'undefined') {
