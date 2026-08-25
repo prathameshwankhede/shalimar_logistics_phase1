@@ -1,10 +1,5 @@
 // src/store/dbStore.js
-// 100% Pure Enterprise Supabase Cloud Database Store Engine ☁️🛡️
-import { supabase } from '../supabaseClient.js';
-import { tursoClient, isTursoConfigured, initTursoSchema } from '../tursoClient.js';
-
-const CLOUD_ROW_ID = 'transflow-live-prod-v3';
-let isTursoInitialized = false;
+// Enterprise Hostinger Node.js API + MySQL Database Store Engine 🛡️⚡
 
 export const INITIAL_SEED_DATA = {
   _updatedAt: Date.now(),
@@ -77,126 +72,78 @@ export const INITIAL_SEED_DATA = {
 
 const LOCAL_STORAGE_KEY = 'transflow_local_db_v3';
 
-/**
- * ☁️ Load Database directly from Supabase Cloud Server (Master Source of Truth for 50+ PCs)
- */
-export async function loadDBFromSupabase() {
-  if (!supabase) {
-    try {
-      const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
-      if (raw) return JSON.parse(raw);
-    } catch (e) {}
-    return INITIAL_SEED_DATA;
-  }
-
-  try {
-    const { data, error } = await supabase
-      .from('app_database')
-      .select('data')
-      .eq('id', CLOUD_ROW_ID)
-      .maybeSingle();
-
-    if (error) {
-      console.warn('Supabase fetch error, returning local cache fallback:', error);
-      try {
-        const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
-        if (raw) return JSON.parse(raw);
-      } catch (e) {}
-      return null;
+function getApiBaseUrl() {
+  if (typeof window !== 'undefined' && window.location) {
+    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+      return 'http://localhost:3000';
     }
-
-    if (!data || !data.data) {
-      console.warn('No cloud row found, attempting initial seed upload...');
-      try {
-        const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
-        if (raw) return JSON.parse(raw);
-      } catch (e) {}
-      await saveDB(INITIAL_SEED_DATA);
-      return INITIAL_SEED_DATA;
-    }
-
-    const cloudData = data.data;
-
-    // Cache mirror for offline fallback only
-    try {
-      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(cloudData));
-    } catch (e) {}
-
-    return cloudData;
-  } catch (error) {
-    console.error('Supabase Cloud Load Error:', error);
-    try {
-      const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
-      if (raw) return JSON.parse(raw);
-    } catch (e) {}
-    return INITIAL_SEED_DATA;
+    return window.location.origin;
   }
+  return '';
 }
 
 /**
- * ☁️ Save Database directly to Supabase Cloud Server (Master Write)
+ * ☁️ Load Database from Node.js API / Hostinger MySQL Server
+ */
+export async function loadDBFromApi() {
+  try {
+    const res = await fetch(`${getApiBaseUrl()}/api/state`, {
+      headers: { 'Accept': 'application/json' }
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const result = await res.json();
+    if (result && result.data) {
+      try {
+        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(result.data));
+      } catch (e) {}
+      return result.data;
+    }
+  } catch (err) {
+    console.warn('API State load warning, using local cache fallback:', err.message);
+  }
+
+  return loadDB();
+}
+
+// Backward compatibility alias for existing component calls
+export const loadDBFromSupabase = loadDBFromApi;
+
+/**
+ * ☁️ Save Database to Node.js API / Hostinger MySQL Server
  */
 export async function saveDB(data) {
+  const dataToSave = {
+    ...data,
+    _updatedAt: Date.now()
+  };
+
   try {
-    const dataToSave = {
-      ...data,
-      _updatedAt: Date.now()
-    };
+    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(dataToSave));
+  } catch (e) {}
 
-    // Cache mirror
-    try {
-      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(dataToSave));
-    } catch (e) {}
-
-    // Dual Turso SQLite Cloud Sync
-    if (isTursoConfigured && tursoClient) {
+  try {
+    const res = await fetch(`${getApiBaseUrl()}/api/state`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(dataToSave)
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const result = await res.json();
+    if (result && result.data) {
       try {
-        if (!isTursoInitialized) {
-          await initTursoSchema();
-          isTursoInitialized = true;
-        }
-        await tursoClient.execute({
-          sql: `INSERT INTO app_database (id, data, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)
-                ON CONFLICT(id) DO UPDATE SET data = excluded.data, updated_at = CURRENT_TIMESTAMP`,
-          args: [CLOUD_ROW_ID, JSON.stringify(dataToSave)]
-        });
-      } catch (tErr) {
-        console.warn('Turso save error:', tErr);
-      }
+        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(result.data));
+      } catch (e) {}
+      return result.data;
     }
-
-    if (!supabase) return dataToSave;
-
-    const { data: resData, error } = await supabase
-      .from('app_database')
-      .upsert(
-        {
-          id: CLOUD_ROW_ID,
-          data: dataToSave,
-          updated_at: new Date().toISOString()
-        },
-        { onConflict: 'id' }
-      )
-      .select();
-
-    if (error) {
-      console.error('Supabase Cloud Save Error:', error);
-      return dataToSave;
-    }
-
-    const savedResult = resData && resData[0]?.data ? resData[0].data : dataToSave;
-    try {
-      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(savedResult));
-    } catch (e) {}
-    return savedResult;
   } catch (err) {
-    console.error('Supabase Cloud Save Exception:', err);
-    return data;
+    console.error('API State save error:', err.message);
   }
+
+  return dataToSave;
 }
 
 /**
- * ☁️ Load Fallback DB
+ * ☁️ Load Fallback DB from LocalStorage
  */
 export function loadDB() {
   try {
@@ -207,7 +154,7 @@ export function loadDB() {
 }
 
 /**
- * ☁️ Reset Operational Data in Cloud
+ * ☁️ Reset Operational Data
  */
 export function resetDB() {
   const cleanData = {

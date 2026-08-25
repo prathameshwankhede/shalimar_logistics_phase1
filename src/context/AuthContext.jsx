@@ -8,7 +8,6 @@ import {
   saveDB,
   resetDB as resetStoreDB
 } from '../store/dbStore';
-import { supabase } from '../supabaseClient';
 
 const USER_SESSION_KEY = 'transflow_current_user';
 const AuthContext = createContext(null);
@@ -153,25 +152,6 @@ export const AuthProvider = ({ children }) => {
 
     fetchSharedServerDb();
 
-    // 📡 SUPABASE REALTIME WEBSOCKET LISTENER FOR INSTANT CROSS-DEVICE SYNC (LAPTOP <-> MOBILE)
-    let channel = null;
-    if (supabase) {
-      try {
-        channel = supabase
-          .channel('public:app_database_sync')
-          .on(
-            'postgres_changes',
-            { event: '*', schema: 'public', table: 'app_database' },
-            () => {
-              fetchSharedServerDb();
-            }
-          )
-          .subscribe();
-      } catch (err) {
-        console.error('Supabase Realtime Channel error:', err);
-      }
-    }
-
     const handleStorageChange = () => {
       fetchSharedServerDb();
     };
@@ -186,14 +166,13 @@ export const AuthProvider = ({ children }) => {
       } catch (e) {}
     }
 
-    const interval = setInterval(fetchSharedServerDb, 1500);
+    const interval = setInterval(fetchSharedServerDb, 3000);
 
     window.addEventListener('storage', handleStorageChange);
     return () => {
       isMounted = false;
       window.removeEventListener('storage', handleStorageChange);
       if (bc) bc.close();
-      if (channel && supabase) supabase.removeChannel(channel);
       clearInterval(interval);
     };
   }, []);

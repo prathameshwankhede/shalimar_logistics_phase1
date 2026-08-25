@@ -2717,7 +2717,7 @@ export const AdminDashboard = () => {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px', marginBottom: '24px' }}>
                 <div>
                   <div style={{ fontSize: '0.78rem', fontWeight: '900', color: '#0284c7', background: '#ffffff', padding: '4px 12px', borderRadius: '6px', width: 'fit-content', border: '1.5px solid #0284c7', marginBottom: '8px', boxShadow: '0 2px 8px rgba(2, 132, 199, 0.12)' }}>
-                    🛡️ VERCEL / SUPABASE CLOUD DATABASE ENGINE
+                    🛡️ HOSTINGER / MYSQL CLOUD DATABASE ENGINE
                   </div>
                   <h2 style={{ fontSize: '1.5rem', fontWeight: '900', color: '#0f172a', margin: '4px 0', display: 'flex', alignItems: 'center', gap: '10px' }}>
                     <Database size={24} color="#059669" /> 🗄️ System Database Backup & Cloud Restore Center
