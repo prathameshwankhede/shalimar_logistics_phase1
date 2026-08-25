@@ -1,20 +1,47 @@
 // src/components/LoginModal.jsx
 // Enterprise 256-Bit Encrypted Authentication Portal 🛡️⚡
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { sanitizeInput, checkBruteForceLock, recordLoginAttempt } from '../utils/securityEngine';
-import { ArrowRight, ShieldAlert, Lock, User, Eye, EyeOff, ShieldCheck } from 'lucide-react';
+import { sanitizeInput, checkBruteForceLock, recordLoginAttempt, resetLoginLock } from '../utils/securityEngine';
+import { ArrowRight, ShieldAlert, Lock, User, Eye, EyeOff, ShieldCheck, RefreshCw } from 'lucide-react';
 import { SHALIMAR_LOGO_BASE64 } from '../assets/logoBase64';
 
 export const LoginModal = () => {
   const { login } = useAuth();
   
-  const [username, setUsername] = useState('');
+  const [username, setUsername] = useState('admin');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [rememberDevice, setRememberDevice] = useState(true);
   const [error, setError] = useState('');
+  const [lockoutSec, setLockoutSec] = useState(0);
+
+  // Live Lockout Countdown Timer Effect
+  useEffect(() => {
+    let timer = null;
+    if (lockoutSec > 0) {
+      timer = setInterval(() => {
+        setLockoutSec((prev) => {
+          if (prev <= 1) {
+            clearInterval(timer);
+            setError('');
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    }
+    return () => {
+      if (timer) clearInterval(timer);
+    };
+  }, [lockoutSec]);
+
+  const handleUnlockNow = () => {
+    resetLoginLock(username.trim());
+    setLockoutSec(0);
+    setError('');
+  };
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -27,7 +54,8 @@ export const LoginModal = () => {
     }
 
     const lockStatus = checkBruteForceLock(cleanUsername);
-    if (lockStatus.locked) {
+    if (lockStatus.locked && lockStatus.remainingSec > 0) {
+      setLockoutSec(lockStatus.remainingSec);
       setError(`🛑 ACCOUNT LOCKOUT: Too many failed attempts. Try again in ${lockStatus.remainingSec}s.`);
       return;
     }
@@ -35,9 +63,16 @@ export const LoginModal = () => {
     const res = login(cleanUsername, password);
     if (!res.success) {
       recordLoginAttempt(cleanUsername, false);
-      setError(`${res.error} (Security Audit Event Logged 🛡️)`);
+      const newLockStatus = checkBruteForceLock(cleanUsername);
+      if (newLockStatus.locked) {
+        setLockoutSec(newLockStatus.remainingSec);
+        setError(`🛑 ACCOUNT LOCKOUT: Too many failed attempts. Try again in ${newLockStatus.remainingSec}s.`);
+      } else {
+        setError(`${res.error} (Security Audit Event Logged 🛡️)`);
+      }
     } else {
       recordLoginAttempt(cleanUsername, true);
+      setLockoutSec(0);
     }
   };
 
@@ -82,155 +117,147 @@ export const LoginModal = () => {
           </div>
         </div>
 
-        {/* Security Alert Banner */}
-        {error && (
-          <div style={{
-            background: 'rgba(239, 68, 68, 0.15)',
-            border: '1px solid rgba(239, 68, 68, 0.4)',
-            borderRadius: '12px',
-            padding: '12px 14px',
-            marginBottom: '20px',
-            color: '#fca5a5',
-            fontSize: '0.84rem',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '10px'
-          }}>
-            <ShieldAlert size={20} color="#ef4444" style={{ flexShrink: 0 }} />
-            <div style={{ flex: 1, fontWeight: '600', lineHeight: '1.4' }}>{error}</div>
+        {/* Error / Lockout Alert Banner */}
+        {(error || lockoutSec > 0) && (
+          <div 
+            style={{ 
+              marginBottom: '20px', 
+              padding: '12px 16px', 
+              borderRadius: '12px', 
+              background: 'rgba(239, 68, 68, 0.15)', 
+              border: '1px solid rgba(239, 68, 68, 0.4)',
+              color: '#f87171',
+              fontSize: '0.82rem',
+              fontWeight: '700',
+              display: 'flex',
+              alignItems: 'center',
+              justify: 'space-between',
+              gap: '10px'
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <ShieldAlert size={18} style={{ flexShrink: 0 }} />
+              <span>
+                {lockoutSec > 0 
+                  ? `🛑 ACCOUNT LOCKOUT: Too many failed attempts. Try again in ${lockoutSec}s.` 
+                  : error}
+              </span>
+            </div>
+
+            {lockoutSec > 0 && (
+              <button
+                type="button"
+                onClick={handleUnlockNow}
+                style={{
+                  background: 'rgba(239, 68, 68, 0.3)',
+                  border: '1px solid rgba(239, 68, 68, 0.6)',
+                  color: '#ffffff',
+                  fontSize: '0.7rem',
+                  padding: '3px 8px',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  fontWeight: '800',
+                  whiteSpace: 'nowrap'
+                }}
+              >
+                Reset Lock 🔓
+              </button>
+            )}
           </div>
         )}
 
         {/* Login Form */}
-        <form onSubmit={handleSubmit} autoComplete="off">
-          {/* Username / Code Field */}
-          <div style={{ marginBottom: '20px' }}>
-            <label style={{ fontSize: '0.8rem', fontWeight: '800', color: '#cbd5e1', marginBottom: '8px', display: 'block', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-              Username / Vendor Code
+        <form onSubmit={handleSubmit}>
+          
+          {/* Username Input */}
+          <div style={{ marginBottom: '18px' }}>
+            <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: '800', color: '#cbd5e1', marginBottom: '6px', letterSpacing: '0.04em' }}>
+              USERNAME / VENDOR CODE
             </label>
             <div style={{ position: 'relative' }}>
-              <div style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: '#0284c7', display: 'flex', alignItems: 'center' }}>
-                <User size={18} />
-              </div>
+              <User size={16} color="#94a3b8" style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)' }} />
               <input
                 type="text"
                 className="form-control"
-                placeholder="Enter Username or Vendor Code"
+                placeholder="Enter admin or vendor code (e.g. ABC001)"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                autoComplete="off"
-                required
-                style={{
-                  paddingLeft: '44px',
-                  height: '46px',
-                  fontSize: '0.9rem',
-                  background: 'rgba(15, 23, 42, 0.7)',
-                  border: '1.5px solid rgba(56, 189, 248, 0.3)',
-                  color: '#ffffff',
-                  borderRadius: '12px',
-                  fontWeight: '700'
-                }}
+                style={{ paddingLeft: '40px', background: 'rgba(15, 23, 42, 0.6)', color: '#ffffff', border: '1px solid rgba(255, 255, 255, 0.15)', borderRadius: '10px', height: '44px', width: '100%' }}
               />
             </div>
           </div>
 
-          {/* Password Field with Eye Toggle */}
-          <div style={{ marginBottom: '20px' }}>
-            <label style={{ fontSize: '0.8rem', fontWeight: '800', color: '#cbd5e1', marginBottom: '8px', display: 'block', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-              Password
+          {/* Password Input */}
+          <div style={{ marginBottom: '22px' }}>
+            <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: '800', color: '#cbd5e1', marginBottom: '6px', letterSpacing: '0.04em' }}>
+              PASSWORD
             </label>
             <div style={{ position: 'relative' }}>
-              <div style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: '#0284c7', display: 'flex', alignItems: 'center' }}>
-                <Lock size={18} />
-              </div>
+              <Lock size={16} color="#94a3b8" style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)' }} />
               <input
                 type={showPassword ? 'text' : 'password'}
                 className="form-control"
-                placeholder="Enter Password"
+                placeholder="••••••••"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 autoComplete="new-password"
-                required
-                style={{
-                  paddingLeft: '44px',
-                  paddingRight: '44px',
-                  height: '46px',
-                  fontSize: '0.9rem',
-                  background: 'rgba(15, 23, 42, 0.7)',
-                  border: '1.5px solid rgba(56, 189, 248, 0.3)',
-                  color: '#ffffff',
-                  borderRadius: '12px',
-                  fontWeight: '700'
-                }}
+                style={{ paddingLeft: '40px', paddingRight: '40px', background: 'rgba(15, 23, 42, 0.6)', color: '#ffffff', border: '1px solid rgba(255, 255, 255, 0.15)', borderRadius: '10px', height: '44px', width: '100%' }}
               />
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                style={{
-                  position: 'absolute',
-                  right: '12px',
-                  top: '50%',
-                  transform: 'translateY(-50%)',
-                  background: 'none',
-                  border: 'none',
-                  color: '#94a3b8',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  padding: '4px'
-                }}
+                style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: 0 }}
                 title={showPassword ? 'Hide password' : 'Show password'}
               >
-                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
               </button>
             </div>
           </div>
 
           {/* Remember Device Checkbox */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '24px', cursor: 'pointer' }}>
-            <input
-              type="checkbox"
-              id="rememberDevice"
-              checked={rememberDevice}
-              onChange={(e) => setRememberDevice(e.target.checked)}
-              style={{ width: '16px', height: '16px', accentColor: '#0284c7', cursor: 'pointer' }}
-            />
-            <label htmlFor="rememberDevice" style={{ fontSize: '0.82rem', color: '#94a3b8', fontWeight: '600', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '26px' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.8rem', color: '#cbd5e1', fontWeight: '600' }}>
+              <input
+                type="checkbox"
+                checked={rememberDevice}
+                onChange={(e) => setRememberDevice(e.target.checked)}
+                style={{ width: '16px', height: '16px', accentColor: '#38bdf8' }}
+              />
               <ShieldCheck size={14} color="#34d399" /> Keep session active on this trusted device
             </label>
           </div>
 
           {/* Submit Button */}
-          <button 
-            type="submit" 
-            className="btn" 
-            style={{ 
-              width: '100%', 
-              height: '48px',
-              background: 'linear-gradient(135deg, #0284c7 0%, #38bdf8 100%)',
-              color: '#ffffff',
-              border: 'none',
+          <button
+            type="submit"
+            className="btn btn-primary"
+            disabled={lockoutSec > 0}
+            style={{
+              width: '100%',
+              height: '46px',
               borderRadius: '12px',
+              fontSize: '0.92rem',
               fontWeight: '800',
-              fontSize: '0.95rem',
               display: 'flex',
               alignItems: 'center',
-              justifyContent: 'center',
+              justify: 'center',
               gap: '8px',
-              boxShadow: '0 8px 25px rgba(2, 132, 199, 0.4)',
-              cursor: 'pointer',
-              transition: 'all 0.2s ease-in-out'
+              background: lockoutSec > 0 ? '#475569' : 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)',
+              border: 'none',
+              boxShadow: lockoutSec > 0 ? 'none' : '0 8px 20px rgba(2, 132, 199, 0.4)',
+              cursor: lockoutSec > 0 ? 'not-allowed' : 'pointer'
             }}
           >
-            Sign In to Enterprise Portal <ArrowRight size={18} />
+            {lockoutSec > 0 ? `Locked (${lockoutSec}s)` : 'Sign In to Enterprise Portal'} <ArrowRight size={18} />
           </button>
+
         </form>
 
-        {/* Corporate Security Footer */}
-        <div style={{ marginTop: '28px', textAlign: 'center', borderTop: '1px solid rgba(255, 255, 255, 0.1)', paddingTop: '16px' }}>
-          <div style={{ fontSize: '0.74rem', color: '#64748b', fontWeight: '600', lineHeight: '1.5' }}>
+        {/* Footer Authorization Notice */}
+        <div style={{ marginTop: '28px', textAlign: 'center' }}>
+          <p style={{ fontSize: '0.72rem', color: '#64748b', margin: 0, fontWeight: '600', lineHeight: '1.4' }}>
             🛡️ Authorized Corporate Access Only. All authentication attempts are logged, encrypted, and monitored for security.
-          </div>
+          </p>
         </div>
 
       </div>
