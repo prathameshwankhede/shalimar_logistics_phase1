@@ -1131,7 +1131,8 @@ export const TransporterPortal = () => {
                                                        ) : (() => {
                                                           const counterCeiling = parseFloat(myExistingBid?.counter_rate_per_unit || req.admin_counter_rate || 0);
                                                           const alreadyResponded = Boolean(myExistingBid?.has_responded_to_counter && String(myExistingBid?.responded_counter_rate) === String(counterCeiling));
-                                                          const canUpdateOnce = Boolean(counterCeiling > 0 && !alreadyResponded);
+                                                          const isAlreadyLower = Boolean(myExistingBid && counterCeiling > 0 && parseFloat(myExistingBid.rate_per_unit) < counterCeiling);
+                                                          const canUpdateOnce = Boolean(counterCeiling > 0 && !alreadyResponded && !isAlreadyLower);
 
                                                           return (
                                                             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
@@ -1140,8 +1141,8 @@ export const TransporterPortal = () => {
                                                                 <strong style={{ color: '#064e3b', fontSize: '0.92rem', fontWeight: '900' }}>₹{myExistingBid.rate_per_unit}/MT</strong>
                                                               </div>
 
-                                                              {/* ⚡ ALLOW EXACTLY 1 UPDATE ATTEMPT PER COUNTER BID! */}
-                                                              {canUpdateOnce ? (
+                                                              {/* ⚡ ALLOW EXACTLY 1 LOWERING ATTEMPT ONLY IF TRANSPORTER HAS NOT ALREADY BEATEN OR RESPONDED! */}
+                                                              {canUpdateOnce && (
                                                                 <form onSubmit={(e) => handleExpressQuickSubmit(e, req)} style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
                                                                   <div style={{ position: 'relative', width: '100%' }}>
                                                                     <span style={{ position: 'absolute', left: '8px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', fontSize: '0.85rem' }}>₹</span>
@@ -1168,11 +1169,7 @@ export const TransporterPortal = () => {
                                                                     ✏️ Update
                                                                   </button>
                                                                 </form>
-                                                              ) : alreadyResponded ? (
-                                                                <div style={{ fontSize: '0.72rem', color: '#0369a1', fontWeight: '800', textAlign: 'center', background: '#e0f2fe', border: '1px solid #7dd3fc', padding: '3px 8px', borderRadius: '6px' }}>
-                                                                  🔒 Updated Bid Submitted (1/1 Attempt Used)
-                                                                </div>
-                                                              ) : null}
+                                                              )}
                                                             </div>
                                                           );
                                                         })()
@@ -1302,7 +1299,8 @@ export const TransporterPortal = () => {
                               ) : (() => {
                                 const counterCeiling = parseFloat(myExistingBid?.counter_rate_per_unit || req.admin_counter_rate || 0);
                                 const alreadyResponded = Boolean(myExistingBid?.has_responded_to_counter && String(myExistingBid?.responded_counter_rate) === String(counterCeiling));
-                                const canUpdateOnce = Boolean(counterCeiling > 0 && !alreadyResponded);
+                                const isAlreadyLower = Boolean(myExistingBid && counterCeiling > 0 && parseFloat(myExistingBid.rate_per_unit) < counterCeiling);
+                                const canUpdateOnce = Boolean(counterCeiling > 0 && !alreadyResponded && !isAlreadyLower);
 
                                 return (
                                   <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
@@ -1311,8 +1309,8 @@ export const TransporterPortal = () => {
                                       <strong style={{ color: '#064e3b', fontSize: '0.92rem', fontWeight: '900' }}>₹{myExistingBid.rate_per_unit}/MT</strong>
                                     </div>
 
-                                    {/* ⚡ ALLOW EXACTLY 1 UPDATE ATTEMPT PER COUNTER BID! */}
-                                    {canUpdateOnce ? (
+                                    {/* ⚡ ALLOW EXACTLY 1 LOWERING ATTEMPT ONLY IF TRANSPORTER HAS NOT ALREADY BEATEN OR RESPONDED! */}
+                                    {canUpdateOnce && (
                                       <form onSubmit={(e) => handleExpressQuickSubmit(e, req)} style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
                                         <div style={{ position: 'relative', width: '100%' }}>
                                           <span style={{ position: 'absolute', left: '8px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', fontSize: '0.85rem' }}>₹</span>
@@ -1331,11 +1329,7 @@ export const TransporterPortal = () => {
                                           ✏️ Update
                                         </button>
                                       </form>
-                                    ) : alreadyResponded ? (
-                                      <div style={{ fontSize: '0.72rem', color: '#0369a1', fontWeight: '800', textAlign: 'center', background: '#e0f2fe', border: '1px solid #7dd3fc', padding: '3px 8px', borderRadius: '6px' }}>
-                                        🔒 Updated Bid Submitted (1/1 Attempt Used)
-                                      </div>
-                                    ) : null}
+                                    )}
                                   </div>
                                 );
                               })()
