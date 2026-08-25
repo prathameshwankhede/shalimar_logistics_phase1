@@ -55,11 +55,13 @@ if (fs.existsSync(distPath)) {
   });
 }
 
+const HOST = process.env.HOST || '0.0.0.0';
+
 // Start Server
-app.listen(PORT, async () => {
+app.listen(PORT, HOST, async () => {
   console.log(`==================================================`);
   console.log(`🚀 TransFlow Logistics Express Server Running`);
-  console.log(`🌐 Server URL: http://localhost:${PORT}`);
+  console.log(`🌐 Server URL: http://${HOST}:${PORT}`);
   console.log(`==================================================`);
   await testConnection();
 });

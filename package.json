@@ -3,9 +3,10 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "main": "server.js",
   "scripts": {
-    "start": "node server/index.js",
-    "server": "node server/index.js",
+    "start": "node server.js",
+    "server": "node server.js",
     "dev": "vite",
     "build": "vite build",
     "lint": "oxlint",
