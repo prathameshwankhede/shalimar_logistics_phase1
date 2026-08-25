@@ -1,5 +1,5 @@
 // src/utils/securityEngine.js
-// 100% Military-Grade Cybersecurity & Anti-Hacking Protection Engine for Shalimar Logistics 🛡️⚡
+// 100% Cybersecurity & Anti-Hacking Protection Engine for Shalimar Logistics 🛡️⚡
 
 /**
  * 1. 🛡️ XSS, SQL & NoSQL Script Injection Sanitizer
@@ -23,9 +23,10 @@ export function sanitizeInput(str) {
 }
 
 /**
- * 2. 🔐 Brute-Force Login Protection (Max 5 attempts in 15 mins)
+ * 2. 🔐 Brute-Force Login Protection (Max 5 attempts - 1 Minute Lockout = 60,000 ms)
  */
 const LOGIN_ATTEMPTS_KEY = 'transflow_login_attempts';
+const LOCK_DURATION_MS = 60000; // 1 Minute Lockout (60 seconds)
 
 export function checkBruteForceLock(username) {
   try {
@@ -36,14 +37,14 @@ export function checkBruteForceLock(username) {
 
     if (!userAttempt) return { locked: false };
 
-    // Check if locked and under lock duration (15 minutes = 900,000 ms)
+    // Check if locked and under lock duration (1 minute = 60,000 ms)
     if (userAttempt.count >= 5) {
       const timeElapsed = Date.now() - userAttempt.lastAttempt;
-      const remainingSec = Math.ceil((900000 - timeElapsed) / 1000);
+      const remainingSec = Math.ceil((LOCK_DURATION_MS - timeElapsed) / 1000);
       if (remainingSec > 0) {
         return { locked: true, remainingSec };
       } else {
-        // Reset lock after 15 mins expired
+        // Reset lock after 1 minute expired
         delete attempts[(username || "").toLowerCase()];
         localStorage.setItem(LOGIN_ATTEMPTS_KEY, JSON.stringify(attempts));
       }
@@ -73,6 +74,15 @@ export function recordLoginAttempt(username, success) {
   } catch (e) {
     console.error('Record attempt error:', e);
   }
+}
+
+export function resetLoginLock(username) {
+  try {
+    const attemptsStr = localStorage.getItem(LOGIN_ATTEMPTS_KEY) || '{}';
+    const attempts = JSON.parse(attemptsStr);
+    delete attempts[(username || "").toLowerCase()];
+    localStorage.setItem(LOGIN_ATTEMPTS_KEY, JSON.stringify(attempts));
+  } catch (e) {}
 }
 
 /**
