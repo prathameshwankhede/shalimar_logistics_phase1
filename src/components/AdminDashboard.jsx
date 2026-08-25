@@ -2895,20 +2895,20 @@ export const AdminDashboard = () => {
                           return (
                             <tr key={t.id}>
                               <td>
-                                <div style={{ fontWeight: '900', color: '#ffffff', fontSize: '0.92rem' }}>{t.company_name}</div>
-                                <div style={{ fontSize: '0.76rem', color: 'var(--text-muted)' }}>ID: {t.id}</div>
+                                <div style={{ fontWeight: '900', color: '#0f172a', fontSize: '0.95rem' }}>{t.company_name}</div>
+                                <div style={{ fontSize: '0.76rem', color: '#475569' }}>ID: {t.id}</div>
                               </td>
                               <td>
-                                <span style={{ fontFamily: 'monospace', fontWeight: '900', color: '#38bdf8', background: 'rgba(56, 189, 248, 0.15)', padding: '3px 10px', borderRadius: '6px', border: '1px solid #38bdf8' }}>
+                                <span style={{ fontFamily: 'monospace', fontWeight: '900', color: '#0284c7', background: '#e0f2fe', padding: '3px 10px', borderRadius: '6px', border: '1px solid #7dd3fc' }}>
                                   {t.code || t.username?.toUpperCase() || 'TR'}
                                 </span>
                               </td>
                               <td>
-                                <div style={{ fontWeight: '800', color: 'var(--text-main)', fontSize: '0.85rem' }}>{t.contact_person || 'N/A'}</div>
+                                <div style={{ fontWeight: '800', color: '#0f172a', fontSize: '0.85rem' }}>{t.contact_person || 'N/A'}</div>
                               </td>
                               <td>
-                                <div style={{ fontSize: '0.82rem', color: '#ffffff', fontWeight: '700' }}>📞 {t.mobile || 'N/A'}</div>
-                                <div style={{ fontSize: '0.76rem', color: 'var(--text-muted)' }}>✉️ {t.email || 'N/A'}</div>
+                                <div style={{ fontSize: '0.82rem', color: '#1e293b', fontWeight: '700' }}>📞 {t.mobile || 'N/A'}</div>
+                                <div style={{ fontSize: '0.76rem', color: '#475569' }}>✉️ {t.email || 'N/A'}</div>
                               </td>
                               <td>
                                 <div style={{ fontFamily: 'monospace', color: '#34d399', fontSize: '0.82rem', fontWeight: '800' }}>GST: {t.gst_pan || 'N/A'}</div>

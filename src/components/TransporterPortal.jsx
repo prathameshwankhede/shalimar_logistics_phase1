@@ -172,7 +172,7 @@ export const TransporterPortal = () => {
               style={{ padding: '12px 16px', textAlign: 'left', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
             >
               <div>
-                <strong style={{ color: '#ffffff' }}>{t.company_name}</strong>
+                <strong style={{ color: 'var(--text-main, #0f172a)' }}>{t.company_name}</strong>
                 <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Code: {t.code} | GST: {t.gst_pan}</div>
               </div>
               <span className="badge badge-open">Login as {t.code} ➔</span>
