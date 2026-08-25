@@ -17,6 +17,9 @@ import authRoutes from './routes/auth.js';
 import apiRoutes from './routes/api.js';
 
 const app = express();
+
+// Phusion Passenger on Hostinger passes process.env.PORT as a string or Unix socket path.
+// DO NOT convert process.env.PORT to Number!
 const PORT = process.env.PORT || 3000;
 
 // Middleware
@@ -42,6 +45,7 @@ app.get('/api/health', (req, res) => {
     status: 'ok',
     timestamp: new Date().toISOString(),
     env: process.env.NODE_ENV || 'development',
+    port: PORT,
     db_host: process.env.DB_HOST || process.env.DATABASE_HOST || '127.0.0.1',
     db_user: process.env.DB_USER || process.env.DATABASE_USER || 'root',
     db_name: process.env.DB_NAME || process.env.DATABASE_NAME || 'transflow_db'
@@ -63,15 +67,16 @@ if (fs.existsSync(distPath)) {
   });
 }
 
-// Hostinger Production Express Listener (Binds immediately to prevent 503 Service Unavailable)
+// Hostinger Production Express Listener
 console.log(`==================================================`);
 console.log(`🚀 Starting TransFlow Logistics Hostinger Express App`);
 console.log(`📌 NODE_ENV: ${process.env.NODE_ENV || 'development'}`);
+console.log(`📌 PORT / Socket: ${PORT}`);
 console.log(`==================================================`);
 
 app.listen(PORT, () => {
   console.log(`==================================================`);
-  console.log(`🚀 Express HTTP Server Listening on Port: ${PORT}`);
+  console.log(`🚀 Express HTTP Server Listening on: ${PORT}`);
   console.log(`==================================================`);
 
   // Asynchronously test MySQL Connection & Run Self-Healing Schema Init in background
@@ -87,3 +92,5 @@ app.listen(PORT, () => {
       console.error('⚠️ Async MySQL Connection Error:', err.message);
     });
 });
+
+export default app;
