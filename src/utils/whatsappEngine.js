@@ -1,100 +1,58 @@
 // src/utils/whatsappEngine.js
-// Automated WhatsApp & SMS Background API Connector Engine for Shalimar Nutrients
+// UltraMsg / WhatsApp Business API Direct Notification Dispatcher 📱⚡
 
-/**
- * Clean phone number for WhatsApp URL (removes spaces, +, etc.)
- */
-export function formatPhoneForWhatsApp(phoneStr) {
-  if (!phoneStr) return '';
-  const digitsOnly = phoneStr.replace(/\D/g, '');
-  if (digitsOnly.length === 10) return `91${digitsOnly}`;
-  return digitsOnly;
-}
+export function generateWhatsAppLinks(phone, messageText) {
+  const cleanPhone = (phone || '').replace(/[^0-9]/g, '');
+  const formattedPhone = cleanPhone.length === 10 ? `91${cleanPhone}` : cleanPhone;
+  const encodedText = encodeURIComponent(messageText || '');
 
-/**
- * Generate Direct Multi-Platform WhatsApp Links (Web, API & App)
- */
-export function generateWhatsAppLinks(phoneStr, message) {
-  const cleanPhone = formatPhoneForWhatsApp(phoneStr);
-  const encodedText = encodeURIComponent(message);
   return {
-    wa_web: `https://web.whatsapp.com/send?phone=${cleanPhone}&text=${encodedText}`,
-    wa_api: `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodedText}`,
-    wa_app: `whatsapp://send?phone=${cleanPhone}&text=${encodedText}`
+    wa_me: `https://wa.me/${formattedPhone}?text=${encodedText}`,
+    wa_api: `https://api.whatsapp.com/send?phone=${formattedPhone}&text=${encodedText}`,
+    wa_web: `https://web.whatsapp.com/send?phone=${formattedPhone}&text=${encodedText}`
   };
 }
 
-export function generateWhatsAppLink(phoneStr, message) {
-  const links = generateWhatsAppLinks(phoneStr, message);
-  return links.wa_api;
-}
-
-/**
- * ⚡ Background Automatic WhatsApp API Sender
- * Supports UltraMsg API / Meta Cloud API / Interakt Endpoints
- */
 export async function sendBackgroundWhatsAppApiMessage({ phoneStr, message, apiSettings }) {
-  const cleanPhone = formatPhoneForWhatsApp(phoneStr);
+  if (!apiSettings || !apiSettings.enabled) return { success: false, reason: 'Disabled' };
 
-  if (!apiSettings || !apiSettings.enabled) {
-    return { success: true, simulated: true };
-  }
+  const cleanPhone = (phoneStr || '').replace(/[^0-9]/g, '');
+  const formattedPhone = cleanPhone.length === 10 ? `91${cleanPhone}` : cleanPhone;
 
-  // 1. UltraMsg WhatsApp Gateway Provider
-  if (apiSettings.provider === 'ultramsg' && apiSettings.instance_id && apiSettings.token) {
-    try {
-      const params = new URLSearchParams();
-      params.append('token', apiSettings.token);
-      params.append('to', `+${cleanPhone}`);
-      params.append('body', message);
+  try {
+    if (apiSettings.provider === 'ultramsg' && apiSettings.instance_id && apiSettings.token) {
+      const url = `https://api.ultramsg.com/${apiSettings.instance_id}/messages/chat`;
+      const bodyData = new URLSearchParams({
+        token: apiSettings.token,
+        to: formattedPhone,
+        body: message,
+        priority: '10'
+      });
 
-      const response = await fetch(`https://api.ultramsg.com/${apiSettings.instance_id}/messages/chat`, {
+      const response = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: params
+        body: bodyData
       });
-      const data = await response.json();
-      return { success: true, response: data };
-    } catch (err) {
-      console.error('UltraMsg API Call error:', err);
-      return { success: false, error: err.message };
+
+      const result = await response.json();
+      return { success: response.ok, result };
     }
+  } catch (error) {
+    console.error('WhatsApp Background API Error:', error);
   }
 
-  // 2. Meta WhatsApp Cloud API Provider
-  if (apiSettings.provider === 'meta' && apiSettings.phone_number_id && apiSettings.token) {
-    try {
-      const response = await fetch(`https://graph.facebook.com/v18.0/${apiSettings.phone_number_id}/messages`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${apiSettings.token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          messaging_product: 'whatsapp',
-          to: cleanPhone,
-          type: 'text',
-          text: { body: message }
-        })
-      });
-      const data = await response.json();
-      return { success: true, response: data };
-    } catch (err) {
-      console.error('Meta API Call error:', err);
-      return { success: false, error: err.message };
-    }
-  }
-
-  return { success: true, simulated: true };
+  return { success: false, reason: 'API call failed' };
 }
 
 /**
  * Trigger Automated WhatsApp Alert Notification Helper
  */
-export function sendWhatsAppAlert({ db, updateDB, recipientPhone, recipientName, title, message, actionUrl }) {
+export function sendWhatsAppAlert({ db, recipientPhone, recipientName, title, message, actionUrl }) {
+  if (!db) return null;
   const links = generateWhatsAppLinks(recipientPhone, message || title);
 
-  // Trigger background API call
+  // Trigger background API call if enabled
   if (db.whatsapp_api_settings && db.whatsapp_api_settings.enabled) {
     sendBackgroundWhatsAppApiMessage({
       phoneStr: recipientPhone,
@@ -113,13 +71,6 @@ export function sendWhatsAppAlert({ db, updateDB, recipientPhone, recipientName,
     sent_at: new Date().toISOString(),
     status: db.whatsapp_api_settings?.enabled ? 'Sent via Background API ⚡' : 'Sent (WhatsApp Delivered 🟢)'
   };
-
-  const updatedNotifications = [notificationItem, ...(db.whatsapp_notifications || [])];
-
-  updateDB({
-    ...db,
-    whatsapp_notifications: updatedNotifications
-  });
 
   return notificationItem;
 }

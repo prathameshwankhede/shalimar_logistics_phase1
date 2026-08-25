@@ -1026,10 +1026,25 @@ export const AdminDashboard = () => {
       return;
     }
 
+    const newNotifications = [];
+    (db.transporters || []).forEach((transporter) => {
+      if (transporter.mobile) {
+        const notif = sendWhatsAppAlert({
+          db: db,
+          recipientPhone: transporter.mobile,
+          recipientName: transporter.company_name,
+          title: `🚨 New Freight Bid Broadcast: ${batchCode}`,
+          message: `🚨 *SHALIMAR LOGISTICS BID ALERT* 🚨\n\n📦 Batch: ${batchCode} (${newRequests.length} Items)\n📍 Route: ${newRequests[0].origin_city} ➔ ${newRequests[0].dest_city}\n⚖️ Volume: ${newRequests.reduce((a, b) => a + (Number(b.required_qty) || 0), 0)} MT\n📅 Target Date: ${newRequests[0].target_date}\n\nSubmit rates: ${typeof window !== 'undefined' ? window.location.origin : ''}/`
+        });
+        if (notif) newNotifications.push(notif);
+      }
+    });
+
     const updatedDb = addSecurityLog(
       {
         ...db,
-        rate_requests: [...newRequests, ...(db.rate_requests || [])]
+        rate_requests: [...newRequests, ...(db.rate_requests || [])],
+        whatsapp_notifications: [...newNotifications, ...(db.whatsapp_notifications || [])]
       },
       `BULK_CREATE_RATE_REQUIREMENTS (${batchCode})`,
       currentUser?.username || 'admin',
@@ -1038,20 +1053,6 @@ export const AdminDashboard = () => {
     );
 
     updateDB(updatedDb);
-
-    // 📱 Automated Background WhatsApp Alert Push for all Registered Transporters
-    (db.transporters || []).forEach((transporter) => {
-      if (transporter.mobile) {
-        sendWhatsAppAlert({
-          db: updatedDb,
-          updateDB,
-          recipientPhone: transporter.mobile,
-          recipientName: transporter.company_name,
-          title: `🚨 New Freight Bid Broadcast: ${batchCode}`,
-          message: `🚨 *SHALIMAR LOGISTICS BID ALERT* 🚨\n\n📦 Batch: ${batchCode} (${newRequests.length} Items)\n📍 Route: ${newRequests[0].origin_city} ➔ ${newRequests[0].dest_city}\n⚖️ Volume: ${newRequests.reduce((a, b) => a + (Number(b.required_qty) || 0), 0)} MT\n📅 Target Date: ${newRequests[0].target_date}\n\nSubmit rates: ${typeof window !== 'undefined' ? window.location.origin : ''}/`
-        });
-      }
-    });
 
     // Reset Bulk Form with 1 fresh row initialized for NEXT Batch
     setBulkReqRows([createSingleReqRow(0)]);
