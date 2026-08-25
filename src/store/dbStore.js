@@ -23,11 +23,136 @@ export const INITIAL_SEED_DATA = {
     dispatch_plant_address: 'Plot No. 12, Industrial Area, MIDC, Nagpur, Maharashtra - 440028',
     terms_conditions: '1. Food-grade tarpaulin covering mandatory for dry cargo.\n2. Automated 24x7 weighbridge tare and gross recorded at Shalimar Plant.'
   },
-  company_masters: [],
-  product_masters: [],
-  cargo_masters: [],
-  title_masters: [],
-  city_masters: [],
+  company_masters: [
+    {
+      id: 'comp_1',
+      name: 'Shalimar Nutrients Pvt Ltd (Nagpur Plant)',
+      code: 'SNPL-NGP',
+      gstin: '27AAPCS1419M1ZV',
+      pan_no: 'AAPCS1419M',
+      proprietor_name: 'Shalimar Directors / Admin',
+      email: 'logistics.ngp@shalimar.com',
+      mobile_no: '9876543210',
+      address: 'Plot No. 12, Industrial Area, MIDC, Nagpur',
+      state: 'Maharashtra',
+      city: 'Nagpur',
+      district: 'Nagpur'
+    },
+    {
+      id: 'comp_2',
+      name: 'Shalimar Solapur Edible Oil Refinery',
+      code: 'SNPL-SLP',
+      gstin: '27AAPCS1419M2ZW',
+      pan_no: 'AAPCS1419M',
+      proprietor_name: 'Shalimar Solapur Plant Head',
+      email: 'refinery.solapur@shalimar.com',
+      mobile_no: '9876543211',
+      address: 'MIDC Chincholi, Solapur',
+      state: 'Maharashtra',
+      city: 'Solapur',
+      district: 'Solapur'
+    },
+    {
+      id: 'comp_3',
+      name: 'Shalimar Agri Processing MP Unit',
+      code: 'SNPL-IND',
+      gstin: '23AAPCS1419M1ZP',
+      pan_no: 'AAPCS1419M',
+      proprietor_name: 'Shalimar MP Regional Manager',
+      email: 'pithampur.mp@shalimar.com',
+      mobile_no: '9876543212',
+      address: 'Sector 3, Industrial Area, Pithampur',
+      state: 'Madhya Pradesh',
+      city: 'Indore',
+      district: 'Dhar / Indore'
+    }
+  ],
+  product_masters: [
+    {
+      id: 'prod_1',
+      name: 'Soybean Meal De-Oiled Cake (DOC)',
+      category: 'Agri Meal & Feed',
+      hsn_code: '23040010',
+      unit: 'MT'
+    },
+    {
+      id: 'prod_2',
+      name: 'Crude Soy / Sunflower Oil',
+      category: 'Edible Oils (Liquid Bulk)',
+      hsn_code: '15071000',
+      unit: 'MT'
+    },
+    {
+      id: 'prod_3',
+      name: 'Raw Sunflower Seeds',
+      category: 'Agri Seeds',
+      hsn_code: '12060000',
+      unit: 'MT'
+    },
+    {
+      id: 'prod_4',
+      name: 'Industrial Processing Equipment & Machinery',
+      category: 'Machinery & Steel',
+      hsn_code: '84798990',
+      unit: 'UNITS'
+    }
+  ],
+  cargo_masters: [
+    {
+      id: 'cargo_1',
+      vehicle_type: '32ft Multi-Axle Closed Container',
+      capacity_mt: 25,
+      cargo_category: 'Dry Bagged / Covered Cargo'
+    },
+    {
+      id: 'cargo_2',
+      vehicle_type: 'Stainless Steel Food-Grade Tanker',
+      capacity_mt: 30,
+      cargo_category: 'Liquid Edible Oil Tankers'
+    },
+    {
+      id: 'cargo_3',
+      vehicle_type: 'Open Body 10-Wheeler Truck',
+      capacity_mt: 16,
+      cargo_category: 'Agri Seeds & Bulk Grains'
+    },
+    {
+      id: 'cargo_4',
+      vehicle_type: '40ft Heavy Multi-Axle Lowbed Trailer',
+      capacity_mt: 40,
+      cargo_category: 'Heavy Industrial Machinery'
+    }
+  ],
+  title_masters: [
+    {
+      id: 'tm_1',
+      title: 'Shalimar Nutrients - Nagpur Plant Bulk Soya DOC Delivery',
+      material_type: 'Soybean Meal De-Oiled Cake (DOC)'
+    },
+    {
+      id: 'tm_2',
+      title: 'Shalimar Nutrients - Solapur Edible Oil Tankers',
+      material_type: 'Crude Soy / Sunflower Oil (Tankers)'
+    },
+    {
+      id: 'tm_3',
+      title: 'Shalimar Nutrients - Indore Plant Sunflower Seed Delivery',
+      material_type: 'Raw Sunflower Seeds'
+    },
+    {
+      id: 'tm_4',
+      title: 'Shalimar Nutrients - Thane Plant Industrial Machinery Transfer',
+      material_type: 'Industrial Processing Equipment'
+    }
+  ],
+  city_masters: [
+    { id: 'city_1', city: 'Nagpur (Shalimar Plant MIDC)', pin: '440028', state: 'Maharashtra' },
+    { id: 'city_2', city: 'Solapur (Shalimar Refinery)', pin: '413001', state: 'Maharashtra' },
+    { id: 'city_3', city: 'Indore Processing Unit', pin: '452001', state: 'Madhya Pradesh' },
+    { id: 'city_4', city: 'Jhalawar / Jhalarapatan RIICO Industrial Area', pin: '326023', state: 'Rajasthan' },
+    { id: 'city_5', city: 'Thane Logistics Terminal', pin: '400601', state: 'Maharashtra' },
+    { id: 'city_6', city: 'Hyderabad Processing Hub', pin: '500001', state: 'Telangana' }
+  ],
   users: [
     {
       id: 'usr_admin',
@@ -37,9 +162,76 @@ export const INITIAL_SEED_DATA = {
       role: 'admin',
       transporter_id: null,
       created_at: '2026-08-01T10:00:00Z'
+    },
+    {
+      id: 'usr_abc',
+      username: 'ABC001',
+      password: 'password123',
+      name: 'ABC Transport Admin',
+      role: 'transporter',
+      transporter_id: 'trans_abc',
+      created_at: '2026-08-01T10:30:00Z'
+    },
+    {
+      id: 'usr_xyz',
+      username: 'XYZ001',
+      password: 'password123',
+      name: 'XYZ Transport Admin',
+      role: 'transporter',
+      transporter_id: 'trans_xyz',
+      created_at: '2026-08-01T11:00:00Z'
+    },
+    {
+      id: 'usr_pqr',
+      username: 'PQR001',
+      password: 'password123',
+      name: 'PQR Transport Admin',
+      role: 'transporter',
+      transporter_id: 'trans_pqr',
+      created_at: '2026-08-01T11:30:00Z'
     }
   ],
-  transporters: [],
+  transporters: [
+    {
+      id: 'trans_abc',
+      company_name: 'ABC Transport Pvt Ltd',
+      code: 'ABC001',
+      contact_person: 'Ramesh Kumar',
+      mobile: '+91 98230 11223',
+      email: 'ramesh@abctransport.com',
+      address: 'Plot 45, Transport Nagar, Mumbai',
+      gst_pan: '27AAAAA0000A1Z5',
+      username: 'ABC001',
+      status: 'Active',
+      created_at: '2026-08-01T10:30:00Z'
+    },
+    {
+      id: 'trans_xyz',
+      company_name: 'XYZ Logistics & Freight',
+      code: 'XYZ001',
+      contact_person: 'Vikram Sharma',
+      mobile: '+91 98220 44556',
+      email: 'vikram@xyzlogistics.com',
+      address: 'GIDC Industrial Estate, Pune',
+      gst_pan: '27BBBBA1111B1Z2',
+      username: 'XYZ001',
+      status: 'Active',
+      created_at: '2026-08-01T11:00:00Z'
+    },
+    {
+      id: 'trans_pqr',
+      company_name: 'PQR National Freight Carriers',
+      code: 'PQR001',
+      contact_person: 'Sunil Patel',
+      mobile: '+91 98210 77889',
+      email: 'sunil@pqrfreight.com',
+      address: 'Sector 18, Transport Hub, Thane',
+      gst_pan: '27CCCCA2222C1Z9',
+      username: 'PQR001',
+      status: 'Active',
+      created_at: '2026-08-01T11:30:00Z'
+    }
+  ],
   rate_requests: [
     {
       id: 'req_init_1',
@@ -51,9 +243,9 @@ export const INITIAL_SEED_DATA = {
       origin_pin: '440028',
       dest_city: 'Solapur (Shalimar Refinery)',
       dest_pin: '413001',
-      company_unit: 'Shalimar Nutrients Pvt Ltd',
-      material_type: 'Refined Soybean Oil (Edible)',
-      hsn_code: '15079010',
+      company_unit: 'Shalimar Nutrients Pvt Ltd (Nagpur Plant)',
+      material_type: 'Soybean Meal De-Oiled Cake (DOC)',
+      hsn_code: '23040010',
       required_qty: 250,
       unit: 'MT',
       target_date: new Date().toISOString().split('T')[0],
