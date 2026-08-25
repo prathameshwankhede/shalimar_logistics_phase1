@@ -38,68 +38,71 @@ router.get('/state', async (req, res) => {
     console.warn('MySQL state load warning:', err.message);
   }
 
-  // Also query normalized rate_requests to guarantee zero lost indents
-  try {
-    const [reqs] = await pool.query('SELECT * FROM rate_requests ORDER BY created_at DESC');
-    if (reqs && reqs.length > 0) {
-      const reqMap = new Map();
-      (state.rate_requests || []).forEach(r => reqMap.set(String(r.request_no || r.id), r));
-      reqs.forEach(r => {
-        const reqObj = {
-          id: r.id,
-          request_no: r.request_no,
-          title: r.title || r.request_no,
-          batch_no: r.batch_no || '',
-          sub_no: r.sub_no || '',
-          origin_city: r.origin_city || '',
-          origin_pin: r.origin_pin || '',
-          dest_city: r.dest_city || '',
-          dest_pin: r.dest_pin || '',
-          company_unit: r.company_unit || '',
-          material_type: r.material_type || '',
-          hsn_code: r.hsn_code || '',
-          required_qty: Number(r.required_qty),
-          unit: r.unit || 'MT',
-          target_date: r.target_date ? String(r.target_date).slice(0, 10) : null,
-          status: r.status || 'Open',
-          notes: r.notes || '',
-          created_at: r.created_at ? new Date(r.created_at).toISOString() : new Date().toISOString()
-        };
-        reqMap.set(String(r.request_no || r.id), reqObj);
-      });
-      state.rate_requests = Array.from(reqMap.values());
-    }
-  } catch (err) {
-    // ignore
-  }
-
-  // Also query normalized rate_submissions to guarantee zero lost bids
-  try {
-    const [bids] = await pool.query('SELECT * FROM rate_submissions ORDER BY submitted_at DESC');
-    if (bids && bids.length > 0) {
-      const bidMap = new Map();
-      (state.rate_submissions || []).forEach(b => bidMap.set(String(b.id), b));
-      bids.forEach(b => {
-        bidMap.set(String(b.id), {
-          id: b.id,
-          rate_request_id: b.request_id,
-          request_id: b.request_id,
-          request_no: b.request_no,
-          transporter_id: b.transporter_id,
-          transporter_name: b.transporter_name,
-          rate_per_unit: Number(b.rate_per_unit),
-          vehicle_type: b.vehicle_type,
-          comments: b.comments,
-          status: b.status,
-          counter_rate: b.counter_rate ? Number(b.counter_rate) : null,
-          is_frozen: Boolean(b.is_frozen),
-          submitted_at: b.submitted_at ? new Date(b.submitted_at).toISOString() : new Date().toISOString()
+  // If operational reset was executed, respect empty arrays and do not restore deleted operational records
+  if (!state._isResetOperation) {
+    // Also query normalized rate_requests to guarantee zero lost indents
+    try {
+      const [reqs] = await pool.query('SELECT * FROM rate_requests ORDER BY created_at DESC');
+      if (reqs && reqs.length > 0) {
+        const reqMap = new Map();
+        (state.rate_requests || []).forEach(r => reqMap.set(String(r.request_no || r.id), r));
+        reqs.forEach(r => {
+          const reqObj = {
+            id: r.id,
+            request_no: r.request_no,
+            title: r.title || r.request_no,
+            batch_no: r.batch_no || '',
+            sub_no: r.sub_no || '',
+            origin_city: r.origin_city || '',
+            origin_pin: r.origin_pin || '',
+            dest_city: r.dest_city || '',
+            dest_pin: r.dest_pin || '',
+            company_unit: r.company_unit || '',
+            material_type: r.material_type || '',
+            hsn_code: r.hsn_code || '',
+            required_qty: Number(r.required_qty),
+            unit: r.unit || 'MT',
+            target_date: r.target_date ? String(r.target_date).slice(0, 10) : null,
+            status: r.status || 'Open',
+            notes: r.notes || '',
+            created_at: r.created_at ? new Date(r.created_at).toISOString() : new Date().toISOString()
+          };
+          reqMap.set(String(r.request_no || r.id), reqObj);
         });
-      });
-      state.rate_submissions = Array.from(bidMap.values());
+        state.rate_requests = Array.from(reqMap.values());
+      }
+    } catch (err) {
+      // ignore
     }
-  } catch (err) {
-    // ignore
+
+    // Also query normalized rate_submissions to guarantee zero lost bids
+    try {
+      const [bids] = await pool.query('SELECT * FROM rate_submissions ORDER BY submitted_at DESC');
+      if (bids && bids.length > 0) {
+        const bidMap = new Map();
+        (state.rate_submissions || []).forEach(b => bidMap.set(String(b.id), b));
+        bids.forEach(b => {
+          bidMap.set(String(b.id), {
+            id: b.id,
+            rate_request_id: b.request_id,
+            request_id: b.request_id,
+            request_no: b.request_no,
+            transporter_id: b.transporter_id,
+            transporter_name: b.transporter_name,
+            rate_per_unit: Number(b.rate_per_unit),
+            vehicle_type: b.vehicle_type,
+            comments: b.comments,
+            status: b.status,
+            counter_rate: b.counter_rate ? Number(b.counter_rate) : null,
+            is_frozen: Boolean(b.is_frozen),
+            submitted_at: b.submitted_at ? new Date(b.submitted_at).toISOString() : new Date().toISOString()
+          });
+        });
+        state.rate_submissions = Array.from(bidMap.values());
+      }
+    } catch (err) {
+      // ignore
+    }
   }
 
   // Also query normalized master_records to guarantee zero lost product/cargo masters
@@ -166,7 +169,7 @@ router.post('/state', async (req, res) => {
       [CLOUD_ROW_ID, jsonStr]
     );
 
-    // Sync normalized relational tables
+    // Sync normalized relational tables (clears MySQL operational tables if _isResetOperation is true)
     await syncNormalizedTables(payload);
   } catch (err) {
     console.warn('MySQL state save warning (cached in memory):', err.message);
@@ -289,6 +292,17 @@ router.post('/bids', async (req, res) => {
 async function syncNormalizedTables(data) {
   if (!data) return;
 
+  // 🧹 SYSTEM RESET: If reset operation flag is present, clear MySQL operational tables completely!
+  if (data._isResetOperation) {
+    try {
+      await pool.query('DELETE FROM rate_requests');
+      await pool.query('DELETE FROM rate_submissions');
+      console.log('🧹 MySQL operational tables (rate_requests, rate_submissions) cleared successfully for system reset.');
+    } catch (err) {
+      console.warn('MySQL table clear error on reset:', err.message);
+    }
+  }
+
   // 1. Sync users
   if (Array.isArray(data.users)) {
     for (const u of data.users) {
@@ -303,8 +317,8 @@ async function syncNormalizedTables(data) {
     }
   }
 
-  // 2. Sync rate_requests (indents)
-  if (Array.isArray(data.rate_requests)) {
+  // 2. Sync rate_requests (indents) - skipped if reset operation
+  if (!data._isResetOperation && Array.isArray(data.rate_requests)) {
     for (const r of data.rate_requests) {
       if (r.id && (r.request_no || r.title)) {
         const reqNo = r.request_no || r.title;
@@ -339,8 +353,8 @@ async function syncNormalizedTables(data) {
     }
   }
 
-  // 3. Sync rate_submissions (bids)
-  if (Array.isArray(data.rate_submissions)) {
+  // 3. Sync rate_submissions (bids) - skipped if reset operation
+  if (!data._isResetOperation && Array.isArray(data.rate_submissions)) {
     for (const s of data.rate_submissions) {
       if (s.id && (s.rate_request_id || s.request_id)) {
         const reqId = s.rate_request_id || s.request_id || '';

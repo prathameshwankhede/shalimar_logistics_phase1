@@ -5,15 +5,34 @@ import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// Ensure .env loading happens before config is initialized
+dotenv.config({ path: path.resolve(__dirname, '../.env') });
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
+dotenv.config({ path: path.resolve(process.cwd(), '.env') });
 
-const dbHost = process.env.DATABASE_HOST || process.env.DB_HOST || 'localhost';
-const dbPort = parseInt(process.env.DATABASE_PORT || process.env.DB_PORT || '3306', 10);
-const dbUser = process.env.DATABASE_USER || process.env.DB_USER || 'root';
-const dbPassword = process.env.DATABASE_PASSWORD || process.env.DB_PASSWORD || '';
-const dbName = process.env.DATABASE_NAME || process.env.DB_NAME || 'transflow_db';
+// Priority 1: DB_* (Hostinger Standard), Priority 2: DATABASE_* (Fallback)
+const rawHost = process.env.DB_HOST || process.env.DATABASE_HOST || '127.0.0.1';
 
-console.log(`🔌 Initializing MySQL Connection Pool to [${dbHost}:${dbPort}/${dbName}] as ${dbUser}...`);
+// Hostinger MySQL loopback resolution fix:
+// In Node.js 17+, 'localhost' resolves via dns.lookup to IPv6 '::1'.
+// Hostinger MySQL user permissions (e.g. 'u704836459_shalimar_app') are granted on IPv4 loopback ('127.0.0.1').
+// Mapping 'localhost' and '::1' to '127.0.0.1' ensures connections use IPv4 and match Hostinger privileges.
+const dbHost = (rawHost === 'localhost' || rawHost === '::1') ? '127.0.0.1' : rawHost;
+
+const dbPort = Number(process.env.DB_PORT || process.env.DATABASE_PORT || 3306);
+const dbName = process.env.DB_NAME || process.env.DATABASE_NAME || 'transflow_db';
+const dbUser = process.env.DB_USER || process.env.DATABASE_USER || 'root';
+const dbPassword = process.env.DB_PASSWORD || process.env.DATABASE_PASSWORD || '';
+const nodeEnv = process.env.NODE_ENV || 'development';
+
+// Safe diagnostic logging (NEVER prints password)
+console.log(`🔌 Initializing MySQL Connection Pool:`);
+console.log(`   • DB_HOST : ${dbHost} (raw: ${rawHost})`);
+console.log(`   • DB_PORT : ${dbPort}`);
+console.log(`   • DB_NAME : ${dbName}`);
+console.log(`   • DB_USER : ${dbUser}`);
+console.log(`   • NODE_ENV: ${nodeEnv}`);
 
 export const pool = mysql.createPool({
   host: dbHost,
@@ -28,9 +47,13 @@ export const pool = mysql.createPool({
   keepAliveInitialDelay: 0
 });
 
+/**
+ * Self-Healing Database Schema Initialization
+ * Automatically creates the 6 core tables if missing without destroying existing data.
+ */
 export async function initDatabaseSchema() {
   try {
-    // 1. Storage Blob Table
+    // 1. app_database (Storage Blob Table)
     await pool.query(`
       CREATE TABLE IF NOT EXISTS app_database (
         id VARCHAR(64) PRIMARY KEY,
@@ -39,7 +62,7 @@ export async function initDatabaseSchema() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
 
-    // 2. Users Table
+    // 2. users (Users & Authentication Table)
     await pool.query(`
       CREATE TABLE IF NOT EXISTS users (
         id VARCHAR(64) PRIMARY KEY,
@@ -54,7 +77,7 @@ export async function initDatabaseSchema() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
 
-    // 3. Transporters Table
+    // 3. transporters (Transporters & Vendors Table)
     await pool.query(`
       CREATE TABLE IF NOT EXISTS transporters (
         id VARCHAR(64) PRIMARY KEY,
@@ -72,7 +95,7 @@ export async function initDatabaseSchema() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
 
-    // 4. Rate Requests Table
+    // 4. rate_requests (Rate Requirements & Indents Table)
     await pool.query(`
       CREATE TABLE IF NOT EXISTS rate_requests (
         id VARCHAR(64) PRIMARY KEY,
@@ -99,7 +122,7 @@ export async function initDatabaseSchema() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
 
-    // 5. Rate Submissions Table
+    // 5. rate_submissions (Bids & Rates Table)
     await pool.query(`
       CREATE TABLE IF NOT EXISTS rate_submissions (
         id VARCHAR(64) PRIMARY KEY,
@@ -120,7 +143,7 @@ export async function initDatabaseSchema() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
 
-    // 6. Master Records Table
+    // 6. master_records (Master Directory Records Table)
     await pool.query(`
       CREATE TABLE IF NOT EXISTS master_records (
         id INT AUTO_INCREMENT PRIMARY KEY,
@@ -133,24 +156,27 @@ export async function initDatabaseSchema() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
 
-    console.log('✅ MySQL Database tables initialized successfully!');
+    console.log('✅ Self-healing MySQL schema initialized (6 tables verified/created).');
     return true;
   } catch (err) {
-    console.warn('⚠️ MySQL Schema Init Warning:', err.message);
+    console.error('❌ MySQL Schema Init Error:', err.message);
     return false;
   }
 }
 
+/**
+ * Verify Connection & Initialize Database Schema
+ */
 export async function testConnection() {
   try {
     const connection = await pool.getConnection();
-    console.log('✅ MySQL Database connected successfully!');
+    console.log(`✅ MySQL Database connected successfully to [${dbHost}:${dbPort}/${dbName}] as '${dbUser}'!`);
     connection.release();
-    await initDatabaseSchema();
-    return true;
+
+    const schemaOk = await initDatabaseSchema();
+    return schemaOk;
   } catch (error) {
-    console.warn('⚠️ MySQL Connection Warning:', error.message);
-    console.warn('💡 Make sure MySQL server is running or configure DATABASE_* variables in .env');
+    console.error(`❌ MySQL Connection Failure for user '${dbUser}' on [${dbHost}:${dbPort}/${dbName}]:`, error.message);
     return false;
   }
 }
