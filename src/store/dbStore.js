@@ -73,6 +73,8 @@ export const INITIAL_SEED_DATA = {
 const LOCAL_STORAGE_KEY = 'transflow_local_db_v3';
 
 function getApiBaseUrl() {
+  const envApiUrl = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_BASE_URL) || '';
+  if (envApiUrl) return envApiUrl;
   if (typeof window !== 'undefined' && window.location) {
     if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
       return 'http://localhost:3000';
