@@ -17,8 +17,7 @@ import authRoutes from './routes/auth.js';
 import apiRoutes from './routes/api.js';
 
 const app = express();
-const PORT = Number(process.env.PORT || 3000);
-const HOST = process.env.HOST || '0.0.0.0';
+const PORT = process.env.PORT || 3000;
 
 // Middleware
 app.use(cors());
@@ -64,31 +63,27 @@ if (fs.existsSync(distPath)) {
   });
 }
 
-// Application Bootstrap Sequence
-async function startApp() {
+// Hostinger Production Express Listener (Binds immediately to prevent 503 Service Unavailable)
+console.log(`==================================================`);
+console.log(`🚀 Starting TransFlow Logistics Hostinger Express App`);
+console.log(`📌 NODE_ENV: ${process.env.NODE_ENV || 'development'}`);
+console.log(`==================================================`);
+
+app.listen(PORT, () => {
   console.log(`==================================================`);
-  console.log(`🚀 Starting TransFlow Logistics Hostinger Server`);
-  console.log(`📌 NODE_ENV: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`🚀 Express HTTP Server Listening on Port: ${PORT}`);
   console.log(`==================================================`);
 
-  // Verify MySQL Connection & Run Self-Healing Schema Initialization
-  const dbConnected = await testConnection();
-  if (!dbConnected) {
-    console.error('❌ FATAL: MySQL Connection or Schema Initialization Failed.');
-    console.error('💡 Verify Hostinger Environment Variables: DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD.');
-  } else {
-    console.log('✅ MySQL Database ready and 6 core tables verified.');
-  }
-
-  // Start Express Application Listener
-  app.listen(PORT, HOST, () => {
-    console.log(`==================================================`);
-    console.log(`🚀 TransFlow Logistics Express Server Running`);
-    console.log(`🌐 Server URL: http://${HOST}:${PORT}`);
-    console.log(`==================================================`);
-  });
-}
-
-startApp().catch((err) => {
-  console.error('❌ Fatal server bootstrap error:', err);
+  // Asynchronously test MySQL Connection & Run Self-Healing Schema Init in background
+  testConnection()
+    .then((dbConnected) => {
+      if (dbConnected) {
+        console.log('✅ MySQL Database ready and 6 core tables verified.');
+      } else {
+        console.warn('⚠️ MySQL connection check returned false. Verify Hostinger DB environment variables.');
+      }
+    })
+    .catch((err) => {
+      console.error('⚠️ Async MySQL Connection Error:', err.message);
+    });
 });
