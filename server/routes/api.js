@@ -19,6 +19,15 @@ function mergeArrayById(targetArr = [], sourceArr = [], keyProp = 'id') {
   return Array.from(map.values());
 }
 
+function sanitizeStateForClient(rawState) {
+  if (!rawState || typeof rawState !== 'object') return rawState;
+  const copy = JSON.parse(JSON.stringify(rawState));
+  if (Array.isArray(copy.users)) {
+    copy.users = copy.users.map(({ password, password_hash, ...u }) => u);
+  }
+  return copy;
+}
+
 // -------------------------------------------------------------
 // GET /api/state — Fetch full state (MySQL primary + cache fallback)
 // -------------------------------------------------------------
@@ -137,14 +146,9 @@ router.get('/state', async (req, res) => {
       if (cityList.length > 0) state.city_masters = mergeArrayById(state.city_masters || [], cityList, 'id');
       if (titleList.length > 0) state.title_masters = mergeArrayById(state.title_masters || [], titleList, 'id');
     }
-function sanitizeStateForClient(rawState) {
-  if (!rawState || typeof rawState !== 'object') return rawState;
-  const copy = JSON.parse(JSON.stringify(rawState));
-  if (Array.isArray(copy.users)) {
-    copy.users = copy.users.map(({ password, password_hash, ...u }) => u);
+  } catch (err) {
+    // ignore
   }
-  return copy;
-}
 
   return res.json({ success: true, data: sanitizeStateForClient(state) });
 });
