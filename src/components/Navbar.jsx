@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { ShieldCheck, LogOut, Lock, RefreshCw } from 'lucide-react';
+import { LogOut } from 'lucide-react';
 import { SHALIMAR_LOGO_BASE64 } from '../assets/logoBase64';
 
 export const Navbar = () => {
@@ -11,10 +11,6 @@ export const Navbar = () => {
     document.documentElement.setAttribute('data-theme', 'light');
     localStorage.setItem('transflow_theme', 'light');
   }, []);
-
-  const handleForceCloudSync = () => {
-    window.location.reload();
-  };
 
   return (
     <nav className="glass-panel no-print" style={{ borderRadius: '0 0 16px 16px', marginBottom: '24px', padding: '12px 24px' }}>
@@ -43,40 +39,33 @@ export const Navbar = () => {
           </div>
         </div>
 
-        {/* Clean Portal Role Status Badge */}
-        {isAdmin ? (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <div style={{ background: 'rgba(56, 189, 248, 0.12)', border: '1px solid rgba(56, 189, 248, 0.35)', padding: '6px 14px', borderRadius: '10px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <ShieldCheck size={16} color="#0284c7" />
-              <span style={{ fontSize: '0.82rem', color: 'var(--text-main)', fontWeight: '800' }}>
-                👑 Shalimar Admin Control Center
-              </span>
-            </div>
-            {currentTransporter && (
-              <button
-                type="button"
-                onClick={() => quickSwitchUser(currentTransporter.username || currentTransporter.code)}
-                className="btn btn-primary"
-                style={{ padding: '6px 14px', fontSize: '0.8rem', fontWeight: '900', borderRadius: '8px', background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)', border: 'none', color: '#ffffff', boxShadow: '0 0 12px rgba(16, 185, 129, 0.4)', cursor: 'pointer' }}
-                title={`Switch to Transporter View (${currentTransporter.code})`}
-              >
-                🚛 Switch to Transporter View ({currentTransporter.code})
-              </button>
-            )}
+        {/* Quick Transporter Portal Role Switcher Dropdown */}
+        {isAdmin && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', background: 'rgba(2, 132, 199, 0.08)', padding: '6px 14px', borderRadius: '10px', border: '1px solid rgba(2, 132, 199, 0.2)' }}>
+            <span style={{ fontSize: '0.75rem', fontWeight: '700', color: '#0284c7' }}>
+              ⚡ Admin Portal Tester:
+            </span>
+            <select
+              value={currentUser?.username}
+              onChange={(e) => quickSwitchUser(e.target.value)}
+              className="form-control"
+              style={{ padding: '4px 8px', fontSize: '0.8rem', width: 'auto', borderRadius: '6px', fontWeight: '600' }}
+            >
+              <option value="admin">👑 Admin (Logistics Head)</option>
+              <option value="ABC001">🚛 ABC Transport Pvt Ltd</option>
+              <option value="XYZ001">🚛 XYZ Logistics & Freight</option>
+              <option value="PQR001">🚛 PQR National Freight</option>
+            </select>
           </div>
-        ) : (
+        )}
+
+        {/* Quick Switch back to Admin if viewing as Transporter */}
+        {!isAdmin && (
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <div style={{ background: 'rgba(16, 185, 129, 0.12)', border: '1px solid rgba(16, 185, 129, 0.35)', padding: '6px 14px', borderRadius: '10px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Lock size={15} color="#10b981" />
-              <span style={{ fontSize: '0.82rem', color: '#10b981', fontWeight: '800' }}>
-                🚛 Transporter Bidding Session ({currentTransporter?.code || 'Transporter'})
-              </span>
-            </div>
             <button
-              type="button"
               onClick={() => quickSwitchUser('admin')}
-              className="btn btn-primary"
-              style={{ padding: '6px 14px', fontSize: '0.8rem', fontWeight: '900', borderRadius: '8px', background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)', border: 'none', color: '#ffffff', boxShadow: '0 0 12px rgba(2, 132, 199, 0.4)', cursor: 'pointer' }}
+              className="btn btn-secondary"
+              style={{ fontSize: '0.75rem', padding: '6px 12px', background: 'rgba(2, 132, 199, 0.1)', color: '#0284c7', border: '1px solid #0284c7' }}
               title="Switch back to Admin Control Center"
             >
               👑 Switch to Admin View
@@ -95,15 +84,6 @@ export const Navbar = () => {
               {isAdmin ? '👑 Logistics Head' : `🚛 ${currentTransporter?.company_name || 'Transporter'}`}
             </div>
           </div>
-
-          <button
-            onClick={handleForceCloudSync}
-            className="btn btn-secondary"
-            title="Force Hard Refresh & Sync with Cloud DB"
-            style={{ padding: '8px 14px', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '6px', color: '#0284c7', border: '1px solid #0284c7', background: 'rgba(2, 132, 199, 0.1)', borderRadius: '8px' }}
-          >
-            <RefreshCw size={14} /> 🔄 Live Sync
-          </button>
 
           <button
             onClick={logout}
