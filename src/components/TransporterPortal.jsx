@@ -3,6 +3,7 @@
 
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { submitBid } from '../api/rateSubmissionApi';
 import { ContractModal } from './ContractModal';
 import { ERPPaymentModal } from './ERPPaymentModal';
 import { TruckDispatchSlipModal } from './TruckDispatchSlipModal';
@@ -113,6 +114,17 @@ export const TransporterPortal = () => {
       } else {
         updatedSubmissions.push(subObj);
       }
+
+      // Persist bid directly to MySQL rate_submissions table via API
+      submitBid({
+        id: subObj.id,
+        rate_request_id: req.id,
+        request_no: req.request_no || req.id,
+        transporter_id: transId,
+        transporter_name: currentTransporter?.company_name || transId,
+        rate_per_unit: rateVal,
+        status: 'Submitted'
+      }).catch(err => console.error('Batch bid persistence warning:', err.message));
     });
 
     const updatedDb = addSecurityLog(
@@ -337,6 +349,17 @@ export const TransporterPortal = () => {
       updatedSubmissions.unshift(subObj);
     }
 
+    // Persist bid directly to MySQL rate_submissions table via API
+    submitBid({
+      id: subObj.id,
+      rate_request_id: req.id,
+      request_no: req.request_no || req.id,
+      transporter_id: transId,
+      transporter_name: currentTransporter?.company_name || transId,
+      rate_per_unit: rateVal,
+      status: 'Submitted'
+    }).catch(err => console.error('Quick bid persistence warning:', err.message));
+
     const updatedDb = addSecurityLog(
       {
         ...db,
@@ -408,6 +431,19 @@ export const TransporterPortal = () => {
     } else {
       updatedSubmissions.unshift(subObj);
     }
+
+    // Persist bid directly to MySQL rate_submissions table via API
+    submitBid({
+      id: subObj.id,
+      rate_request_id: selectedReqForBid.id,
+      request_no: selectedReqForBid.request_no || selectedReqForBid.id,
+      transporter_id: transIdForModal,
+      transporter_name: currentTransporter?.company_name || transIdForModal,
+      rate_per_unit: rateVal,
+      vehicle_type: bidForm.notes || '',
+      comments: bidForm.notes || '',
+      status: 'Submitted'
+    }).catch(err => console.error('Modal bid persistence warning:', err.message));
 
     const updatedDb = addSecurityLog(
       {

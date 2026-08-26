@@ -54,24 +54,24 @@ router.get('/security/audit-logs', authenticateToken, requireRole('admin'), asyn
 });
 
 // -------------------------------------------------------------
-// POST /api/bids — Dedicated Bid Submission Endpoint (Scoped & Validated)
+// POST /api/bids — Dedicated Bid Submission Endpoint (MySQL Relational Persistence)
 // -------------------------------------------------------------
 router.post('/bids', authenticateToken, async (req, res) => {
-  const { id, rate_request_id, request_no, transporter_id, transporter_name, rate_per_unit, vehicle_type, comments, status } = req.body;
+  const { id, rate_request_id, request_id, request_no, transporter_id, transporter_name, rate_per_unit, vehicle_type, comments, status } = req.body;
 
   const authenticatedTransporterId = req.user.transporter_id || req.user.id;
   if (req.user.role === 'transporter' && transporter_id && transporter_id !== authenticatedTransporterId) {
-    return res.status(403).json({ error: 'Access denied. You can only submit bids under your own transporter account.' });
+    return res.status(403).json({ success: false, error: 'Access denied. You can only submit bids under your own transporter account.' });
   }
 
-  if (!rate_request_id || !rate_per_unit) {
-    return res.status(400).json({ error: 'Missing required bid parameters: rate_request_id and rate_per_unit' });
+  const effectiveReqId = rate_request_id || request_id;
+  if (!effectiveReqId || !rate_per_unit) {
+    return res.status(400).json({ success: false, error: 'Missing required bid parameters: rate_request_id and rate_per_unit' });
   }
 
   const effectiveTransporterId = req.user.role === 'transporter' ? authenticatedTransporterId : (transporter_id || authenticatedTransporterId);
   const bidId = id || `sub_${effectiveTransporterId}_${Date.now()}`;
-  const reqId = rate_request_id;
-  const reqNo = request_no || reqId;
+  const reqNo = request_no || effectiveReqId;
   const transName = transporter_name || req.user.name || effectiveTransporterId;
   const rateVal = parseFloat(rate_per_unit) || 0;
   const bidStatus = status || 'Submitted';
@@ -79,8 +79,8 @@ router.post('/bids', authenticateToken, async (req, res) => {
 
   const newBidObj = {
     id: bidId,
-    rate_request_id: reqId,
-    request_id: reqId,
+    request_id: effectiveReqId,
+    rate_request_id: effectiveReqId,
     request_no: reqNo,
     transporter_id: effectiveTransporterId,
     transporter_name: transName,
@@ -88,33 +88,51 @@ router.post('/bids', authenticateToken, async (req, res) => {
     vehicle_type: vehicle_type || '',
     comments: comments || '',
     status: bidStatus,
-    submitted_at: new Date().toISOString()
+    submitted_at: submittedAt
   };
 
-  if (IN_MEMORY_CACHE) {
-    const subs = IN_MEMORY_CACHE.rate_submissions || [];
-    const idx = subs.findIndex(b => b.id === bidId);
-    if (idx >= 0) subs[idx] = newBidObj;
-    else subs.unshift(newBidObj);
-    IN_MEMORY_CACHE.rate_submissions = subs;
-  }
-
   try {
-    await pool.query(
+    const [result] = await pool.query(
       `INSERT INTO rate_submissions 
        (id, request_id, request_no, transporter_id, transporter_name, rate_per_unit, vehicle_type, comments, status, submitted_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON DUPLICATE KEY UPDATE 
        rate_per_unit = VALUES(rate_per_unit), 
+       vehicle_type = VALUES(vehicle_type),
+       comments = VALUES(comments),
        status = VALUES(status), 
        updated_at = NOW()`,
-      [bidId, reqId, reqNo, effectiveTransporterId, transName, rateVal, vehicle_type || '', comments || '', bidStatus, submittedAt]
+      [bidId, effectiveReqId, reqNo, effectiveTransporterId, transName, rateVal, vehicle_type || '', comments || '', bidStatus, submittedAt]
     );
-  } catch (err) {
-    console.warn('MySQL Bid Insert Warning:', err.message);
-  }
 
-  return res.json({ success: true, bid_id: bidId, bid: newBidObj, message: 'Bid saved successfully' });
+    if (IN_MEMORY_CACHE) {
+      const subs = IN_MEMORY_CACHE.rate_submissions || [];
+      const idx = subs.findIndex(b => b.id === bidId || (b.request_id === effectiveReqId && b.transporter_id === effectiveTransporterId));
+      if (idx >= 0) subs[idx] = newBidObj;
+      else subs.unshift(newBidObj);
+      IN_MEMORY_CACHE.rate_submissions = subs;
+    }
+
+    console.log(`✅ Bid ${bidId} persisted to MySQL rate_submissions (affectedRows: ${result.affectedRows})`);
+
+    return res.json({
+      success: true,
+      bid_id: bidId,
+      affectedRows: result.affectedRows,
+      insertId: result.insertId,
+      bid: newBidObj,
+      message: 'Bid saved and persisted to MySQL rate_submissions successfully'
+    });
+  } catch (err) {
+    console.error('❌ MySQL Bid Insert Error:', err.message);
+    return res.status(500).json({
+      success: false,
+      error: {
+        code: 'DATABASE_ERROR',
+        message: 'Failed to persist bid to MySQL rate_submissions table'
+      }
+    });
+  }
 });
 
 // -------------------------------------------------------------
