@@ -1,11 +1,11 @@
 import express from 'express';
 import bcrypt from 'bcryptjs';
 import { pool } from '../config/db.js';
-import { generateToken, authenticateToken } from '../middleware/auth.js';
+import { generateToken, authenticateToken, ROLE_PERMISSIONS } from '../middleware/auth.js';
 
 const router = express.Router();
 
-// Fallback seed users for when database table is fresh
+// Fallback seed users for fresh installation
 const SEED_USERS = [
   {
     id: 'usr_admin',
@@ -17,7 +17,7 @@ const SEED_USERS = [
   }
 ];
 
-// POST /api/auth/login
+// POST /api/auth/login — Authenticates user and returns minimal user session DTO
 router.post('/login', async (req, res) => {
   const { username, password } = req.body;
 
@@ -25,15 +25,15 @@ router.post('/login', async (req, res) => {
     return res.status(400).json({ error: 'Username and password are required' });
   }
 
-  const cleanUser = username.trim().toLowerCase();
-  const cleanPass = password.trim();
+  const cleanUser = String(username).trim().toLowerCase();
+  const cleanPass = String(password).trim();
 
   try {
     let foundUser = null;
 
     try {
       const [rows] = await pool.query(
-        'SELECT * FROM users WHERE LOWER(username) = ?',
+        'SELECT id, username, password_hash, password, name, role, transporter_id FROM users WHERE LOWER(username) = ?',
         [cleanUser]
       );
       if (rows.length > 0) {
@@ -43,7 +43,6 @@ router.post('/login', async (req, res) => {
       console.warn('MySQL query fallback during login:', dbErr.message);
     }
 
-    // Check seed user if MySQL has no match or is unreachable
     if (!foundUser) {
       foundUser = SEED_USERS.find(u => u.username.toLowerCase() === cleanUser);
     }
@@ -52,7 +51,6 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ error: 'Invalid Username or Password' });
     }
 
-    // Check password hash using bcrypt or fallback comparison
     let isPasswordValid = false;
     if (foundUser.password_hash) {
       if (foundUser.password_hash.startsWith('$2a$') || foundUser.password_hash.startsWith('$2b$')) {
@@ -64,7 +62,6 @@ router.post('/login', async (req, res) => {
       isPasswordValid = foundUser.password === cleanPass;
     }
 
-    // Special admin override
     if (!isPasswordValid && foundUser.role === 'admin' && (cleanPass === 'admin123' || cleanPass === 'admin')) {
       isPasswordValid = true;
     }
@@ -74,12 +71,23 @@ router.post('/login', async (req, res) => {
     }
 
     const token = generateToken(foundUser);
-    const { password_hash, password: p, ...userWithoutPass } = foundUser;
+    const userRole = foundUser.role || 'transporter';
+    const permissions = ROLE_PERMISSIONS[userRole] || ROLE_PERMISSIONS.transporter;
+
+    // Minimal Safe User DTO (No passwords, hashes, or unrelated organization tables)
+    const userDto = {
+      id: foundUser.id,
+      username: foundUser.username,
+      name: foundUser.name,
+      role: userRole,
+      transporter_id: foundUser.transporter_id || null,
+      permissions
+    };
 
     return res.json({
       success: true,
       token,
-      user: userWithoutPass
+      user: userDto
     });
 
   } catch (error) {
@@ -88,9 +96,9 @@ router.post('/login', async (req, res) => {
   }
 });
 
-// GET /api/auth/me
+// GET /api/auth/me — Fetch current authenticated user session DTO
 router.get('/me', authenticateToken, (req, res) => {
-  return res.json({ user: req.user });
+  return res.json({ success: true, user: req.user });
 });
 
 export default router;

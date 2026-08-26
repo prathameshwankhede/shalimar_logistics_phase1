@@ -29,277 +29,157 @@ export const INITIAL_SEED_DATA = {
       name: 'Shalimar Nutrients Pvt Ltd (Nagpur Plant)',
       code: 'SNPL-NGP',
       gstin: '27AAPCS1419M1ZV',
-      pan_no: 'AAPCS1419M',
-      proprietor_name: 'Shalimar Directors / Admin',
-      email: 'logistics.ngp@shalimar.com',
-      mobile_no: '9876543210',
-      address: 'Plot No. 12, Industrial Area, MIDC, Nagpur',
-      state: 'Maharashtra',
-      city: 'Nagpur',
-      district: 'Nagpur'
-    },
-    {
-      id: 'comp_2',
-      name: 'Shalimar Solapur Edible Oil Refinery',
-      code: 'SNPL-SLP',
-      gstin: '27AAPCS1419M2ZW',
-      pan_no: 'AAPCS1419M',
-      proprietor_name: 'Shalimar Solapur Plant Head',
-      email: 'refinery.solapur@shalimar.com',
-      mobile_no: '9876543211',
-      address: 'MIDC Chincholi, Solapur',
-      state: 'Maharashtra',
-      city: 'Solapur',
-      district: 'Solapur'
-    },
-    {
-      id: 'comp_3',
-      name: 'Shalimar Agri Processing MP Unit',
-      code: 'SNPL-IND',
-      gstin: '23AAPCS1419M1ZP',
-      pan_no: 'AAPCS1419M',
-      proprietor_name: 'Shalimar MP Regional Manager',
-      email: 'pithampur.mp@shalimar.com',
-      mobile_no: '9876543212',
-      address: 'Sector 3, Industrial Area, Pithampur',
-      state: 'Madhya Pradesh',
-      city: 'Indore',
-      district: 'Dhar / Indore'
+      city: 'Nagpur'
     }
   ],
   product_masters: [
-    {
-      id: 'prod_1',
-      name: 'Soybean Meal De-Oiled Cake (DOC)',
-      category: 'Agri Meal & Feed',
-      hsn_code: '23040010',
-      unit: 'MT'
-    },
-    {
-      id: 'prod_2',
-      name: 'Crude Soy / Sunflower Oil',
-      category: 'Edible Oils (Liquid Bulk)',
-      hsn_code: '15071000',
-      unit: 'MT'
-    },
-    {
-      id: 'prod_3',
-      name: 'Raw Sunflower Seeds',
-      category: 'Agri Seeds',
-      hsn_code: '12060000',
-      unit: 'MT'
-    },
-    {
-      id: 'prod_4',
-      name: 'Industrial Processing Equipment & Machinery',
-      category: 'Machinery & Steel',
-      hsn_code: '84798990',
-      unit: 'UNITS'
-    }
+    { id: 'prod_1', name: 'Soya DOC (De-Oiled Cake)', category: 'Agri-Commodities', hsn_code: '23040010', unit: 'MT' },
+    { id: 'prod_2', name: 'Refined Soyabean Oil (Bulk Tanker)', category: 'Edible Oils', hsn_code: '15079010', unit: 'MT' }
   ],
   cargo_masters: [
-    {
-      id: 'cargo_1',
-      vehicle_type: '32ft Multi-Axle Closed Container',
-      capacity_mt: 25,
-      cargo_category: 'Dry Bagged / Covered Cargo'
-    },
-    {
-      id: 'cargo_2',
-      vehicle_type: 'Stainless Steel Food-Grade Tanker',
-      capacity_mt: 30,
-      cargo_category: 'Liquid Edible Oil Tankers'
-    },
-    {
-      id: 'cargo_3',
-      vehicle_type: 'Open Body 10-Wheeler Truck',
-      capacity_mt: 16,
-      cargo_category: 'Agri Seeds & Bulk Grains'
-    },
-    {
-      id: 'cargo_4',
-      vehicle_type: '40ft Heavy Multi-Axle Lowbed Trailer',
-      capacity_mt: 40,
-      cargo_category: 'Heavy Industrial Machinery'
-    }
+    { id: 'cargo_1', name: 'Bulk Loose DOC in Tarpaulin Truck', category: 'Dry Cargo', unit: 'MT' },
+    { id: 'cargo_2', name: 'Food Grade Liquid Tanker (30 KL)', category: 'Liquid Cargo', unit: 'MT' }
   ],
   title_masters: [
-    {
-      id: 'tm_1',
-      title: 'Shalimar Nutrients - Nagpur Plant Bulk Soya DOC Delivery',
-      material_type: 'Soybean Meal De-Oiled Cake (DOC)'
-    },
-    {
-      id: 'tm_2',
-      title: 'Shalimar Nutrients - Solapur Edible Oil Tankers',
-      material_type: 'Crude Soy / Sunflower Oil (Tankers)'
-    },
-    {
-      id: 'tm_3',
-      title: 'Shalimar Nutrients - Indore Plant Sunflower Seed Delivery',
-      material_type: 'Raw Sunflower Seeds'
-    },
-    {
-      id: 'tm_4',
-      title: 'Shalimar Nutrients - Thane Plant Industrial Machinery Transfer',
-      material_type: 'Industrial Processing Equipment'
-    }
+    { id: 'title_1', name: 'Raw Material Freight Procurement' },
+    { id: 'title_2', name: 'Finished Oil Tanker Dispatch Contract' }
   ],
   city_masters: [
-    { id: 'city_1', city: 'Nagpur (Shalimar Plant MIDC)', pin: '440028', state: 'Maharashtra' },
-    { id: 'city_2', city: 'Solapur (Shalimar Refinery)', pin: '413001', state: 'Maharashtra' },
-    { id: 'city_3', city: 'Indore Processing Unit', pin: '452001', state: 'Madhya Pradesh' },
-    { id: 'city_4', city: 'Jhalawar / Jhalarapatan RIICO Industrial Area', pin: '326023', state: 'Rajasthan' },
-    { id: 'city_5', city: 'Thane Logistics Terminal', pin: '400601', state: 'Maharashtra' },
-    { id: 'city_6', city: 'Hyderabad Processing Hub', pin: '500001', state: 'Telangana' }
+    { id: 'city_1', name: 'Nagpur', state: 'Maharashtra', code: 'NGP' },
+    { id: 'city_2', name: 'Solapur', state: 'Maharashtra', code: 'SLP' },
+    { id: 'city_3', name: 'Mumbai', state: 'Maharashtra', code: 'BOM' },
+    { id: 'city_4', name: 'Pune', state: 'Maharashtra', code: 'PNE' },
+    { id: 'city_5', name: 'Indore', state: 'Madhya Pradesh', code: 'IND' }
   ],
-  users: [
-    {
-      id: 'usr_admin',
-      username: 'admin',
-      name: 'Shalimar Admin (Logistics Head)',
-      role: 'admin',
-      transporter_id: null,
-      created_at: '2026-08-01T10:00:00Z'
-    },
-    {
-      id: 'usr_abc',
-      username: 'ABC001',
-      name: 'ABC Transport Admin',
-      role: 'transporter',
-      transporter_id: 'trans_abc',
-      created_at: '2026-08-01T10:30:00Z'
-    },
-    {
-      id: 'usr_xyz',
-      username: 'XYZ001',
-      name: 'XYZ Transport Admin',
-      role: 'transporter',
-      transporter_id: 'trans_xyz',
-      created_at: '2026-08-01T11:00:00Z'
-    },
-    {
-      id: 'usr_pqr',
-      username: 'PQR001',
-      name: 'PQR Transport Admin',
-      role: 'transporter',
-      transporter_id: 'trans_pqr',
-      created_at: '2026-08-01T11:30:00Z'
-    }
-  ],
-  transporters: [
-    {
-      id: 'trans_abc',
-      company_name: 'ABC Transport Pvt Ltd',
-      code: 'ABC001',
-      contact_person: 'Ramesh Kumar',
-      mobile: '+91 98230 11223',
-      email: 'ramesh@abctransport.com',
-      address: 'Plot 45, Transport Nagar, Mumbai',
-      gst_pan: '27AAAAA0000A1Z5',
-      username: 'ABC001',
-      status: 'Active',
-      created_at: '2026-08-01T10:30:00Z'
-    },
-    {
-      id: 'trans_xyz',
-      company_name: 'XYZ Logistics & Freight',
-      code: 'XYZ001',
-      contact_person: 'Vikram Sharma',
-      mobile: '+91 98220 44556',
-      email: 'vikram@xyzlogistics.com',
-      address: 'GIDC Industrial Estate, Pune',
-      gst_pan: '27BBBBA1111B1Z2',
-      username: 'XYZ001',
-      status: 'Active',
-      created_at: '2026-08-01T11:00:00Z'
-    },
-    {
-      id: 'trans_pqr',
-      company_name: 'PQR National Freight Carriers',
-      code: 'PQR001',
-      contact_person: 'Sunil Patel',
-      mobile: '+91 98210 77889',
-      email: 'sunil@pqrfreight.com',
-      address: 'Sector 18, Transport Hub, Thane',
-      gst_pan: '27CCCCA2222C1Z9',
-      username: 'PQR001',
-      status: 'Active',
-      created_at: '2026-08-01T11:30:00Z'
-    }
-  ],
-  rate_requests: [
-    {
-      id: 'req_init_1',
-      request_no: 'SNPL/26-27/REQ-01/01',
-      title: 'SNPL/26-27/REQ-01/01',
-      batch_no: 'SNPL/26-27/REQ-01',
-      sub_no: '01',
-      origin_city: 'Nagpur (Shalimar Plant MIDC)',
-      origin_pin: '440028',
-      dest_city: 'Solapur (Shalimar Refinery)',
-      dest_pin: '413001',
-      company_unit: 'Shalimar Nutrients Pvt Ltd (Nagpur Plant)',
-      material_type: 'Soybean Meal De-Oiled Cake (DOC)',
-      hsn_code: '23040010',
-      required_qty: 250,
-      unit: 'MT',
-      target_date: new Date().toISOString().split('T')[0],
-      status: 'Open',
-      created_at: new Date().toISOString(),
-      notes: 'Standard food-grade liquid tanker transport.'
-    }
-  ],
+  users: [],
+  transporters: [],
+  rate_requests: [],
   rate_submissions: [],
   allocations: [],
   truck_dispatches: [],
   contracts: [],
   security_audit_logs: [],
+  whatsapp_api_settings: {
+    enabled: true,
+    provider: 'Green API (Production Enterprise Gateway)',
+    instance_id: '******',
+    token: '******',
+    api_url: 'https://api.green-api.com',
+    target_groups: ['Transporter Broadcast Group', 'Shalimar Logistics Desk']
+  },
   whatsapp_notifications: []
 };
 
-const LOCAL_STORAGE_KEY = 'transflow_local_db_v3';
+const LOCAL_STORAGE_KEY = 'transflow_live_db';
+const AUTH_TOKEN_KEY = 'transflow_auth_token';
 
 function getApiBaseUrl() {
-  const envApiUrl = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_BASE_URL) || '';
-  if (envApiUrl) return envApiUrl;
-  if (typeof window !== 'undefined' && window.location) {
-    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-      return 'http://localhost:3000';
-    }
+  if (typeof window !== 'undefined' && window.location.origin) {
     return window.location.origin;
   }
-  return '';
+  return 'http://localhost:3000';
 }
 
-/**
- * ☁️ Load Database from Node.js API / Hostinger MySQL Server
- */
-export async function loadDBFromApi() {
+export function getAuthToken() {
   try {
-    const res = await fetch(`${getApiBaseUrl()}/api/state`, {
-      headers: { 'Accept': 'application/json' }
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const result = await res.json();
-    if (result && result.data) {
-      try {
-        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(result.data));
-      } catch (e) {}
-      return result.data;
-    }
-  } catch (err) {
-    console.warn('API State load warning, using local cache fallback:', err.message);
+    return sessionStorage.getItem(AUTH_TOKEN_KEY) || localStorage.getItem(AUTH_TOKEN_KEY) || '';
+  } catch (e) {
+    return '';
   }
-
-  return loadDB();
 }
 
-// Backward compatibility alias for existing component calls
-export const loadDBFromSupabase = loadDBFromApi;
+export function setAuthToken(token) {
+  try {
+    if (token) {
+      sessionStorage.setItem(AUTH_TOKEN_KEY, token);
+      localStorage.setItem(AUTH_TOKEN_KEY, token);
+    } else {
+      sessionStorage.removeItem(AUTH_TOKEN_KEY);
+      localStorage.removeItem(AUTH_TOKEN_KEY);
+    }
+  } catch (e) {}
+}
+
+function getAuthHeaders() {
+  const token = getAuthToken();
+  const headers = { 'Content-Type': 'application/json' };
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+  return headers;
+}
 
 /**
- * ☁️ Save Database to Node.js API / Hostinger MySQL Server
+ * ☁️ Modular Targeted API Fetch Functions (Minimal Data Footprint)
+ */
+export async function fetchDashboardMetrics() {
+  try {
+    const res = await fetch(`${getApiBaseUrl()}/api/dashboard`, { headers: getAuthHeaders() });
+    if (!res.ok) return null;
+    const json = await res.json();
+    return json.dashboard || null;
+  } catch (e) {
+    return null;
+  }
+}
+
+export async function fetchRateRequests(page = 1, limit = 20) {
+  try {
+    const res = await fetch(`${getApiBaseUrl()}/api/rate-requests?page=${page}&limit=${limit}`, { headers: getAuthHeaders() });
+    if (!res.ok) return [];
+    const json = await res.json();
+    return json.rate_requests || [];
+  } catch (e) {
+    return [];
+  }
+}
+
+export async function fetchRateSubmissions() {
+  try {
+    const res = await fetch(`${getApiBaseUrl()}/api/rate-submissions`, { headers: getAuthHeaders() });
+    if (!res.ok) return [];
+    const json = await res.json();
+    return json.rate_submissions || [];
+  } catch (e) {
+    return [];
+  }
+}
+
+export async function fetchTransportersList() {
+  try {
+    const res = await fetch(`${getApiBaseUrl()}/api/transporters`, { headers: getAuthHeaders() });
+    if (!res.ok) return [];
+    const json = await res.json();
+    return json.transporters || [];
+  } catch (e) {
+    return [];
+  }
+}
+
+export async function fetchMasterData() {
+  try {
+    const res = await fetch(`${getApiBaseUrl()}/api/master-data`, { headers: getAuthHeaders() });
+    if (!res.ok) return [];
+    const json = await res.json();
+    return json.master_records || [];
+  } catch (e) {
+    return [];
+  }
+}
+
+export async function fetchAuditLogs() {
+  try {
+    const res = await fetch(`${getApiBaseUrl()}/api/security/audit-logs`, { headers: getAuthHeaders() });
+    if (!res.ok) return [];
+    const json = await res.json();
+    return json.audit_logs || [];
+  } catch (e) {
+    return [];
+  }
+}
+
+/**
+ * ☁️ Save Database to Node.js API / Hostinger MySQL Server (Authenticated)
  */
 export async function saveDB(data) {
   const dataToSave = {
@@ -314,7 +194,7 @@ export async function saveDB(data) {
   try {
     const res = await fetch(`${getApiBaseUrl()}/api/state`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getAuthHeaders(),
       body: JSON.stringify(dataToSave)
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -353,4 +233,8 @@ export function resetDB() {
   };
   saveDB(cleanData);
   return cleanData;
+}
+
+export function loadDBFromSupabase() {
+  return loadDB();
 }

@@ -43,7 +43,7 @@ export const LoginModal = () => {
     setError('');
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
 
@@ -60,7 +60,7 @@ export const LoginModal = () => {
       return;
     }
 
-    const res = login(cleanUsername, password);
+    const res = await login(cleanUsername, password);
     if (!res.success) {
       recordLoginAttempt(cleanUsername, false);
       const newLockStatus = checkBruteForceLock(cleanUsername);

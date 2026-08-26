@@ -266,67 +266,51 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  const login = (username, password) => {
-    let currentDb = db;
+  const login = async (username, password) => {
     const cleanUser = (username || '').trim().toLowerCase();
     const cleanPass = (password || '').trim();
 
-    let found = (currentDb.users || []).find((u) => {
-      const matchUser = (u?.username || "").toLowerCase() === cleanUser;
-      if (!matchUser) return false;
-      if (u.role === 'admin' && (cleanPass === 'admin123' || cleanPass === 'admin' || (u.password && u.password === cleanPass))) {
-        return true;
-      }
-      return u.password ? u.password === cleanPass : (cleanPass === 'password123' || cleanPass === 'admin123');
-    });
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: cleanUser, password: cleanPass })
+      });
 
-    if (found) {
-      // 🛑 STRICT INACTIVE TRANSPORTER LOCKOUT CHECK
-      if (found.role === 'transporter' || found.transporter_id) {
-        const transporter = currentDb.transporters?.find((t) => t.id === found.transporter_id || t.username === found.username || t.code === found.username);
-        if (transporter && transporter.status === 'Inactive') {
-          const updatedBlocked = addSecurityLog(
-            currentDb,
-            `LOGIN_BLOCKED_INACTIVE_ACCOUNT (${found.username})`,
-            found.username,
-            found.role,
-            'ACCOUNT_DEACTIVATED 🛑'
-          );
-          updateDB(updatedBlocked);
-          return {
-            success: false,
-            error: '🛑 ACCOUNT SUSPENDED: Your Transporter account has been deactivated by Shalimar Admin. Contact Logistics Admin.'
-          };
+      const json = await res.json();
+      if (res.ok && json.success && json.user) {
+        if (typeof setAuthToken === 'function') {
+          setAuthToken(json.token);
+        } else {
+          sessionStorage.setItem('transflow_auth_token', json.token);
+          localStorage.setItem('transflow_auth_token', json.token);
         }
-
-        // Attach transporter_id if missing
-        if (transporter && !found.transporter_id) {
-          found = { ...found, transporter_id: transporter.id };
-        }
+        setCurrentUser(json.user);
+        sessionStorage.setItem(USER_SESSION_KEY, JSON.stringify(json.user));
+        localStorage.setItem(USER_SESSION_KEY, JSON.stringify(json.user));
+        return { success: true, user: json.user };
+      } else {
+        return { success: false, error: json.error || 'Invalid Username or Password' };
       }
+    } catch (err) {
+      let currentDb = db;
+      let found = (currentDb.users || []).find((u) => {
+        const matchUser = (u?.username || "").toLowerCase() === cleanUser;
+        if (!matchUser) return false;
+        if (u.role === 'admin' && (cleanPass === 'admin123' || cleanPass === 'admin' || (u.password && u.password === cleanPass))) {
+          return true;
+        }
+        return u.password ? u.password === cleanPass : (cleanPass === 'password123' || cleanPass === 'admin123');
+      });
 
-      const updatedWithLog = addSecurityLog(
-        currentDb,
-        `USER_LOGIN_SUCCESS (${(found?.role || "").toUpperCase()})`,
-        found.username,
-        found.role,
-        'ACCESS_GRANTED 🛡️'
-      );
-      updateDB(updatedWithLog);
-      setCurrentUser(found);
-      sessionStorage.setItem(USER_SESSION_KEY, JSON.stringify(found));
-      return { success: true, user: found };
+      if (found) {
+        const { password: p, password_hash: ph, ...safeUser } = found;
+        setCurrentUser(safeUser);
+        sessionStorage.setItem(USER_SESSION_KEY, JSON.stringify(safeUser));
+        return { success: true, user: safeUser };
+      }
+      return { success: false, error: 'Invalid Username or Password' };
     }
-
-    const updatedFailed = addSecurityLog(
-      currentDb,
-      `USER_LOGIN_FAILED (${username})`,
-      username,
-      'unknown',
-      'DENIED_BLOCKED 🛑'
-    );
-    updateDB(updatedFailed);
-    return { success: false, error: 'Invalid Username or Password' };
   };
 
   const quickSwitchUser = (username) => {
