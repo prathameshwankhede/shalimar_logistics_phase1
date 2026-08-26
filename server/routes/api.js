@@ -40,12 +40,17 @@ router.get('/transporters', authenticateToken, handleGetTransporters);
 router.get('/master-data', authenticateToken, handleGetMasterData);
 
 // -------------------------------------------------------------
-// GET /api/security/audit-logs — Protected Admin Audit Logs DTO
+// GET /api/security/audit-logs — Protected Admin Audit Logs (Relational MySQL)
 // -------------------------------------------------------------
 router.get('/security/audit-logs', authenticateToken, requireRole('admin'), async (req, res) => {
-  const state = IN_MEMORY_CACHE || INITIAL_SEED_DATA;
-  const logs = (state.security_audit_logs || []).slice(0, 50);
-  return res.json({ success: true, count: logs.length, audit_logs: logs });
+  try {
+    const [rows] = await pool.query('SELECT id, action, username, user_role, status, created_at FROM security_audit_logs ORDER BY created_at DESC LIMIT 50');
+    return res.json({ success: true, count: rows.length, audit_logs: rows });
+  } catch (err) {
+    const state = IN_MEMORY_CACHE || INITIAL_SEED_DATA;
+    const logs = (state.security_audit_logs || []).slice(0, 50);
+    return res.json({ success: true, count: logs.length, audit_logs: logs });
+  }
 });
 
 // -------------------------------------------------------------

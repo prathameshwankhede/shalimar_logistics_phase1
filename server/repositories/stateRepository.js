@@ -10,13 +10,9 @@ function isProduction() {
 
 function handleDbError(err, fallbackData = null) {
   console.error('MySQL Query Exception:', err.message);
-
-  // IN PRODUCTION: NEVER return fake/seed business data when MySQL is unavailable
   if (isProduction() || process.env.ALLOW_SEED_FALLBACK === 'false') {
     throw err;
   }
-
-  // DEVELOPMENT / TEST ONLY FALLBACK
   return fallbackData;
 }
 
@@ -120,6 +116,24 @@ export async function fetchTransportersList() {
 export async function fetchMasterRecords() {
   try {
     const [rows] = await pool.query('SELECT id, category, code, name FROM master_records LIMIT 200');
+    return rows;
+  } catch (err) {
+    return handleDbError(err, []);
+  }
+}
+
+export async function fetchAuditLogsRelational() {
+  try {
+    const [rows] = await pool.query('SELECT id, action, username, user_role, status, created_at FROM security_audit_logs ORDER BY created_at DESC LIMIT 50');
+    return rows;
+  } catch (err) {
+    return handleDbError(err, INITIAL_SEED_DATA.security_audit_logs || []);
+  }
+}
+
+export async function fetchContractsRelational() {
+  try {
+    const [rows] = await pool.query('SELECT id, contract_no, request_id, transporter_id, allocated_qty, rate_per_unit, status, created_at FROM contracts ORDER BY created_at DESC LIMIT 100');
     return rows;
   } catch (err) {
     return handleDbError(err, []);

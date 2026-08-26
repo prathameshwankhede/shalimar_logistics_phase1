@@ -156,7 +156,47 @@ export async function initDatabaseSchema() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
 
-    console.log('✅ Self-healing MySQL schema initialized (6 tables verified/created).');
+    // 7. security_audit_logs (Relational Audit Logs Table)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS security_audit_logs (
+        id VARCHAR(64) PRIMARY KEY,
+        action VARCHAR(150) NOT NULL,
+        username VARCHAR(100) DEFAULT NULL,
+        user_role VARCHAR(50) DEFAULT NULL,
+        status VARCHAR(100) DEFAULT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        KEY idx_audit_created (created_at)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
+    // 8. whatsapp_notifications (Relational WhatsApp Notifications Table)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS whatsapp_notifications (
+        id VARCHAR(64) PRIMARY KEY,
+        recipient VARCHAR(100) DEFAULT NULL,
+        message TEXT DEFAULT NULL,
+        status VARCHAR(50) DEFAULT 'Sent',
+        sent_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        KEY idx_wa_sent (sent_at)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
+    // 9. contracts (Relational Freight Contracts Table)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS contracts (
+        id VARCHAR(64) PRIMARY KEY,
+        contract_no VARCHAR(100) NOT NULL,
+        request_id VARCHAR(64) DEFAULT NULL,
+        transporter_id VARCHAR(64) DEFAULT NULL,
+        allocated_qty DECIMAL(12,2) DEFAULT 0.00,
+        rate_per_unit DECIMAL(12,2) DEFAULT 0.00,
+        status VARCHAR(50) DEFAULT 'Active',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        KEY idx_contracts_transporter (transporter_id)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
+    console.log('✅ Self-healing MySQL schema initialized (9 tables verified/created).');
     return true;
   } catch (err) {
     console.error('❌ MySQL Schema Init Error:', err.message);
