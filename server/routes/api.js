@@ -304,7 +304,7 @@ router.post('/state', authenticateToken, requireRole('admin'), async (req, res) 
   return res.json({ success: true, timestamp: Date.now(), data: sanitizeStateForClient(payload) });
 });
 
-// Helper function to sync normalized tables in MySQL
+// Helper function to sync all normalized tables in MySQL
 async function syncNormalizedTables(data) {
   if (!data) return;
 
@@ -312,12 +312,14 @@ async function syncNormalizedTables(data) {
     try {
       await pool.query('DELETE FROM rate_requests');
       await pool.query('DELETE FROM rate_submissions');
+      await pool.query('DELETE FROM contracts');
       console.log('🧹 MySQL operational tables cleared successfully for system reset.');
     } catch (err) {
       console.warn('MySQL table clear error on reset:', err.message);
     }
   }
 
+  // 1. Sync Users
   if (Array.isArray(data.users)) {
     for (const u of data.users) {
       if (u.id && u.username) {
@@ -326,7 +328,120 @@ async function syncNormalizedTables(data) {
            VALUES (?, ?, ?, ?, ?, ?)
            ON DUPLICATE KEY UPDATE name = VALUES(name), role = VALUES(role), transporter_id = VALUES(transporter_id)`,
           [u.id, u.username, u.password || u.password_hash || 'admin123', u.name || u.username, u.role || 'transporter', u.transporter_id || null]
-        ).catch(() => {});
+        ).catch((err) => console.warn('MySQL sync users notice:', err.message));
+      }
+    }
+  }
+
+  // 2. Sync Rate Requests (Indents)
+  if (Array.isArray(data.rate_requests)) {
+    for (const r of data.rate_requests) {
+      if (r.id) {
+        const reqNo = r.request_no || r.id;
+        await pool.query(
+          `INSERT INTO rate_requests (id, request_no, title, origin_city, dest_city, material_type, required_qty, unit, target_date, status)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           ON DUPLICATE KEY UPDATE 
+           request_no = VALUES(request_no),
+           title = VALUES(title),
+           origin_city = VALUES(origin_city),
+           dest_city = VALUES(dest_city),
+           material_type = VALUES(material_type),
+           required_qty = VALUES(required_qty),
+           unit = VALUES(unit),
+           target_date = VALUES(target_date),
+           status = VALUES(status),
+           updated_at = NOW()`,
+          [r.id, reqNo, r.title || reqNo, r.origin_city || '', r.dest_city || '', r.material_type || '', parseFloat(r.required_qty || 0), r.unit || 'MT', r.target_date || null, r.status || 'Open']
+        ).catch((err) => console.warn('MySQL sync rate_requests notice:', err.message));
+      }
+    }
+  }
+
+  // 3. Sync Rate Submissions (Bids)
+  if (Array.isArray(data.rate_submissions)) {
+    for (const s of data.rate_submissions) {
+      if (s.id) {
+        const reqId = s.request_id || s.rate_request_id || s.id;
+        const reqNo = s.request_no || reqId;
+        const transId = s.transporter_id || 'transporter';
+        const transName = s.transporter_name || transId;
+        const rateVal = parseFloat(s.rate_per_unit || 0);
+        const submittedAt = s.submitted_at ? new Date(s.submitted_at).toISOString().slice(0, 19).replace('T', ' ') : new Date().toISOString().slice(0, 19).replace('T', ' ');
+
+        await pool.query(
+          `INSERT INTO rate_submissions (id, request_id, request_no, transporter_id, transporter_name, rate_per_unit, vehicle_type, comments, status, submitted_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           ON DUPLICATE KEY UPDATE 
+           request_id = VALUES(request_id),
+           request_no = VALUES(request_no),
+           transporter_id = VALUES(transporter_id),
+           transporter_name = VALUES(transporter_name),
+           rate_per_unit = VALUES(rate_per_unit),
+           vehicle_type = VALUES(vehicle_type),
+           comments = VALUES(comments),
+           status = VALUES(status),
+           updated_at = NOW()`,
+          [s.id, reqId, reqNo, transId, transName, rateVal, s.vehicle_type || '', s.comments || s.notes || '', s.status || 'Submitted', submittedAt]
+        ).catch((err) => console.warn('MySQL sync rate_submissions notice:', err.message));
+      }
+    }
+  }
+
+  // 4. Sync Transporters
+  if (Array.isArray(data.transporters)) {
+    for (const t of data.transporters) {
+      if (t.id && (t.company_name || t.code)) {
+        const tCode = t.code || t.id;
+        const tName = t.company_name || tCode;
+        await pool.query(
+          `INSERT INTO transporters (id, company_name, code, mobile, email, status)
+           VALUES (?, ?, ?, ?, ?, ?)
+           ON DUPLICATE KEY UPDATE 
+           company_name = VALUES(company_name),
+           code = VALUES(code),
+           mobile = VALUES(mobile),
+           email = VALUES(email),
+           status = VALUES(status),
+           updated_at = NOW()`,
+          [t.id, tName, tCode, t.mobile || '', t.email || '', t.status || 'Active']
+        ).catch((err) => console.warn('MySQL sync transporters notice:', err.message));
+      }
+    }
+  }
+
+  // 5. Sync Contracts
+  if (Array.isArray(data.contracts)) {
+    for (const c of data.contracts) {
+      if (c.id) {
+        const cNo = c.contract_no || c.code || c.id;
+        await pool.query(
+          `INSERT INTO contracts (id, contract_no, request_id, transporter_id, allocated_qty, rate_per_unit, status)
+           VALUES (?, ?, ?, ?, ?, ?, ?)
+           ON DUPLICATE KEY UPDATE 
+           contract_no = VALUES(contract_no),
+           allocated_qty = VALUES(allocated_qty),
+           rate_per_unit = VALUES(rate_per_unit),
+           status = VALUES(status),
+           updated_at = NOW()`,
+          [c.id, cNo, c.request_id || null, c.transporter_id || 'transporter', parseFloat(c.allocated_qty || 0), parseFloat(c.rate_per_unit || 0), c.status || 'Active']
+        ).catch((err) => console.warn('MySQL sync contracts notice:', err.message));
+      }
+    }
+  }
+
+  // 6. Sync Security Audit Logs
+  if (Array.isArray(data.security_audit_logs)) {
+    for (const log of data.security_audit_logs) {
+      if (log.id || log.action) {
+        const logId = log.id || `audit_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+        const logDate = log.created_at || log.timestamp ? new Date(log.created_at || log.timestamp).toISOString().slice(0, 19).replace('T', ' ') : new Date().toISOString().slice(0, 19).replace('T', ' ');
+        await pool.query(
+          `INSERT INTO security_audit_logs (id, action, username, user_role, status, created_at)
+           VALUES (?, ?, ?, ?, ?, ?)
+           ON DUPLICATE KEY UPDATE action = VALUES(action), status = VALUES(status)`,
+          [logId, log.action || log.event || 'SECURITY_EVENT', log.username || 'system', log.user_role || log.role || 'user', log.status || 'OK', logDate]
+        ).catch((err) => console.warn('MySQL sync audit_logs notice:', err.message));
       }
     }
   }
