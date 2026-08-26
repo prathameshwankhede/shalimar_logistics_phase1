@@ -152,10 +152,11 @@ async function executeDeterministicMigration() {
   } catch (err) {
     await connection.rollback();
     console.error('❌ Migration Transaction Failed & Rolled Back:', err.message);
-  } finally {
     connection.release();
-    process.exit(0);
+    process.exit(1);
   }
+  connection.release();
+  process.exit(0);
 }
 
 if (process.argv.includes('--execute')) {
