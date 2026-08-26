@@ -15,3 +15,36 @@ export async function createProduct(productPayload) {
     body: JSON.stringify(productPayload)
   });
 }
+
+export async function getCompanyUnits() {
+  return apiClient('/api/company-units', { method: 'GET' });
+}
+
+export async function createCompanyUnit(unitPayload) {
+  return apiClient('/api/company-units', {
+    method: 'POST',
+    body: JSON.stringify(unitPayload)
+  });
+}
+
+export async function getCities() {
+  return apiClient('/api/cities', { method: 'GET' });
+}
+
+export async function createCity(cityPayload) {
+  return apiClient('/api/cities', {
+    method: 'POST',
+    body: JSON.stringify(cityPayload)
+  });
+}
+
+export async function getTransportTitles() {
+  return apiClient('/api/transport-titles', { method: 'GET' });
+}
+
+export async function createTransportTitle(titlePayload) {
+  return apiClient('/api/transport-titles', {
+    method: 'POST',
+    body: JSON.stringify(titlePayload)
+  });
+}

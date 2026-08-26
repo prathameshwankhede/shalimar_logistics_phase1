@@ -196,7 +196,75 @@ export async function initDatabaseSchema() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
 
-    console.log('✅ Self-healing MySQL schema initialized (9 tables verified/created).');
+    // 10. products (Dedicated Products Table)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS products (
+        id VARCHAR(64) PRIMARY KEY,
+        code VARCHAR(50) NOT NULL,
+        name VARCHAR(255) NOT NULL,
+        category VARCHAR(100) DEFAULT 'General',
+        hsn_code VARCHAR(50) DEFAULT '23040010',
+        default_unit VARCHAR(50) DEFAULT 'MT',
+        status VARCHAR(50) DEFAULT 'Active',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        KEY idx_products_code (code),
+        KEY idx_products_category (category)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
+    // 11. company_units (Dedicated Company Units Table)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS company_units (
+        id VARCHAR(64) PRIMARY KEY,
+        code VARCHAR(50) NOT NULL,
+        name VARCHAR(255) NOT NULL,
+        contact_name VARCHAR(150) DEFAULT NULL,
+        gstin VARCHAR(50) DEFAULT NULL,
+        pan VARCHAR(50) DEFAULT NULL,
+        mobile VARCHAR(30) DEFAULT NULL,
+        email VARCHAR(150) DEFAULT NULL,
+        city VARCHAR(100) DEFAULT NULL,
+        district VARCHAR(100) DEFAULT NULL,
+        pin VARCHAR(20) DEFAULT NULL,
+        address TEXT DEFAULT NULL,
+        status VARCHAR(50) DEFAULT 'Active',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        KEY idx_company_units_code (code)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
+    // 12. cities (Dedicated Cities Master Table)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS cities (
+        id VARCHAR(64) PRIMARY KEY,
+        code VARCHAR(50) NOT NULL,
+        name VARCHAR(150) NOT NULL,
+        district VARCHAR(100) DEFAULT NULL,
+        state VARCHAR(100) DEFAULT NULL,
+        pin VARCHAR(20) DEFAULT NULL,
+        status VARCHAR(50) DEFAULT 'Active',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        KEY idx_cities_name (name)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
+    // 13. transport_titles (Dedicated Transport Titles Table)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS transport_titles (
+        id VARCHAR(64) PRIMARY KEY,
+        code VARCHAR(50) NOT NULL,
+        title VARCHAR(255) NOT NULL,
+        status VARCHAR(50) DEFAULT 'Active',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        KEY idx_titles_code (code)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
+    console.log('✅ Self-healing MySQL schema initialized (13 tables verified/created).');
     return true;
   } catch (err) {
     console.error('❌ MySQL Schema Init Error:', err.message);

@@ -136,29 +136,141 @@ router.post('/bids', authenticateToken, async (req, res) => {
 });
 
 // -------------------------------------------------------------
-// POST /api/products — Dedicated Product Master Insert Endpoint (Admin Only)
+// POST /api/products & GET /api/products — Dedicated Products API
 // -------------------------------------------------------------
+router.get('/products', authenticateToken, async (req, res) => {
+  try {
+    const [rows] = await pool.query('SELECT id, code, name, category, hsn_code, default_unit, status, created_at, updated_at FROM products ORDER BY name ASC LIMIT 200');
+    return res.json({ success: true, count: rows.length, products: rows });
+  } catch (err) {
+    return res.status(503).json({ success: false, error: { code: 'DATABASE_UNAVAILABLE', message: err.message } });
+  }
+});
+
 router.post('/products', authenticateToken, requireRole('admin'), async (req, res) => {
-  const { id, name, category, hsn_code, unit } = req.body;
+  const { id, code, name, category, hsn_code, default_unit, status } = req.body;
   if (!name) {
     return res.status(400).json({ success: false, error: 'Product name required' });
   }
 
   const prodId = id || `prod_${Date.now()}`;
-  const prodObj = { id: prodId, name: name.trim(), category: category || 'General', hsn_code: hsn_code || '23040010', unit: unit || 'MT' };
-
+  const prodCode = code || prodId;
   try {
-    const jsonExtra = JSON.stringify(prodObj);
     const [result] = await pool.query(
-      `INSERT INTO master_records (category, code, name, extra_data)
-       VALUES ('product', ?, ?, ?)
-       ON DUPLICATE KEY UPDATE name = VALUES(name), extra_data = VALUES(extra_data)`,
-      [prodId, name.trim(), jsonExtra]
+      `INSERT INTO products (id, code, name, category, hsn_code, default_unit, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE name = VALUES(name), category = VALUES(category), hsn_code = VALUES(hsn_code), default_unit = VALUES(default_unit), status = VALUES(status), updated_at = NOW()`,
+      [prodId, prodCode, name.trim(), category || 'General', hsn_code || '23040010', default_unit || 'MT', status || 'Active']
     );
 
-    return res.json({ success: true, affectedRows: result.affectedRows, product: prodObj, message: 'Product Master saved to MySQL' });
+    return res.json({ success: true, affectedRows: result.affectedRows, id: prodId, message: 'Product saved to MySQL products table' });
   } catch (err) {
-    console.error('❌ MySQL Product Insert Error:', err.message);
+    console.error('❌ MySQL Product Error:', err.message);
+    return res.status(500).json({ success: false, error: { code: 'DATABASE_ERROR', message: err.message } });
+  }
+});
+
+// -------------------------------------------------------------
+// POST /api/company-units & GET /api/company-units — Dedicated Company Units API
+// -------------------------------------------------------------
+router.get('/company-units', authenticateToken, async (req, res) => {
+  try {
+    const [rows] = await pool.query('SELECT id, code, name, contact_name, gstin, pan, mobile, email, city, district, pin, address, status, created_at, updated_at FROM company_units ORDER BY name ASC LIMIT 200');
+    return res.json({ success: true, count: rows.length, company_units: rows });
+  } catch (err) {
+    return res.status(503).json({ success: false, error: { code: 'DATABASE_UNAVAILABLE', message: err.message } });
+  }
+});
+
+router.post('/company-units', authenticateToken, requireRole('admin'), async (req, res) => {
+  const { id, code, name, contact_name, gstin, pan, mobile, email, city, district, pin, address, status } = req.body;
+  if (!name) {
+    return res.status(400).json({ success: false, error: 'Company unit name required' });
+  }
+
+  const unitId = id || `unit_${Date.now()}`;
+  const unitCode = code || unitId;
+  try {
+    const [result] = await pool.query(
+      `INSERT INTO company_units (id, code, name, contact_name, gstin, pan, mobile, email, city, district, pin, address, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE name = VALUES(name), contact_name = VALUES(contact_name), mobile = VALUES(mobile), email = VALUES(email), address = VALUES(address), status = VALUES(status), updated_at = NOW()`,
+      [unitId, unitCode, name.trim(), contact_name || '', gstin || '', pan || '', mobile || '', email || '', city || '', district || '', pin || '', address || '', status || 'Active']
+    );
+
+    return res.json({ success: true, affectedRows: result.affectedRows, id: unitId, message: 'Company Unit saved to MySQL company_units table' });
+  } catch (err) {
+    console.error('❌ MySQL Company Unit Error:', err.message);
+    return res.status(500).json({ success: false, error: { code: 'DATABASE_ERROR', message: err.message } });
+  }
+});
+
+// -------------------------------------------------------------
+// POST /api/cities & GET /api/cities — Dedicated Cities API
+// -------------------------------------------------------------
+router.get('/cities', authenticateToken, async (req, res) => {
+  try {
+    const [rows] = await pool.query('SELECT id, code, name, district, state, pin, status, created_at, updated_at FROM cities ORDER BY name ASC LIMIT 300');
+    return res.json({ success: true, count: rows.length, cities: rows });
+  } catch (err) {
+    return res.status(503).json({ success: false, error: { code: 'DATABASE_UNAVAILABLE', message: err.message } });
+  }
+});
+
+router.post('/cities', authenticateToken, requireRole('admin'), async (req, res) => {
+  const { id, code, name, district, state, pin, status } = req.body;
+  if (!name) {
+    return res.status(400).json({ success: false, error: 'City name required' });
+  }
+
+  const cityId = id || `city_${Date.now()}`;
+  const cityCode = code || cityId;
+  try {
+    const [result] = await pool.query(
+      `INSERT INTO cities (id, code, name, district, state, pin, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE name = VALUES(name), district = VALUES(district), state = VALUES(state), pin = VALUES(pin), status = VALUES(status), updated_at = NOW()`,
+      [cityId, cityCode, name.trim(), district || '', state || '', pin || '', status || 'Active']
+    );
+
+    return res.json({ success: true, affectedRows: result.affectedRows, id: cityId, message: 'City saved to MySQL cities table' });
+  } catch (err) {
+    console.error('❌ MySQL City Error:', err.message);
+    return res.status(500).json({ success: false, error: { code: 'DATABASE_ERROR', message: err.message } });
+  }
+});
+
+// -------------------------------------------------------------
+// POST /api/transport-titles & GET /api/transport-titles — Dedicated Transport Titles API
+// -------------------------------------------------------------
+router.get('/transport-titles', authenticateToken, async (req, res) => {
+  try {
+    const [rows] = await pool.query('SELECT id, code, title, status, created_at, updated_at FROM transport_titles ORDER BY title ASC LIMIT 100');
+    return res.json({ success: true, count: rows.length, transport_titles: rows });
+  } catch (err) {
+    return res.status(503).json({ success: false, error: { code: 'DATABASE_UNAVAILABLE', message: err.message } });
+  }
+});
+
+router.post('/transport-titles', authenticateToken, requireRole('admin'), async (req, res) => {
+  const { id, code, title, status } = req.body;
+  if (!title) {
+    return res.status(400).json({ success: false, error: 'Title required' });
+  }
+
+  const titleId = id || `title_${Date.now()}`;
+  const titleCode = code || titleId;
+  try {
+    const [result] = await pool.query(
+      `INSERT INTO transport_titles (id, code, title, status)
+       VALUES (?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE title = VALUES(title), status = VALUES(status), updated_at = NOW()`,
+      [titleId, titleCode, title.trim(), status || 'Active']
+    );
+
+    return res.json({ success: true, affectedRows: result.affectedRows, id: titleId, message: 'Transport title saved to MySQL transport_titles table' });
+  } catch (err) {
+    console.error('❌ MySQL Transport Title Error:', err.message);
     return res.status(500).json({ success: false, error: { code: 'DATABASE_ERROR', message: err.message } });
   }
 });
