@@ -196,7 +196,7 @@ export async function initDatabaseSchema() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
 
-    // 10. products (Dedicated Products Table)
+    // 10. products (Dedicated Products Table with UNIQUE code)
     await pool.query(`
       CREATE TABLE IF NOT EXISTS products (
         id VARCHAR(64) PRIMARY KEY,
@@ -208,12 +208,12 @@ export async function initDatabaseSchema() {
         status VARCHAR(50) DEFAULT 'Active',
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        KEY idx_products_code (code),
+        UNIQUE KEY uq_products_code (code),
         KEY idx_products_category (category)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
 
-    // 11. company_units (Dedicated Company Units Table)
+    // 11. company_units (Dedicated Company Units Table with UNIQUE code)
     await pool.query(`
       CREATE TABLE IF NOT EXISTS company_units (
         id VARCHAR(64) PRIMARY KEY,
@@ -231,11 +231,11 @@ export async function initDatabaseSchema() {
         status VARCHAR(50) DEFAULT 'Active',
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        KEY idx_company_units_code (code)
+        UNIQUE KEY uq_company_units_code (code)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
 
-    // 12. cities (Dedicated Cities Master Table)
+    // 12. cities (Dedicated Cities Master Table with UNIQUE code)
     await pool.query(`
       CREATE TABLE IF NOT EXISTS cities (
         id VARCHAR(64) PRIMARY KEY,
@@ -247,11 +247,12 @@ export async function initDatabaseSchema() {
         status VARCHAR(50) DEFAULT 'Active',
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY uq_cities_code (code),
         KEY idx_cities_name (name)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
 
-    // 13. transport_titles (Dedicated Transport Titles Table)
+    // 13. transport_titles (Dedicated Transport Titles Table with UNIQUE code)
     await pool.query(`
       CREATE TABLE IF NOT EXISTS transport_titles (
         id VARCHAR(64) PRIMARY KEY,
@@ -260,7 +261,7 @@ export async function initDatabaseSchema() {
         status VARCHAR(50) DEFAULT 'Active',
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        KEY idx_titles_code (code)
+        UNIQUE KEY uq_titles_code (code)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
 
