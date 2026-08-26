@@ -265,7 +265,28 @@ export async function initDatabaseSchema() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
 
-    console.log('✅ Self-healing MySQL schema initialized (13 tables verified/created).');
+    // 14. dispatches (Relational Truck Dispatch & LR Table)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS dispatches (
+        id VARCHAR(64) PRIMARY KEY,
+        contract_id VARCHAR(64) DEFAULT NULL,
+        lr_number VARCHAR(100) NOT NULL,
+        truck_number VARCHAR(50) NOT NULL,
+        loaded_quantity DECIMAL(12,2) DEFAULT 0.00,
+        driver_name VARCHAR(150) DEFAULT NULL,
+        driver_mobile VARCHAR(30) DEFAULT NULL,
+        driver_license_no VARCHAR(100) DEFAULT NULL,
+        dispatch_date VARCHAR(50) DEFAULT NULL,
+        status VARCHAR(50) DEFAULT 'Dispatched',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        KEY idx_dispatches_contract (contract_id),
+        KEY idx_dispatches_truck (truck_number),
+        KEY idx_dispatches_lr (lr_number)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
+    console.log('✅ Self-healing MySQL schema initialized (14 relational tables verified/created).');
     return true;
   } catch (err) {
     console.error('❌ MySQL Schema Init Error:', err.message);
