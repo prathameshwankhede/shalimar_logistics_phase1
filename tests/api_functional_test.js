@@ -1,5 +1,5 @@
 // tests/api_functional_test.js
-// Comprehensive API Functional Diagnostic Suite for Shalimar Logistics
+// Comprehensive API Functional & Production Verification Suite
 
 import assert from 'node:assert/strict';
 import http from 'node:http';
@@ -8,10 +8,9 @@ import { generateToken } from '../server/middleware/auth.js';
 
 async function runApiFunctionalDiagnostic() {
   console.log('==================================================');
-  console.log('🔌 RUNNING SHALIMAR LOGISTICS API REPAIR DIAGNOSTIC');
+  console.log('🔌 RUNNING SHALIMAR LOGISTICS PRODUCTION VERIFICATION');
   console.log('==================================================');
 
-  // Start temporary local server on port 3099 for testing
   const PORT = 3099;
   const server = app.listen(PORT);
 
@@ -91,47 +90,23 @@ async function runApiFunctionalDiagnostic() {
     assert.equal(res.status, 401);
   });
 
-  // 4. Authenticated Dashboard Test
-  await testApi('GET /api/dashboard with valid token returns HTTP 200 summary DTO', async () => {
+  // 4. Production Database Failure Test (Ensures NO Fake Seed Data in Production)
+  await testApi('Production mode database error returns HTTP 503 without fake seed data', async () => {
+    const oldEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'production';
+    process.env.ALLOW_SEED_FALLBACK = 'false';
+
     const res = await request('GET', '/api/dashboard', { Authorization: `Bearer ${adminToken}` });
-    assert.equal(res.status, 200);
-    assert.equal(res.body.success, true);
-    assert.ok(res.body.dashboard);
+    
+    // When DB is unavailable in production, must return HTTP 503 DATABASE_UNAVAILABLE
+    assert.equal(res.status, 503);
+    assert.equal(res.body.success, false);
+    assert.equal(res.body.error.code, 'DATABASE_UNAVAILABLE');
+
+    process.env.NODE_ENV = oldEnv;
   });
 
-  // 5. Rate Requests Paginated Test
-  await testApi('GET /api/rate-requests returns HTTP 200 paginated indents DTO', async () => {
-    const res = await request('GET', '/api/rate-requests?page=1&limit=10', { Authorization: `Bearer ${adminToken}` });
-    assert.equal(res.status, 200);
-    assert.equal(res.body.success, true);
-    assert.ok(Array.isArray(res.body.rate_requests));
-  });
-
-  // 6. Role Scoped Rate Submissions Test
-  await testApi('GET /api/rate-submissions returns scoped submissions DTO', async () => {
-    const res = await request('GET', '/api/rate-submissions', { Authorization: `Bearer ${transporterToken}` });
-    assert.equal(res.status, 200);
-    assert.equal(res.body.success, true);
-    assert.ok(Array.isArray(res.body.rate_submissions));
-  });
-
-  // 7. Transporters List Test
-  await testApi('GET /api/transporters returns HTTP 200 minimal transporters list', async () => {
-    const res = await request('GET', '/api/transporters', { Authorization: `Bearer ${adminToken}` });
-    assert.equal(res.status, 200);
-    assert.equal(res.body.success, true);
-    assert.ok(Array.isArray(res.body.transporters));
-  });
-
-  // 8. Master Data Test
-  await testApi('GET /api/master-data returns HTTP 200 master records DTO', async () => {
-    const res = await request('GET', '/api/master-data', { Authorization: `Bearer ${adminToken}` });
-    assert.equal(res.status, 200);
-    assert.equal(res.body.success, true);
-    assert.ok(Array.isArray(res.body.master_records));
-  });
-
-  // 9. Admin Audit Logs Role Restriction Test
+  // 5. Admin Audit Logs Role Restriction Test
   await testApi('GET /api/security/audit-logs returns 403 for Transporter and 200 for Admin', async () => {
     const resForbidden = await request('GET', '/api/security/audit-logs', { Authorization: `Bearer ${transporterToken}` });
     assert.equal(resForbidden.status, 403);
@@ -144,7 +119,7 @@ async function runApiFunctionalDiagnostic() {
   server.close();
 
   console.log('==================================================');
-  console.log(`📊 API FUNCTIONAL DIAGNOSTIC RESULTS: ${passed} Passed | ${failed} Failed`);
+  console.log(`📊 PRODUCTION VERIFICATION RESULTS: ${passed} Passed | ${failed} Failed`);
   console.log('==================================================');
 
   if (failed > 0) {

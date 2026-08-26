@@ -4,16 +4,32 @@ import { INITIAL_SEED_DATA } from '../../src/store/dbStore.js';
 
 const CLOUD_ROW_ID = 'transflow-live-prod-v3';
 
+function isProduction() {
+  return process.env.NODE_ENV === 'production';
+}
+
+function handleDbError(err, fallbackData = null) {
+  console.error('MySQL Query Exception:', err.message);
+
+  // IN PRODUCTION: NEVER return fake/seed business data when MySQL is unavailable
+  if (isProduction() || process.env.ALLOW_SEED_FALLBACK === 'false') {
+    throw err;
+  }
+
+  // DEVELOPMENT / TEST ONLY FALLBACK
+  return fallbackData;
+}
+
 export async function fetchStateBlob() {
   try {
     const [rows] = await pool.query('SELECT data FROM app_database WHERE id = ?', [CLOUD_ROW_ID]);
     if (rows && rows.length > 0 && rows[0].data) {
       return typeof rows[0].data === 'string' ? JSON.parse(rows[0].data) : rows[0].data;
     }
+    return null;
   } catch (err) {
-    console.warn('MySQL fetchStateBlob warning:', err.message);
+    return handleDbError(err, null);
   }
-  return null;
 }
 
 export async function saveStateBlob(payload) {
@@ -25,7 +41,7 @@ export async function saveStateBlob(payload) {
       [CLOUD_ROW_ID, jsonStr]
     );
   } catch (err) {
-    console.warn('MySQL saveStateBlob warning:', err.message);
+    return handleDbError(err, null);
   }
 }
 
@@ -34,9 +50,9 @@ export async function countOpenRequests() {
     const [rows] = await pool.query("SELECT COUNT(*) AS count FROM rate_requests WHERE status = 'Open'");
     return rows[0]?.count || 0;
   } catch (err) {
-    console.warn('MySQL countOpenRequests warning:', err.message);
     const seedReqs = INITIAL_SEED_DATA.rate_requests || [];
-    return seedReqs.filter(r => r.status === 'Open').length;
+    const fallbackCount = seedReqs.filter(r => r.status === 'Open').length;
+    return handleDbError(err, fallbackCount);
   }
 }
 
@@ -49,12 +65,9 @@ export async function countSubmissions(transporterId = null) {
     const [rows] = await pool.query("SELECT COUNT(*) AS count FROM rate_submissions");
     return rows[0]?.count || 0;
   } catch (err) {
-    console.warn('MySQL countSubmissions warning:', err.message);
     const seedSubs = INITIAL_SEED_DATA.rate_submissions || [];
-    if (transporterId) {
-      return seedSubs.filter(s => s.transporter_id === transporterId).length;
-    }
-    return seedSubs.length;
+    const fallbackCount = transporterId ? seedSubs.filter(s => s.transporter_id === transporterId).length : seedSubs.length;
+    return handleDbError(err, fallbackCount);
   }
 }
 
@@ -69,8 +82,8 @@ export async function fetchPaginatedRequests(limit, offset) {
     );
     return rows;
   } catch (err) {
-    console.warn('MySQL fetchPaginatedRequests warning:', err.message);
-    return (INITIAL_SEED_DATA.rate_requests || []).slice(offset, offset + limit);
+    const seedReqs = (INITIAL_SEED_DATA.rate_requests || []).slice(offset, offset + limit);
+    return handleDbError(err, seedReqs);
   }
 }
 
@@ -86,12 +99,11 @@ export async function fetchSubmissions(transporterId = null) {
     const [rows] = await pool.query(query, params);
     return rows;
   } catch (err) {
-    console.warn('MySQL fetchSubmissions warning:', err.message);
-    let subs = INITIAL_SEED_DATA.rate_submissions || [];
+    let seedSubs = INITIAL_SEED_DATA.rate_submissions || [];
     if (transporterId) {
-      subs = subs.filter(s => s.transporter_id === transporterId);
+      seedSubs = seedSubs.filter(s => s.transporter_id === transporterId);
     }
-    return subs;
+    return handleDbError(err, seedSubs);
   }
 }
 
@@ -100,8 +112,8 @@ export async function fetchTransportersList() {
     const [rows] = await pool.query('SELECT id, company_name, code, mobile, email, status FROM transporters LIMIT 100');
     return rows;
   } catch (err) {
-    console.warn('MySQL fetchTransportersList warning:', err.message);
-    return INITIAL_SEED_DATA.transporters || [];
+    const seedTransporters = INITIAL_SEED_DATA.transporters || [];
+    return handleDbError(err, seedTransporters);
   }
 }
 
@@ -110,7 +122,6 @@ export async function fetchMasterRecords() {
     const [rows] = await pool.query('SELECT id, category, code, name FROM master_records LIMIT 200');
     return rows;
   } catch (err) {
-    console.warn('MySQL fetchMasterRecords warning:', err.message);
-    return [];
+    return handleDbError(err, []);
   }
 }

@@ -1,12 +1,23 @@
 // server/controllers/stateController.js
 import * as stateService from '../services/stateService.js';
 
+function sendDbErrorResponse(res, err) {
+  console.error('Database Error in Controller:', err.message);
+  return res.status(503).json({
+    success: false,
+    error: {
+      code: 'DATABASE_UNAVAILABLE',
+      message: 'Database service temporarily unavailable'
+    }
+  });
+}
+
 export async function handleGetDashboard(req, res) {
   try {
     const dashboard = await stateService.getDashboardMetrics(req.user);
     return res.json({ success: true, dashboard });
   } catch (err) {
-    return res.status(500).json({ error: 'Failed to fetch dashboard metrics' });
+    return sendDbErrorResponse(res, err);
   }
 }
 
@@ -17,7 +28,7 @@ export async function handleGetRateRequests(req, res) {
     const requests = await stateService.getRateRequests(page, limit);
     return res.json({ success: true, page, limit, count: requests.length, rate_requests: requests });
   } catch (err) {
-    return res.status(500).json({ error: 'Failed to fetch rate requests' });
+    return sendDbErrorResponse(res, err);
   }
 }
 
@@ -26,7 +37,7 @@ export async function handleGetRateSubmissions(req, res) {
     const submissions = await stateService.getRateSubmissions(req.user);
     return res.json({ success: true, count: submissions.length, rate_submissions: submissions });
   } catch (err) {
-    return res.status(500).json({ error: 'Failed to fetch rate submissions' });
+    return sendDbErrorResponse(res, err);
   }
 }
 
@@ -35,7 +46,7 @@ export async function handleGetTransporters(req, res) {
     const transporters = await stateService.getTransportersList();
     return res.json({ success: true, count: transporters.length, transporters });
   } catch (err) {
-    return res.status(500).json({ error: 'Failed to fetch transporters list' });
+    return sendDbErrorResponse(res, err);
   }
 }
 
@@ -44,6 +55,6 @@ export async function handleGetMasterData(req, res) {
     const masters = await stateService.getMasterRecords();
     return res.json({ success: true, count: masters.length, master_records: masters });
   } catch (err) {
-    return res.status(500).json({ error: 'Failed to fetch master records' });
+    return sendDbErrorResponse(res, err);
   }
 }
