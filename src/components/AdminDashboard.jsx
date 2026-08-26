@@ -3,6 +3,9 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { createRateRequest } from '../api/rateRequestApi';
+import { createTransporter } from '../api/transporterApi';
+import { createProduct } from '../api/masterDataApi';
 import { CreateRequirementModal } from './CreateRequirementModal';
 import { TransporterManagerModal } from './TransporterManagerModal';
 import { RateComparisonView } from './RateComparisonView';
@@ -694,6 +697,13 @@ export const AdminDashboard = () => {
       `TRANSPORTER_${(newStatus || "").toUpperCase()} 🛡️`
     );
 
+    createTransporter({
+      id: transporter.id,
+      company_name: transporter.company_name,
+      code: transporter.code || transporter.id,
+      status: newStatus
+    }).catch((err) => console.error('Transporter status API error:', err.message));
+
     updateDB(updatedDb);
     setArchiveNotice(`🛡️ Transporter '${transporter.company_name}' status set to ${newStatus}!`);
     setTimeout(() => setArchiveNotice(''), 4000);
@@ -777,6 +787,8 @@ export const AdminDashboard = () => {
       'admin',
       'PRODUCT_ADDED 📦'
     );
+    createProduct(newProdObj).catch((err) => console.error('Product master API error:', err.message));
+
     updateDB(updatedDb);
     setNewProductMaster({
       name: '',
@@ -1038,6 +1050,11 @@ export const AdminDashboard = () => {
         });
         if (notif) newNotifications.push(notif);
       }
+    });
+
+    // Execute direct REST API calls for each created rate requirement
+    newRequests.forEach((req) => {
+      createRateRequest(req).catch((err) => console.error('Direct rate request API error:', err.message));
     });
 
     const updatedDb = addSecurityLog(

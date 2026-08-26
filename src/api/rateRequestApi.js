@@ -4,3 +4,10 @@ import { apiClient } from './client.js';
 export async function getRateRequests(page = 1, limit = 20) {
   return apiClient(`/api/rate-requests?page=${page}&limit=${limit}`, { method: 'GET' });
 }
+
+export async function createRateRequest(payload) {
+  return apiClient('/api/rate-requests', {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  });
+}
