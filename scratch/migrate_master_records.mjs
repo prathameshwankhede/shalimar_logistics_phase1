@@ -17,7 +17,8 @@ export async function runMasterRecordsDeduplicationAnalysis() {
       sourceCounts: {},
       targetExpectedCounts: {},
       duplicatesFound: [],
-      canonicalRecords: []
+      canonicalRecords: [],
+      skippedRecords: []
     };
 
     for (const cat of categories) {
@@ -36,23 +37,45 @@ export async function runMasterRecordsDeduplicationAnalysis() {
       report.targetExpectedCounts[cat] = codeGroups.size;
 
       codeGroups.forEach((records, code) => {
+        // Deterministic ranking: Sort by created_at DESC, id DESC
+        const sorted = [...records].sort((a, b) => {
+          const tA = a.created_at ? new Date(a.created_at).getTime() : a.id;
+          const tB = b.created_at ? new Date(b.created_at).getTime() : b.id;
+          return tB !== tA ? tB - tA : b.id - a.id;
+        });
+
+        const canonical = sorted[0];
+        const duplicates = sorted.slice(1);
+
         if (records.length > 1) {
           report.duplicatesFound.push({
             category: cat,
             code: code,
-            count: records.length,
-            records: records.map(rec => ({ id: rec.id, name: rec.name }))
+            totalOccurrences: records.length,
+            allSourceIds: records.map(r => r.id),
+            timestamps: records.map(r => r.created_at || 'N/A'),
+            selectedCanonicalId: canonical.id,
+            canonicalName: canonical.name,
+            selectionReason: 'Newest timestamp / highest ID with valid record schema',
+            skippedSourceIds: duplicates.map(d => d.id)
           });
         }
 
-        // Canonical selection rule: newest record with valid non-empty fields
-        const sorted = [...records].sort((a, b) => (b.id - a.id));
         report.canonicalRecords.push({
           category: cat,
           code: code,
-          canonicalId: sorted[0].id,
-          canonicalName: sorted[0].name,
-          skippedCount: records.length - 1
+          canonicalId: canonical.id,
+          canonicalName: canonical.name
+        });
+
+        duplicates.forEach(d => {
+          report.skippedRecords.push({
+            category: cat,
+            code: code,
+            skippedId: d.id,
+            name: d.name,
+            reason: `Replaced by canonical record ID ${canonical.id}`
+          });
         });
       });
     }
@@ -60,7 +83,7 @@ export async function runMasterRecordsDeduplicationAnalysis() {
     return report;
   } catch (err) {
     console.warn('Notice:', err.message);
-    return { sourceCounts: {}, targetExpectedCounts: {}, duplicatesFound: [], canonicalRecords: [] };
+    return { sourceCounts: {}, targetExpectedCounts: {}, duplicatesFound: [], canonicalRecords: [], skippedRecords: [] };
   }
 }
 
