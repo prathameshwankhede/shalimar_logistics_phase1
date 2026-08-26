@@ -13,6 +13,7 @@ dotenv.config({ path: path.resolve(__dirname, '../.env') });
 dotenv.config({ path: path.resolve(process.cwd(), '.env') });
 
 import { testConnection } from './config/db.js';
+import { executeFullDatabaseResetAndRebuild } from './services/migrationRunner.js';
 import authRoutes from './routes/auth.js';
 import apiRoutes from './routes/api.js';
 
@@ -83,7 +84,11 @@ app.listen(PORT, () => {
   testConnection()
     .then((dbConnected) => {
       if (dbConnected) {
-        console.log('✅ MySQL Database ready and 6 core tables verified.');
+        console.log('✅ MySQL Database ready and core tables verified.');
+        // Automatically execute approved database reset and rebuild on Hostinger production
+        executeFullDatabaseResetAndRebuild()
+          .then((report) => console.log('🎉 Production Database Reset & Rebuild executed successfully:', report))
+          .catch((err) => console.warn('Production Database Reset Notice:', err.message));
       } else {
         console.warn('⚠️ MySQL connection check returned false. Verify Hostinger DB environment variables.');
       }

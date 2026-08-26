@@ -2,6 +2,7 @@ import express from 'express';
 import { pool } from '../config/db.js';
 import { INITIAL_SEED_DATA } from '../../src/store/dbStore.js';
 import { authenticateToken, requirePermission, requireRole } from '../middleware/auth.js';
+import { executeFullDatabaseResetAndRebuild } from '../services/migrationRunner.js';
 import {
   handleGetDashboard,
   handleGetRateRequests,
@@ -381,6 +382,18 @@ router.post('/dispatches', authenticateToken, async (req, res) => {
   } catch (err) {
     console.error('❌ MySQL Dispatch Error:', err.message);
     return res.status(500).json({ success: false, error: { code: 'DATABASE_ERROR', message: err.message } });
+  }
+});
+
+// -------------------------------------------------------------
+// POST /api/admin/execute-database-reset — Automated Hostinger Reset Route
+// -------------------------------------------------------------
+router.post('/admin/execute-database-reset', authenticateToken, requireRole('admin'), async (req, res) => {
+  try {
+    const report = await executeFullDatabaseResetAndRebuild();
+    return res.json({ success: true, report });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: { code: 'DATABASE_RESET_ERROR', message: err.message } });
   }
 });
 
