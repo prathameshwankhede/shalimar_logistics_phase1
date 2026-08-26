@@ -141,33 +141,101 @@ router.post('/bids', authenticateToken, async (req, res) => {
 router.post('/products', authenticateToken, requireRole('admin'), async (req, res) => {
   const { id, name, category, hsn_code, unit } = req.body;
   if (!name) {
-    return res.status(400).json({ error: 'Product name required' });
+    return res.status(400).json({ success: false, error: 'Product name required' });
   }
 
   const prodId = id || `prod_${Date.now()}`;
   const prodObj = { id: prodId, name: name.trim(), category: category || 'General', hsn_code: hsn_code || '23040010', unit: unit || 'MT' };
 
-  if (IN_MEMORY_CACHE) {
-    const prods = IN_MEMORY_CACHE.product_masters || [];
-    const idx = prods.findIndex(p => p.id === prodId || p.name === name);
-    if (idx >= 0) prods[idx] = prodObj;
-    else prods.unshift(prodObj);
-    IN_MEMORY_CACHE.product_masters = prods;
-  }
-
   try {
     const jsonExtra = JSON.stringify(prodObj);
-    await pool.query(
+    const [result] = await pool.query(
       `INSERT INTO master_records (category, code, name, extra_data)
        VALUES ('product', ?, ?, ?)
        ON DUPLICATE KEY UPDATE name = VALUES(name), extra_data = VALUES(extra_data)`,
       [prodId, name.trim(), jsonExtra]
     );
+
+    return res.json({ success: true, affectedRows: result.affectedRows, product: prodObj, message: 'Product Master saved to MySQL' });
   } catch (err) {
-    console.warn('MySQL Product Insert Warning:', err.message);
+    console.error('❌ MySQL Product Insert Error:', err.message);
+    return res.status(500).json({ success: false, error: { code: 'DATABASE_ERROR', message: err.message } });
+  }
+});
+
+// -------------------------------------------------------------
+// POST /api/rate-requests — Dedicated Rate Request Create Endpoint (Admin Only)
+// -------------------------------------------------------------
+router.post('/rate-requests', authenticateToken, requireRole('admin'), async (req, res) => {
+  const { id, request_no, title, origin_city, dest_city, material_type, required_qty, unit, target_date, status } = req.body;
+  if (!request_no) {
+    return res.status(400).json({ success: false, error: 'request_no required' });
   }
 
-  return res.json({ success: true, product: prodObj, message: 'Product Master saved to MySQL' });
+  const reqId = id || `req_${Date.now()}`;
+  try {
+    const [result] = await pool.query(
+      `INSERT INTO rate_requests (id, request_no, title, origin_city, dest_city, material_type, required_qty, unit, target_date, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE title = VALUES(title), required_qty = VALUES(required_qty), status = VALUES(status), updated_at = NOW()`,
+      [reqId, request_no, title || request_no, origin_city || '', dest_city || '', material_type || '', parseFloat(required_qty || 0), unit || 'MT', target_date || null, status || 'Open']
+    );
+
+    return res.json({ success: true, affectedRows: result.affectedRows, id: reqId, message: 'Rate request saved to MySQL' });
+  } catch (err) {
+    console.error('❌ MySQL Rate Request Error:', err.message);
+    return res.status(500).json({ success: false, error: { code: 'DATABASE_ERROR', message: err.message } });
+  }
+});
+
+// -------------------------------------------------------------
+// POST /api/transporters — Dedicated Transporter Create/Update Endpoint (Admin Only)
+// -------------------------------------------------------------
+router.post('/transporters', authenticateToken, requireRole('admin'), async (req, res) => {
+  const { id, company_name, code, mobile, email, status } = req.body;
+  if (!company_name || !code) {
+    return res.status(400).json({ success: false, error: 'company_name and code required' });
+  }
+
+  const transId = id || `trans_${code.toLowerCase()}_${Date.now()}`;
+  try {
+    const [result] = await pool.query(
+      `INSERT INTO transporters (id, company_name, code, mobile, email, status)
+       VALUES (?, ?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE company_name = VALUES(company_name), mobile = VALUES(mobile), email = VALUES(email), status = VALUES(status), updated_at = NOW()`,
+      [transId, company_name.trim(), code.trim(), mobile || '', email || '', status || 'Active']
+    );
+
+    return res.json({ success: true, affectedRows: result.affectedRows, id: transId, message: 'Transporter saved to MySQL' });
+  } catch (err) {
+    console.error('❌ MySQL Transporter Error:', err.message);
+    return res.status(500).json({ success: false, error: { code: 'DATABASE_ERROR', message: err.message } });
+  }
+});
+
+// -------------------------------------------------------------
+// POST /api/contracts — Dedicated Contract Allocation Endpoint (Admin Only)
+// -------------------------------------------------------------
+router.post('/contracts', authenticateToken, requireRole('admin'), async (req, res) => {
+  const { id, contract_no, request_id, transporter_id, allocated_qty, rate_per_unit, status } = req.body;
+  if (!contract_no || !transporter_id) {
+    return res.status(400).json({ success: false, error: 'contract_no and transporter_id required' });
+  }
+
+  const contractId = id || `contract_${Date.now()}`;
+  try {
+    const [result] = await pool.query(
+      `INSERT INTO contracts (id, contract_no, request_id, transporter_id, allocated_qty, rate_per_unit, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE allocated_qty = VALUES(allocated_qty), rate_per_unit = VALUES(rate_per_unit), status = VALUES(status)`,
+      [contractId, contract_no.trim(), request_id || null, transporter_id, parseFloat(allocated_qty || 0), parseFloat(rate_per_unit || 0), status || 'Active']
+    );
+
+    return res.json({ success: true, affectedRows: result.affectedRows, id: contractId, message: 'Contract saved to MySQL' });
+  } catch (err) {
+    console.error('❌ MySQL Contract Error:', err.message);
+    return res.status(500).json({ success: false, error: { code: 'DATABASE_ERROR', message: err.message } });
+  }
 });
 
 // -------------------------------------------------------------
