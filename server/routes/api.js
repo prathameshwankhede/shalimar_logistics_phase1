@@ -2,6 +2,13 @@ import express from 'express';
 import { pool } from '../config/db.js';
 import { INITIAL_SEED_DATA } from '../../src/store/dbStore.js';
 import { authenticateToken, requirePermission, requireRole } from '../middleware/auth.js';
+import {
+  handleGetDashboard,
+  handleGetRateRequests,
+  handleGetRateSubmissions,
+  handleGetTransporters,
+  handleGetMasterData
+} from '../controllers/stateController.js';
 
 const router = express.Router();
 const CLOUD_ROW_ID = 'transflow-live-prod-v3';
@@ -19,207 +26,18 @@ function sanitizeStateForClient(rawState) {
     delete copy.whatsapp_api_settings.token;
     delete copy.whatsapp_api_settings.instance_id;
   }
-  delete copy.security_audit_logs; // Stripped from generic state
+  delete copy.security_audit_logs;
   return copy;
 }
 
 // -------------------------------------------------------------
-// GET /api/dashboard — Scoped Summary Dashboard Metrics DTO
+// Layered Controller Routes (Targeted Minimal DTO Endpoints)
 // -------------------------------------------------------------
-router.get('/dashboard', authenticateToken, async (req, res) => {
-  const isTransporter = req.user.role === 'transporter';
-  const transporterId = req.user.transporter_id;
-
-  try {
-    let openIndentsCount = 0;
-    let mySubmissionsCount = 0;
-    let totalAwardedCount = 0;
-
-    // 1. Count Open Rate Requests
-    const [reqRows] = await pool.query("SELECT COUNT(*) AS count FROM rate_requests WHERE status = 'Open'");
-    openIndentsCount = reqRows[0]?.count || 0;
-
-    // 2. Count Rate Submissions (Scoped to transporter if role is transporter)
-    if (isTransporter && transporterId) {
-      const [subRows] = await pool.query("SELECT COUNT(*) AS count FROM rate_submissions WHERE transporter_id = ?", [transporterId]);
-      mySubmissionsCount = subRows[0]?.count || 0;
-    } else {
-      const [subRows] = await pool.query("SELECT COUNT(*) AS count FROM rate_submissions");
-      mySubmissionsCount = subRows[0]?.count || 0;
-    }
-
-    // 3. Count Awarded Submissions
-    if (isTransporter && transporterId) {
-      const [awdRows] = await pool.query("SELECT COUNT(*) AS count FROM rate_submissions WHERE transporter_id = ? AND status = 'Accepted'", [transporterId]);
-      totalAwardedCount = awdRows[0]?.count || 0;
-    } else {
-      const [awdRows] = await pool.query("SELECT COUNT(*) AS count FROM rate_submissions WHERE status = 'Accepted'");
-      totalAwardedCount = awdRows[0]?.count || 0;
-    }
-
-    return res.json({
-      success: true,
-      dashboard: {
-        role: req.user.role,
-        open_indents: openIndentsCount,
-        submissions_count: mySubmissionsCount,
-        awarded_count: totalAwardedCount
-      }
-    });
-  } catch (err) {
-    console.warn('Dashboard query fallback:', err.message);
-    return res.json({
-      success: true,
-      dashboard: {
-        role: req.user.role,
-        open_indents: 0,
-        submissions_count: 0,
-        awarded_count: 0
-      }
-    });
-  }
-});
-
-// -------------------------------------------------------------
-// GET /api/rate-requests — Paginated & Scoped Rate Requests DTO
-// -------------------------------------------------------------
-router.get('/rate-requests', authenticateToken, async (req, res) => {
-  const page = Math.max(1, parseInt(req.query.page || '1', 10));
-  const limit = Math.min(50, Math.max(1, parseInt(req.query.limit || '20', 10)));
-  const offset = (page - 1) * limit;
-
-  try {
-    const [rows] = await pool.query(
-      `SELECT id, request_no, title, origin_city, dest_city, company_unit, material_type, required_qty, unit, target_date, status, created_at
-       FROM rate_requests
-       ORDER BY created_at DESC
-       LIMIT ? OFFSET ?`,
-      [limit, offset]
-    );
-
-    const requests = rows.map(r => ({
-      id: r.id,
-      request_no: r.request_no,
-      title: r.title || r.request_no,
-      origin_city: r.origin_city || '',
-      dest_city: r.dest_city || '',
-      company_unit: r.company_unit || '',
-      material_type: r.material_type || '',
-      required_qty: Number(r.required_qty),
-      unit: r.unit || 'MT',
-      target_date: r.target_date ? String(r.target_date).slice(0, 10) : null,
-      status: r.status || 'Open',
-      created_at: r.created_at ? new Date(r.created_at).toISOString() : new Date().toISOString()
-    }));
-
-    return res.json({ success: true, page, limit, count: requests.length, rate_requests: requests });
-  } catch (err) {
-    const state = IN_MEMORY_CACHE || INITIAL_SEED_DATA;
-    const requests = (state.rate_requests || []).slice(offset, offset + limit).map(r => ({
-      id: r.id,
-      request_no: r.request_no,
-      title: r.title || r.request_no,
-      origin_city: r.origin_city || '',
-      dest_city: r.dest_city || '',
-      material_type: r.material_type || '',
-      required_qty: Number(r.required_qty),
-      unit: r.unit || 'MT',
-      target_date: r.target_date,
-      status: r.status || 'Open'
-    }));
-    return res.json({ success: true, page, limit, count: requests.length, rate_requests: requests });
-  }
-});
-
-// -------------------------------------------------------------
-// GET /api/rate-submissions — Role-Scoped Rate Submissions (Bids) DTO
-// -------------------------------------------------------------
-router.get('/rate-submissions', authenticateToken, async (req, res) => {
-  const isTransporter = req.user.role === 'transporter';
-  const transporterId = req.user.transporter_id;
-
-  try {
-    let query = `SELECT id, request_id, request_no, transporter_id, transporter_name, rate_per_unit, vehicle_type, comments, status, counter_rate, is_frozen, submitted_at FROM rate_submissions`;
-    const params = [];
-
-    // TENANT ISOLATION: Transporter can ONLY view their own bids
-    if (isTransporter) {
-      query += ` WHERE transporter_id = ?`;
-      params.push(transporterId || req.user.id);
-    }
-    query += ` ORDER BY submitted_at DESC LIMIT 100`;
-
-    const [rows] = await pool.query(query, params);
-    const submissions = rows.map(b => ({
-      id: b.id,
-      rate_request_id: b.request_id,
-      request_no: b.request_no,
-      transporter_id: b.transporter_id,
-      transporter_name: b.transporter_name,
-      rate_per_unit: Number(b.rate_per_unit),
-      vehicle_type: b.vehicle_type,
-      comments: b.comments,
-      status: b.status,
-      counter_rate: b.counter_rate ? Number(b.counter_rate) : null,
-      is_frozen: Boolean(b.is_frozen),
-      submitted_at: b.submitted_at ? new Date(b.submitted_at).toISOString() : new Date().toISOString()
-    }));
-
-    return res.json({ success: true, count: submissions.length, rate_submissions: submissions });
-  } catch (err) {
-    const state = IN_MEMORY_CACHE || INITIAL_SEED_DATA;
-    let subs = state.rate_submissions || [];
-    if (isTransporter) {
-      subs = subs.filter(b => b.transporter_id === (transporterId || req.user.id));
-    }
-    return res.json({ success: true, count: subs.length, rate_submissions: subs });
-  }
-});
-
-// -------------------------------------------------------------
-// GET /api/transporters — Minimal Transporter List DTO
-// -------------------------------------------------------------
-router.get('/transporters', authenticateToken, async (req, res) => {
-  try {
-    const [rows] = await pool.query('SELECT id, company_name, code, mobile, email, status FROM transporters LIMIT 100');
-    const transporters = rows.map(t => ({
-      id: t.id,
-      company_name: t.company_name,
-      code: t.code,
-      mobile: t.mobile,
-      email: t.email,
-      status: t.status
-    }));
-    return res.json({ success: true, count: transporters.length, transporters });
-  } catch (err) {
-    const state = IN_MEMORY_CACHE || INITIAL_SEED_DATA;
-    const transporters = (state.transporters || []).map(t => ({
-      id: t.id,
-      company_name: t.company_name,
-      code: t.code,
-      status: t.status
-    }));
-    return res.json({ success: true, count: transporters.length, transporters });
-  }
-});
-
-// -------------------------------------------------------------
-// GET /api/master-data — Lightweight Reference Dropdown Items DTO
-// -------------------------------------------------------------
-router.get('/master-data', authenticateToken, async (req, res) => {
-  try {
-    const [rows] = await pool.query('SELECT id, category, code, name FROM master_records LIMIT 200');
-    const masters = rows.map(m => ({
-      id: m.id,
-      category: m.category,
-      code: m.code,
-      name: m.name
-    }));
-    return res.json({ success: true, count: masters.length, master_records: masters });
-  } catch (err) {
-    return res.json({ success: true, master_records: [] });
-  }
-});
+router.get('/dashboard', authenticateToken, handleGetDashboard);
+router.get('/rate-requests', authenticateToken, handleGetRateRequests);
+router.get('/rate-submissions', authenticateToken, handleGetRateSubmissions);
+router.get('/transporters', authenticateToken, handleGetTransporters);
+router.get('/master-data', authenticateToken, handleGetMasterData);
 
 // -------------------------------------------------------------
 // GET /api/security/audit-logs — Protected Admin Audit Logs DTO
@@ -236,7 +54,6 @@ router.get('/security/audit-logs', authenticateToken, requireRole('admin'), asyn
 router.post('/bids', authenticateToken, async (req, res) => {
   const { id, rate_request_id, request_no, transporter_id, transporter_name, rate_per_unit, vehicle_type, comments, status } = req.body;
 
-  // AUTHORIZATION / BOLA CHECK: Verify transporter_id matches authenticated user
   const authenticatedTransporterId = req.user.transporter_id || req.user.id;
   if (req.user.role === 'transporter' && transporter_id && transporter_id !== authenticatedTransporterId) {
     return res.status(403).json({ error: 'Access denied. You can only submit bids under your own transporter account.' });
@@ -349,8 +166,6 @@ router.get('/state', authenticateToken, async (req, res) => {
     console.warn('MySQL state load warning:', err.message);
   }
 
-  // TENANT ISOLATION FOR STATE ENDPOINT:
-  // Transporters receive only open rate requests and their own bids
   if (req.user.role === 'transporter') {
     const transporterId = req.user.transporter_id || req.user.id;
     const scopedState = {
