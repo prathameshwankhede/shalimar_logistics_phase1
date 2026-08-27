@@ -1873,9 +1873,13 @@ export const AdminDashboard = () => {
                           >
                             {(() => {
                               const dropList = Array.from(
-                                new Set(
-                                  (db.company_masters || []).map((c) => c.drop_location_name || c.name || c.city).filter(Boolean)
-                                )
+                                new Set([
+                                  ...(db.city_masters || []).map((c) => c.city || c.name).filter(Boolean),
+                                  ...(db.cities || []).map((c) => c.name || c.city).filter(Boolean),
+                                  ...(db.company_units || []).map((c) => c.city ? `${c.city} (${c.name})` : c.name).filter(Boolean),
+                                  ...(db.company_masters || []).map((c) => c.drop_location_name || (c.city && c.city !== 'Nagpur' ? c.city : null) || c.name).filter(Boolean),
+                                  ...(db.rate_requests || []).map((r) => r.dest_city).filter(Boolean)
+                                ])
                               );
                               if (dropList.length === 0) {
                                 return <option value="">-- No Location in Master Directory (Add in Master Directory) --</option>;
@@ -1902,7 +1906,13 @@ export const AdminDashboard = () => {
                             style={{ fontSize: '0.82rem', height: '42px', border: '1.5px solid #38bdf8', color: 'var(--text-main)', borderRadius: '8px', fontWeight: '800', background: 'var(--bg-card)' }}
                           >
                             {(() => {
-                              const prods = (db.product_masters || []).map((p) => p.name).filter(Boolean);
+                              const prods = Array.from(
+                                new Set([
+                                  ...(db.product_masters || []).map((p) => p.name).filter(Boolean),
+                                  ...(db.products || []).map((p) => p.name).filter(Boolean),
+                                  ...(db.rate_requests || []).map((r) => r.material_type).filter(Boolean)
+                                ])
+                              );
                               if (prods.length === 0) {
                                 return <option value="">-- No Product in Master Directory (Add in Master Directory) --</option>;
                               }
