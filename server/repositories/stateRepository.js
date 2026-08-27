@@ -70,7 +70,7 @@ export async function countSubmissions(transporterId = null) {
 export async function fetchPaginatedRequests(limit, offset) {
   try {
     const [rows] = await pool.query(
-      `SELECT id, request_no, title, origin_city, dest_city, company_unit, material_type, required_qty, unit, target_date, status, created_at
+      `SELECT id, request_no, title, batch_no, sub_no, origin_city, origin_pin, dest_city, dest_pin, company_unit, material_type, hsn_code, required_qty, unit, target_date, status, notes, created_at, updated_at
        FROM rate_requests
        ORDER BY created_at DESC
        LIMIT ? OFFSET ?`,

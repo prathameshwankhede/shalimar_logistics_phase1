@@ -958,7 +958,7 @@ export const AdminDashboard = () => {
     );
   };
 
-  const handleBulkBroadcastRequirements = (e) => {
+  const handleBulkBroadcastRequirements = async (e) => {
     if (e && e.preventDefault) e.preventDefault();
     if (!bulkReqRows || !bulkReqRows.length) {
       alert('No rate request rows found.');
@@ -1053,9 +1053,11 @@ export const AdminDashboard = () => {
     });
 
     // Execute direct REST API calls for each created rate requirement
-    newRequests.forEach((req) => {
-      createRateRequest(req).catch((err) => console.error('Direct rate request API error:', err.message));
-    });
+    try {
+      await Promise.all(newRequests.map((req) => createRateRequest(req)));
+    } catch (err) {
+      console.error('Direct rate request REST API error:', err.message);
+    }
 
     const updatedDb = addSecurityLog(
       {

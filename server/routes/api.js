@@ -280,21 +280,85 @@ router.post('/transport-titles', authenticateToken, requireRole('admin'), async 
 // POST /api/rate-requests — Dedicated Rate Request Create Endpoint (Admin Only)
 // -------------------------------------------------------------
 router.post('/rate-requests', authenticateToken, requireRole('admin'), async (req, res) => {
-  const { id, request_no, title, origin_city, dest_city, material_type, required_qty, unit, target_date, status } = req.body;
-  if (!request_no) {
+  const {
+    id,
+    request_no,
+    title,
+    batch_no,
+    sub_no,
+    origin_city,
+    origin_pin,
+    dest_city,
+    dest_pin,
+    company_unit,
+    material_type,
+    hsn_code,
+    required_qty,
+    unit,
+    target_date,
+    status,
+    notes
+  } = req.body;
+
+  const reqNo = request_no || id;
+  if (!reqNo) {
     return res.status(400).json({ success: false, error: 'request_no required' });
   }
 
-  const reqId = id || `req_${Date.now()}`;
+  const reqId = id || `req_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
   try {
     const [result] = await pool.query(
-      `INSERT INTO rate_requests (id, request_no, title, origin_city, dest_city, material_type, required_qty, unit, target_date, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-       ON DUPLICATE KEY UPDATE title = VALUES(title), required_qty = VALUES(required_qty), status = VALUES(status), updated_at = NOW()`,
-      [reqId, request_no, title || request_no, origin_city || '', dest_city || '', material_type || '', parseFloat(required_qty || 0), unit || 'MT', target_date || null, status || 'Open']
+      `INSERT INTO rate_requests 
+       (id, request_no, title, batch_no, sub_no, origin_city, origin_pin, dest_city, dest_pin, company_unit, material_type, hsn_code, required_qty, unit, target_date, status, notes)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE 
+       title = VALUES(title), 
+       batch_no = VALUES(batch_no),
+       sub_no = VALUES(sub_no),
+       origin_city = VALUES(origin_city),
+       origin_pin = VALUES(origin_pin),
+       dest_city = VALUES(dest_city),
+       dest_pin = VALUES(dest_pin),
+       company_unit = VALUES(company_unit),
+       material_type = VALUES(material_type),
+       hsn_code = VALUES(hsn_code),
+       required_qty = VALUES(required_qty),
+       unit = VALUES(unit),
+       target_date = VALUES(target_date),
+       status = VALUES(status),
+       notes = VALUES(notes),
+       updated_at = NOW()`,
+      [
+        reqId,
+        reqNo,
+        title || reqNo,
+        batch_no || '',
+        sub_no || '1',
+        origin_city || '',
+        origin_pin || '440028',
+        dest_city || '',
+        dest_pin || '413001',
+        company_unit || 'Shalimar Nutrients Pvt Ltd',
+        material_type || '',
+        hsn_code || '15071000',
+        parseFloat(required_qty || 0),
+        unit || 'MT',
+        target_date || null,
+        status || 'Open',
+        notes || ''
+      ]
     );
 
-    return res.json({ success: true, affectedRows: result.affectedRows, id: reqId, message: 'Rate request saved to MySQL' });
+    console.log(`✅ Rate Request ${reqNo} (${reqId}) persisted to MySQL rate_requests (affectedRows: ${result.affectedRows})`);
+
+    return res.json({
+      success: true,
+      affectedRows: result.affectedRows,
+      insertId: result.insertId,
+      id: reqId,
+      request_no: reqNo,
+      message: 'Rate request saved to MySQL rate_requests table'
+    });
   } catch (err) {
     console.error('❌ MySQL Rate Request Error:', err.message);
     return res.status(500).json({ success: false, error: { code: 'DATABASE_ERROR', message: err.message } });

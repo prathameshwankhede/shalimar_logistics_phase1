@@ -26,14 +26,20 @@ export async function getRateRequests(page = 1, limit = 20) {
     id: r.id,
     request_no: r.request_no,
     title: r.title || r.request_no,
+    batch_no: r.batch_no || '',
+    sub_no: r.sub_no || '1',
     origin_city: r.origin_city || '',
+    origin_pin: r.origin_pin || '440028',
     dest_city: r.dest_city || '',
+    dest_pin: r.dest_pin || '413001',
     company_unit: r.company_unit || '',
     material_type: r.material_type || '',
+    hsn_code: r.hsn_code || '15071000',
     required_qty: Number(r.required_qty),
     unit: r.unit || 'MT',
     target_date: r.target_date ? String(r.target_date).slice(0, 10) : null,
     status: r.status || 'Open',
+    notes: r.notes || '',
     created_at: r.created_at ? new Date(r.created_at).toISOString() : new Date().toISOString()
   }));
 }
