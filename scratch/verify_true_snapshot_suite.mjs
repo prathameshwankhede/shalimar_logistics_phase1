@@ -17,7 +17,7 @@ async function runTrueSnapshotVerification() {
   const token = (await loginRes.json()).token;
   console.log('✅ Admin Authenticated via JWT.');
 
-  // STEP 1: Create Known Backup State Records
+  // STEP 1: Create Known Initial State Records in MySQL
   console.log('\n🚀 STEP 1: Creating Known Initial State Records in MySQL...');
   
   // Product A & B
@@ -40,42 +40,58 @@ async function runTrueSnapshotVerification() {
   });
 
   // Company Unit A
-  await fetch(`${BASE_URL}/api/company-units`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-    body: JSON.stringify({ id: 'unit_snap_a', name: 'COMPANY UNIT SNAP A', code: 'UNITSAPA', city: 'Nagpur', state: 'Maharashtra' })
-  });
-
-  // Requirement Parent A with Child A1 & Child A2
-  await fetch(`${BASE_URL}/api/rate-requests`, {
+  const unitARes = await fetch(`${BASE_URL}/api/company-units`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
     body: JSON.stringify({
-      id: 'req_snap_parent_a',
-      request_no: 'REQ-SNAP-001',
-      batch_code: 'BATCH-SNAP-001',
-      title: 'Requirement Parent A',
+      company_name: 'COMPANY UNIT SNAP A',
+      name: 'COMPANY UNIT SNAP A',
+      registered_address: '123 Industrial Park',
+      contact_name: 'John Doe',
+      mobile: '9876543210',
+      state: 'Maharashtra',
+      city: 'Nagpur',
+      district: 'Nagpur',
+      pin_code: '440001'
+    })
+  });
+  const unitAJson = await unitARes.json();
+  const unitAId = unitAJson.data?.id || unitAJson.unit?.id;
+
+  // Requirement Parent A with Child A1 & Child A2
+  const reqARes = await fetch(`${BASE_URL}/api/rate-requests`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+    body: JSON.stringify({
       pickup_origin: 'Nagpur',
       drop_location: 'Mumbai',
       target_date: '2026-09-01',
-      status: 'Published',
       items: [
-        { id: 'item_snap_a1', product_name: 'SNAPSHOT PROD A', quantity_mt: 100, unit: 'MT' },
-        { id: 'item_snap_a2', product_name: 'SNAPSHOT PROD B', quantity_mt: 220, unit: 'MT' }
+        { product_name: 'SNAPSHOT PROD A', quantity_mt: 100, unit: 'MT', pickup_origin: 'Nagpur', drop_location: 'Mumbai' },
+        { product_name: 'SNAPSHOT PROD B', quantity_mt: 220, unit: 'MT', pickup_origin: 'Nagpur', drop_location: 'Mumbai' }
       ]
     })
   });
+  const reqAJson = await reqARes.json();
+  const reqAId = reqAJson.data?.id || reqAJson.requirement?.id;
+  const reqANo = reqAJson.data?.req_no || reqAJson.requirement?.req_no;
 
   console.log('  • Initial Known State Records Successfully Created.');
+  console.log(`  • Requirement A Created (Req No: ${reqANo}, ID: ${reqAId})`);
 
-  // STEP 2: Capture Snapshot Backup
+  // STEP 2: Capture Snapshot Backup & Measure Before Row Counts
   console.log('\n📥 STEP 2: Requesting GET /api/backup/full (.sql)...');
   const backupRes = await fetch(`${BASE_URL}/api/backup/full`, {
     headers: { 'Authorization': `Bearer ${token}` }
   });
-  console.log('  • HTTP Status:', backupRes.status);
+  console.log('  • Backup HTTP Status:', backupRes.status);
   const sqlDumpText = await backupRes.text();
   console.log('  • Backup .sql Length:', sqlDumpText.length, 'bytes');
+
+  // Fetch Table Counts BEFORE restore
+  const prodsBefore = ((await (await fetch(`${BASE_URL}/api/products`, { headers: { 'Authorization': `Bearer ${token}` } })).json()).products || []).length;
+  const transBefore = ((await (await fetch(`${BASE_URL}/api/transporters`, { headers: { 'Authorization': `Bearer ${token}` } })).json()).transporters || []).length;
+  const reqsBefore = ((await (await fetch(`${BASE_URL}/api/rate-requests`, { headers: { 'Authorization': `Bearer ${token}` } })).json()).requests || []).length;
 
   // STEP 3: Create Extra Post-Backup Records
   console.log('\n🚀 STEP 3: Creating Post-Backup Extra Records in MySQL (Products C & D, Requirement B, Transporter B, Unit B)...');
@@ -100,30 +116,39 @@ async function runTrueSnapshotVerification() {
   });
 
   // Company Unit B
-  await fetch(`${BASE_URL}/api/company-units`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-    body: JSON.stringify({ id: 'unit_snap_b', name: 'COMPANY UNIT SNAP B', code: 'UNITSAPB', city: 'Pune', state: 'Maharashtra' })
-  });
-
-  // Requirement Parent B with Child B1
-  await fetch(`${BASE_URL}/api/rate-requests`, {
+  const unitBRes = await fetch(`${BASE_URL}/api/company-units`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
     body: JSON.stringify({
-      id: 'req_snap_parent_b',
-      request_no: 'REQ-SNAP-002',
-      batch_code: 'BATCH-SNAP-002',
-      title: 'Requirement Parent B',
+      company_name: 'COMPANY UNIT SNAP B',
+      name: 'COMPANY UNIT SNAP B',
+      registered_address: '456 Tech Park',
+      contact_name: 'Jane Smith',
+      mobile: '9876543211',
+      state: 'Maharashtra',
+      city: 'Pune',
+      district: 'Pune',
+      pin_code: '411001'
+    })
+  });
+  const unitBJson = await unitBRes.json();
+  const unitBId = unitBJson.data?.id || unitBJson.unit?.id;
+
+  // Requirement Parent B with Child B1
+  const reqBRes = await fetch(`${BASE_URL}/api/rate-requests`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+    body: JSON.stringify({
       pickup_origin: 'Pune',
       drop_location: 'Thane',
       target_date: '2026-09-05',
-      status: 'Published',
       items: [
-        { id: 'item_snap_b1', product_name: 'SNAPSHOT PROD C', quantity_mt: 150, unit: 'MT' }
+        { product_name: 'SNAPSHOT PROD C', quantity_mt: 150, unit: 'MT', pickup_origin: 'Pune', drop_location: 'Thane' }
       ]
     })
   });
+  const reqBJson = await reqBRes.json();
+  const reqBId = reqBJson.data?.id || reqBJson.requirement?.id;
 
   console.log('  • Post-Backup Extra Records Successfully Created.');
 
@@ -138,7 +163,7 @@ async function runTrueSnapshotVerification() {
   const restoreJson = await restoreRes.json();
   console.log('  • Restore Response:', JSON.stringify(restoreJson));
 
-  // STEP 5: Verify Exact Snapshot State
+  // STEP 5: Verify Exact Snapshot State & Row Counts
   console.log('\n🔍 STEP 5: Verifying Database Returned EXACTLY to Backup Snapshot State...');
 
   // Products Verification
@@ -167,8 +192,8 @@ async function runTrueSnapshotVerification() {
   const unitsRes = await fetch(`${BASE_URL}/api/company-units`, { headers: { 'Authorization': `Bearer ${token}` } });
   const unitsJson = await unitsRes.json();
   const units = unitsJson.units || unitsJson.company_units_plants || [];
-  const hasUnitA = units.some(u => u.id === 'unit_snap_a');
-  const hasUnitB = units.some(u => u.id === 'unit_snap_b');
+  const hasUnitA = units.some(u => u.id === unitAId || u.company_name === 'COMPANY UNIT SNAP A');
+  const hasUnitB = units.some(u => u.id === unitBId || u.company_name === 'COMPANY UNIT SNAP B');
 
   console.log(`  • Company Unit A (Initial): ${hasUnitA ? 'EXISTS ✅' : 'MISSING ❌'}`);
   console.log(`  • Company Unit B (Extra): ${!hasUnitB ? 'DOES NOT EXIST ✅' : 'EXISTS ❌'}`);
@@ -177,21 +202,40 @@ async function runTrueSnapshotVerification() {
   const reqsRes = await fetch(`${BASE_URL}/api/rate-requests`, { headers: { 'Authorization': `Bearer ${token}` } });
   const reqsJson = await reqsRes.json();
   const reqs = reqsJson.requests || reqsJson.rate_requests || [];
-  const hasReqA = reqs.some(r => r.id === 'req_snap_parent_a');
-  const hasReqB = reqs.some(r => r.id === 'req_snap_parent_b');
+  const restoredReqA = reqs.find(r => r.id === reqAId || r.req_no === reqANo);
+  const hasReqB = reqs.some(r => r.id === reqBId);
 
-  console.log(`  • Requirement Parent A (Initial): ${hasReqA ? 'EXISTS ✅' : 'MISSING ❌'}`);
+  console.log(`  • Requirement Parent A (Initial): ${restoredReqA ? 'EXISTS ✅' : 'MISSING ❌'}`);
   console.log(`  • Requirement Parent B (Extra): ${!hasReqB ? 'DOES NOT EXIST ✅' : 'EXISTS ❌'}`);
+
+  if (restoredReqA) {
+    const childCountA = (restoredReqA.items || restoredReqA.cargo_items || []).length;
+    console.log(`  • Requirement A Child Items Count: ${childCountA} (Expected: 2) ${childCountA === 2 ? '✅' : '❌'}`);
+  }
+
+  // Row Count Verification Table
+  const prodsAfter = prods.length;
+  const transAfter = trans.length;
+  const reqsAfter = reqs.length;
+
+  console.log('\n==================================================');
+  console.log('📊 ROW COUNT VERIFICATION RESULTS TABLE');
+  console.log('==================================================');
+  console.log('TABLE                   BEFORE BACKUP   AFTER RESTORE   MATCH');
+  console.log('---------------------------------------------------');
+  console.log(`products                ${prodsBefore}               ${prodsAfter}               ${prodsBefore === prodsAfter ? 'PASS ✅' : 'FAIL ❌'}`);
+  console.log(`transporters            ${transBefore}               ${transAfter}               ${transBefore === transAfter ? 'PASS ✅' : 'FAIL ❌'}`);
+  console.log(`transport_requirements  ${reqsBefore}               ${reqsAfter}               ${reqsBefore === reqsAfter ? 'PASS ✅' : 'FAIL ❌'}`);
 
   // CLEANUP Initial Test Records
   console.log('\n🧹 STEP 6: Cleaning up Initial Test Records from MySQL...');
   await fetch(`${BASE_URL}/api/products/prod_snap_a`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` } }).catch(()=>{});
   await fetch(`${BASE_URL}/api/products/prod_snap_b`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` } }).catch(()=>{});
   await fetch(`${BASE_URL}/api/transporters/trans_snap_a`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` } }).catch(()=>{});
-  await fetch(`${BASE_URL}/api/company-units/unit_snap_a`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` } }).catch(()=>{});
-  await fetch(`${BASE_URL}/api/rate-requests/req_snap_parent_a`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` } }).catch(()=>{});
+  if (unitAId) await fetch(`${BASE_URL}/api/company-units/${unitAId}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` } }).catch(()=>{});
+  if (reqAId) await fetch(`${BASE_URL}/api/rate-requests/${reqAId}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` } }).catch(()=>{});
 
-  const snapshotSuccess = hasProdA && hasProdB && !hasProdC && !hasProdD && hasTransA && !hasTransB && hasUnitA && !hasUnitB && hasReqA && !hasReqB;
+  const snapshotSuccess = hasProdA && hasProdB && !hasProdC && !hasProdD && hasTransA && !hasTransB && hasUnitA && !hasUnitB && Boolean(restoredReqA) && !hasReqB && (prodsBefore === prodsAfter) && (transBefore === transAfter) && (reqsBefore === reqsAfter);
 
   console.log('\n==================================================');
   if (snapshotSuccess) {

@@ -1342,8 +1342,13 @@ router.get('/backup/full', authenticateToken, requireRole('admin'), async (req, 
       'company_units_plants',
       'products',
       'transport_requirements',
-      'transport_requirement_items'
+      'transport_requirement_items',
+      'contracts',
+      'rate_submissions',
+      'allocations',
+      'truck_dispatches'
     ];
+
     tableNames.forEach(t => {
       if (!parentFirstOrder.includes(t)) {
         parentFirstOrder.push(t);
@@ -1451,10 +1456,12 @@ router.post('/backup/restore', authenticateToken, requireRole('admin'), async (r
     const existingTableNames = existingTablesRows.map(r => r.table_name || r.TABLE_NAME);
 
     const childFirstClearSequence = [
+      'truck_dispatches',
+      'allocations',
+      'rate_submissions',
+      'contracts',
       'transport_requirement_items',
       'transport_requirements',
-      'contracts',
-      'rate_submissions',
       'products',
       'company_units_plants',
       'transporters'
