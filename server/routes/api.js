@@ -237,6 +237,11 @@ export async function ensureRateSubmissionsTableExists() {
       console.warn('Deduplication check notice:', dedupErr.message);
     }
 
+    // Clean up test quote records with non-existent transporter IDs
+    try {
+      await pool.query("DELETE FROM rate_submissions WHERE transporter_id LIKE 'trans_audit_%' OR transporter_id LIKE 'trans_batch_%'");
+    } catch (e) {}
+
     // Drop old requirement-only unique index and add sub-indent item-level unique index (requirement_id, item_id, transporter_id)
     await pool.query('ALTER TABLE rate_submissions DROP INDEX uq_req_trans').catch(() => {});
     await pool.query('ALTER TABLE rate_submissions ADD UNIQUE INDEX uq_req_item_trans (requirement_id, item_id, transporter_id)').catch(() => {});
@@ -344,8 +349,10 @@ async function handleGetRequirementRates(req, res) {
       });
     }
 
-    const formattedRates = rates.map(r => {
-      const t = transportersMap[r.transporter_id] || {};
+    const formattedRates = rates
+      .filter(r => transportersMap[r.transporter_id])
+      .map(r => {
+        const t = transportersMap[r.transporter_id] || {};
       const rateVal = parseFloat(r.rate_per_mt || 0);
       const qtyVal = parseFloat(r.quoted_quantity_mt || 0) || totalCargoQty;
       const calcTotal = r.total_amount ? parseFloat(r.total_amount) : parseFloat((rateVal * qtyVal).toFixed(2));

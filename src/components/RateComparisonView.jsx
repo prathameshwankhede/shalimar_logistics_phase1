@@ -44,12 +44,24 @@ export const RateComparisonView = ({ rateRequest, onBack }) => {
   }, [rateRequest?.id, rateRequest?.req_no, rateRequest?.item_id, rateRequest?.sub_indent_id]);
 
   // Fetch all submissions for this rate request (MySQL Live + Local Fallback 🛡️)
-  const submissions = liveRates.length > 0 ? liveRates : (db.rate_submissions || []).filter((s) =>
-    String(s.rate_request_id) === String(rateRequest?.id) ||
-    String(s.rate_request_id) === String(rateRequest?.request_no) ||
-    String(s.requirement_id) === String(rateRequest?.id) ||
-    String(s.requirement_id) === String(rateRequest?.request_no)
-  );
+  const selectedItemId = rateRequest?.item_id || rateRequest?.sub_indent_id;
+  const rawSubmissions = liveRates.length > 0 ? liveRates : (db.rate_submissions || []);
+  const submissions = rawSubmissions.filter((s) => {
+    const matchesReq =
+      String(s.rate_request_id) === String(rateRequest?.id) ||
+      String(s.rate_request_id) === String(rateRequest?.request_no) ||
+      String(s.requirement_id) === String(rateRequest?.id) ||
+      String(s.requirement_id) === String(rateRequest?.request_no);
+    if (!matchesReq) return false;
+    if (selectedItemId) {
+      return (
+        String(s.item_id) === String(selectedItemId) ||
+        String(s.item_id) === String(rateRequest?.sub_code) ||
+        String(s.item_id) === String(rateRequest?.sub_indent_no)
+      );
+    }
+    return true;
+  });
 
   // Identify lowest rate (L1)
   const validRates = submissions.map((s) => s.rate_per_unit).filter((r) => r && !isNaN(r));
