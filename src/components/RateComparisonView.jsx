@@ -29,7 +29,8 @@ export const RateComparisonView = ({ rateRequest, onBack }) => {
       try {
         setLoadingRates(true);
         const reqId = rateRequest.id || rateRequest.req_no;
-        const res = await getRequirementRates(reqId);
+        const itemId = rateRequest.item_id || rateRequest.sub_indent_id;
+        const res = await getRequirementRates(reqId, itemId);
         if (res && res.success && Array.isArray(res.rates) && isMounted) {
           setLiveRates(res.rates);
         }
@@ -40,7 +41,7 @@ export const RateComparisonView = ({ rateRequest, onBack }) => {
       }
     };
     loadRates();
-  }, [rateRequest?.id, rateRequest?.req_no]);
+  }, [rateRequest?.id, rateRequest?.req_no, rateRequest?.item_id, rateRequest?.sub_indent_id]);
 
   // Fetch all submissions for this rate request (MySQL Live + Local Fallback 🛡️)
   const submissions = liveRates.length > 0 ? liveRates : (db.rate_submissions || []).filter((s) =>

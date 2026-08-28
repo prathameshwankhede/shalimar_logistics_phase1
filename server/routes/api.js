@@ -183,6 +183,7 @@ export async function ensureRateSubmissionsTableExists() {
     `);
 
     const cols = [
+      "item_id VARCHAR(100) DEFAULT 'MAIN'",
       "quoted_quantity_mt DECIMAL(12,3) DEFAULT NULL",
       "total_amount DECIMAL(14,2) DEFAULT NULL",
       "remarks TEXT DEFAULT NULL",
@@ -193,16 +194,18 @@ export async function ensureRateSubmissionsTableExists() {
       await pool.query(`ALTER TABLE rate_submissions ADD COLUMN ${colDef}`).catch(() => {});
     }
 
+    await pool.query('ALTER TABLE rate_submissions ADD INDEX idx_rate_item (item_id)').catch(() => {});
     await pool.query('ALTER TABLE rate_submissions CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci').catch(() => {});
     await pool.query('ALTER TABLE transporters CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci').catch(() => {});
     await pool.query('ALTER TABLE transport_requirements CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci').catch(() => {});
 
-    // Safe deduplication: Keep ONLY the latest quote per (requirement_id, transporter_id)
+    // Safe deduplication: Keep ONLY the latest quote per (requirement_id, item_id, transporter_id)
     try {
       await pool.query(`
         DELETE t1 FROM rate_submissions t1
         INNER JOIN rate_submissions t2 
         ON t1.requirement_id = t2.requirement_id 
+        AND COALESCE(t1.item_id, 'MAIN') = COALESCE(t2.item_id, 'MAIN')
         AND t1.transporter_id = t2.transporter_id 
         AND (t1.submitted_at < t2.submitted_at OR (t1.submitted_at = t2.submitted_at AND t1.id < t2.id))
       `);
@@ -259,6 +262,7 @@ async function handleGetRequirements(req, res) {
 // GET /api/requirements/:id/rates — Compare Rates for a Parent Requirement (Joined with Transporters)
 async function handleGetRequirementRates(req, res) {
   const { id } = req.params;
+  const itemId = req.query.item_id || req.query.sub_indent_id;
   if (!id) return res.status(400).json({ success: false, error: 'Requirement ID required' });
 
   try {
@@ -278,19 +282,33 @@ async function handleGetRequirementRates(req, res) {
     const actualReqId = parentReq.id;
 
     const [childRows] = await pool.query(
-      'SELECT product_name, quantity_mt, unit FROM transport_requirement_items WHERE requirement_id = ? ORDER BY id ASC',
+      'SELECT id, requirement_id, product_name, quantity_mt, unit FROM transport_requirement_items WHERE requirement_id = ? ORDER BY id ASC',
       [actualReqId]
     );
 
     let totalCargoQty = 0;
-    childRows.forEach(item => {
-      totalCargoQty += parseFloat(item.quantity_mt || 0);
-    });
+    if (itemId) {
+      const matchItem = childRows.find(i => String(i.id) === String(itemId) || String(i.id).endsWith(String(itemId)));
+      if (matchItem) {
+        totalCargoQty = parseFloat(matchItem.quantity_mt || 0);
+      }
+    }
+    if (totalCargoQty === 0) {
+      childRows.forEach(item => {
+        totalCargoQty += parseFloat(item.quantity_mt || 0);
+      });
+    }
 
-    const [rates] = await pool.query(
-      'SELECT id, requirement_id, transporter_id, rate_per_mt, quoted_quantity_mt, total_amount, remarks, status, submitted_at, updated_at FROM rate_submissions WHERE requirement_id = ? ORDER BY rate_per_mt ASC',
-      [actualReqId]
-    );
+    let ratesQuery = 'SELECT id, requirement_id, item_id, transporter_id, rate_per_mt, quoted_quantity_mt, total_amount, remarks, status, submitted_at, updated_at FROM rate_submissions WHERE requirement_id = ?';
+    let queryParams = [actualReqId];
+
+    if (itemId) {
+      ratesQuery += ' AND (item_id = ? OR item_id = "MAIN" OR item_id IS NULL)';
+      queryParams.push(itemId);
+    }
+    ratesQuery += ' ORDER BY rate_per_mt ASC';
+
+    const [rates] = await pool.query(ratesQuery, queryParams);
 
     const transporterIds = Array.from(new Set(rates.map(r => r.transporter_id).filter(Boolean)));
     let transportersMap = {};
@@ -309,6 +327,7 @@ async function handleGetRequirementRates(req, res) {
       return {
         id: r.id,
         requirement_id: r.requirement_id,
+        item_id: r.item_id || 'MAIN',
         rate_request_id: r.requirement_id,
         transporter_id: r.transporter_id,
         company_name: t.company_name || r.transporter_id,
@@ -434,10 +453,12 @@ async function handleCreateRateSubmission(req, res) {
     const qtyVal = parseFloat(quoted_quantity_mt || required_qty) || totalCargoQty || null;
     const totalAmount = qtyVal ? parseFloat((rateVal * qtyVal).toFixed(2)) : null;
 
-    // Check if an existing quote exists for (requirement_id, transporter_id) to maintain ID
+    const targetItemId = (req.body.item_id || req.body.sub_indent_id || req.body.requirement_item_id || 'MAIN').trim();
+
+    // Check if an existing quote exists for (requirement_id, item_id, transporter_id) to maintain ID
     const [existingQuotes] = await pool.query(
-      'SELECT id FROM rate_submissions WHERE requirement_id = ? AND transporter_id = ? LIMIT 1',
-      [actualReqId, actualTransId]
+      'SELECT id FROM rate_submissions WHERE requirement_id = ? AND item_id = ? AND transporter_id = ? LIMIT 1',
+      [actualReqId, targetItemId, actualTransId]
     );
 
     const subId = existingQuotes[0]?.id || id || `rate_sub_${actualTransId}_${Date.now()}`;
@@ -445,8 +466,8 @@ async function handleCreateRateSubmission(req, res) {
     const rem = (remarks || comments || notes || '').trim() || null;
 
     await pool.query(
-      `INSERT INTO rate_submissions (id, requirement_id, transporter_id, rate_per_mt, quoted_quantity_mt, total_amount, remarks, status, submitted_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())
+      `INSERT INTO rate_submissions (id, requirement_id, item_id, transporter_id, rate_per_mt, quoted_quantity_mt, total_amount, remarks, status, submitted_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
        ON DUPLICATE KEY UPDATE
        rate_per_mt = VALUES(rate_per_mt),
        quoted_quantity_mt = VALUES(quoted_quantity_mt),
@@ -455,7 +476,7 @@ async function handleCreateRateSubmission(req, res) {
        status = VALUES(status),
        submitted_at = NOW(),
        updated_at = NOW()`,
-      [subId, actualReqId, actualTransId, rateVal, qtyVal, totalAmount, rem, subStatus]
+      [subId, actualReqId, targetItemId, actualTransId, rateVal, qtyVal, totalAmount, rem, subStatus]
     );
 
     const submissionObj = {
