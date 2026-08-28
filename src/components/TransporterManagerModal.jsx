@@ -81,8 +81,10 @@ export const TransporterManagerModal = ({ isOpen, onClose }) => {
       mobile: mobileVal.clean,
       email: emailVal.clean,
       address: formData.address,
-      gst_pan: formData.gst_pan,
+      gstin: formData.gst_pan && formData.gst_pan.length === 15 ? formData.gst_pan : null,
+      pan: formData.gst_pan && formData.gst_pan.length === 10 ? formData.gst_pan : null,
       username: formData.username,
+      password: formData.password,
       status: formData.status,
       created_at: new Date().toISOString()
     };

@@ -763,20 +763,48 @@ async function syncNormalizedTables(data) {
   if (Array.isArray(data.transporters)) {
     for (const t of data.transporters) {
       if (t.id && (t.company_name || t.code)) {
-        const tCode = t.code || t.id;
-        const tName = t.company_name || tCode;
+        const tCode = (t.code || t.id).trim();
+        const tName = (t.company_name || tCode).trim();
+        const gstinVal = t.gstin || (t.gst_pan && t.gst_pan.length === 15 ? t.gst_pan.trim() : null);
+        const panVal = t.pan || (t.gst_pan && t.gst_pan.length === 10 ? t.gst_pan.trim() : null);
+        let passwordHash = t.password_hash || null;
+
+        if (!passwordHash && t.password && t.password.trim().length > 0) {
+          const salt = await bcrypt.genSalt(10);
+          passwordHash = await bcrypt.hash(t.password.trim(), salt);
+        }
+
         await pool.query(
-          `INSERT INTO transporters (id, company_name, code, mobile, email, status)
-           VALUES (?, ?, ?, ?, ?, ?)
+          `INSERT INTO transporters (id, company_name, code, contact_person, mobile, email, gstin, pan, address, username, password_hash, status)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
            ON DUPLICATE KEY UPDATE 
            company_name = VALUES(company_name),
            code = VALUES(code),
+           contact_person = VALUES(contact_person),
            mobile = VALUES(mobile),
            email = VALUES(email),
+           gstin = VALUES(gstin),
+           pan = VALUES(pan),
+           address = VALUES(address),
+           username = VALUES(username),
+           password_hash = COALESCE(VALUES(password_hash), password_hash),
            status = VALUES(status),
            updated_at = NOW()`,
-          [t.id, tName, tCode, t.mobile || '', t.email || '', t.status || 'Active']
-        ).catch((err) => console.warn('MySQL sync transporters notice:', err.message));
+          [
+            t.id,
+            tName,
+            tCode,
+            t.contact_person || null,
+            t.mobile || null,
+            t.email || null,
+            gstinVal,
+            panVal,
+            t.address || null,
+            t.username || null,
+            passwordHash,
+            t.status || 'Active'
+          ]
+        ).catch((err) => console.error('❌ MySQL sync transporters notice:', err.message));
       }
     }
   }
