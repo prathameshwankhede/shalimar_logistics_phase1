@@ -768,11 +768,7 @@ router.post('/company-units', authenticateToken, requireRole('admin'), async (re
       drop_location, drop_location_name
     } = req.body;
 
-    const compName = (company_name || name || '').trim();
-    if (!compName) {
-      return res.status(400).json({ success: false, error: 'Company / Plant Name is required.' });
-    }
-
+    const compName = (company_name || name || '').trim() || `Shalimar Plant Unit ${Date.now().toString().slice(-4)}`;
     const regAddress = (registered_address || address || '').trim();
     const contactName = (contact_name || proprietor_name || '').trim();
     const mob = (mobile || mobile_no || '').trim();
@@ -780,17 +776,6 @@ router.post('/company-units', authenticateToken, requireRole('admin'), async (re
     const ct = (city || '').trim();
     const dist = (district || '').trim();
     const pin = (pin_code || pincode || '').trim();
-
-    if (!regAddress || !contactName || !mob || !st || !ct || !dist || !pin) {
-      return res.status(400).json({
-        success: false,
-        error: 'Company Name, Registered Address, Contact Name, Mobile, State, City, District, and PIN Code are required.'
-      });
-    }
-
-    if (email && email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
-      return res.status(400).json({ success: false, error: 'Invalid email address format.' });
-    }
 
     const unitId = req.body.id || `cup_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
 
@@ -870,11 +855,7 @@ router.put('/company-units/:id', authenticateToken, requireRole('admin'), async 
       drop_location, drop_location_name
     } = req.body;
 
-    const compName = (company_name || name || '').trim();
-    if (!compName) {
-      return res.status(400).json({ success: false, error: 'Company / Plant Name is required.' });
-    }
-
+    const compName = (company_name || name || '').trim() || `Shalimar Plant Unit ${Date.now().toString().slice(-4)}`;
     const regAddress = (registered_address || address || '').trim();
     const contactName = (contact_name || proprietor_name || '').trim();
     const mob = (mobile || mobile_no || '').trim();
@@ -882,17 +863,6 @@ router.put('/company-units/:id', authenticateToken, requireRole('admin'), async 
     const ct = (city || '').trim();
     const dist = (district || '').trim();
     const pin = (pin_code || pincode || '').trim();
-
-    if (!regAddress || !contactName || !mob || !st || !ct || !dist || !pin) {
-      return res.status(400).json({
-        success: false,
-        error: 'Company Name, Registered Address, Contact Name, Mobile, State, City, District, and PIN Code are required.'
-      });
-    }
-
-    if (email && email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
-      return res.status(400).json({ success: false, error: 'Invalid email address format.' });
-    }
 
     const [result] = await pool.query(
       `UPDATE company_units_plants
