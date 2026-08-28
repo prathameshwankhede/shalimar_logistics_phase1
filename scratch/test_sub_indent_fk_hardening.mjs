@@ -25,7 +25,7 @@ async function testSubIndentFkHardening() {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
     body: JSON.stringify({
-      req_no: 'SNPL/26-27/REQ-DELETE-TEST',
+      req_no: `SNPL/26-27/REQ-DEL-${Date.now()}`,
       pickup_origin: 'Katol',
       drop_location: 'Yerla',
       target_date: '2026-08-28',
@@ -35,9 +35,11 @@ async function testSubIndentFkHardening() {
       ]
     })
   });
-  const parentObj = (await createParentRes.json()).data;
+  const parentJson = await createParentRes.json();
+  const parentObj = parentJson.data || parentJson.requirement;
   const pItem1 = parentObj.items[0];
   const pItem2 = parentObj.items[1];
+  console.log(`  • Created parent batch ${parentObj.req_no} (${parentObj.id})`);
 
   await fetch(`${BASE_URL}/api/rate-submissions`, {
     method: 'POST',
@@ -49,12 +51,15 @@ async function testSubIndentFkHardening() {
     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
     body: JSON.stringify({ requirement_id: parentObj.id, item_id: pItem2.id, transporter_id: transId, rate_per_mt: 88, quoted_quantity_mt: 200 })
   });
+  console.log(`  • Submitted quotes for /01 (₹77) and /02 (₹88)`);
 
   // Delete Parent
-  await fetch(`${BASE_URL}/api/requirements/${parentObj.id}`, {
+  console.log(`  • Deleting parent batch ${parentObj.id}...`);
+  const delParentRes = await fetch(`${BASE_URL}/api/requirements/${parentObj.id}`, {
     method: 'DELETE',
     headers: { 'Authorization': `Bearer ${token}` }
   });
+  console.log(`  • Delete Parent Response:`, await delParentRes.json());
 
   const audit1 = await (await fetch(`${BASE_URL}/api/audit-orphan-data`, { headers: { 'Authorization': `Bearer ${token}` } })).json();
   console.log(`  • Post Parent Delete: total_rate_submissions = ${audit1.total_rate_submissions}, orphan_rate_submissions = ${audit1.orphan_rate_submissions} ✅`);
@@ -67,7 +72,7 @@ async function testSubIndentFkHardening() {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
     body: JSON.stringify({
-      req_no: 'SNPL/26-27/REQ-CHILD-DELETE-TEST',
+      req_no: `SNPL/26-27/REQ-CDEL-${Date.now()}`,
       pickup_origin: 'Katol',
       drop_location: 'Yerla',
       target_date: '2026-08-28',
@@ -77,9 +82,12 @@ async function testSubIndentFkHardening() {
       ]
     })
   });
-  const childObj = (await createChildRes.json()).data;
+  const childJson = await createChildRes.json();
+  const childObj = childJson.data || childJson.requirement;
   const cItem1 = childObj.items[0]; // /01 -> 300 MT
   const cItem2 = childObj.items[1]; // /02 -> 200 MT
+
+  console.log(`  • Created test batch ${childObj.req_no} (${childObj.id})`);
 
   // Submit /01 = ₹77, /02 = ₹88
   await fetch(`${BASE_URL}/api/rate-submissions`, {

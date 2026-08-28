@@ -542,24 +542,35 @@ async function handleCreateRateSubmission(req, res) {
     const actualTransId = transRows[0]?.id || targetTransporterId;
     const transName = transRows[0]?.company_name || targetTransporterId;
 
-    const targetItemId = (req.body.item_id || req.body.sub_indent_id || req.body.requirement_item_id || 'MAIN').trim();
-
+    const rawItemId = (req.body.item_id || req.body.sub_indent_id || req.body.requirement_item_id || '').trim();
+    let actualItemId = rawItemId;
     let totalCargoQty = 0;
-    if (targetItemId && targetItemId !== 'MAIN') {
-      const [itemRows] = await pool.query(
-        'SELECT quantity_mt FROM transport_requirement_items WHERE id = ? OR sub_indent_no = ? LIMIT 1',
-        [targetItemId, targetItemId]
+
+    const [itemRows] = await pool.query(
+      'SELECT id, quantity_mt FROM transport_requirement_items WHERE (id = ? OR sub_indent_no = ?) AND requirement_id = ? LIMIT 1',
+      [rawItemId, rawItemId, actualReqId]
+    );
+
+    if (itemRows.length > 0) {
+      actualItemId = itemRows[0].id;
+      totalCargoQty = parseFloat(itemRows[0].quantity_mt || 0);
+    } else {
+      const [childItems] = await pool.query(
+        'SELECT id, quantity_mt FROM transport_requirement_items WHERE requirement_id = ? ORDER BY id ASC LIMIT 1',
+        [actualReqId]
       );
-      if (itemRows.length > 0) {
-        totalCargoQty = parseFloat(itemRows[0].quantity_mt || 0);
+      if (childItems.length > 0) {
+        actualItemId = childItems[0].id;
+        totalCargoQty = parseFloat(childItems[0].quantity_mt || 0);
       }
     }
-    if (totalCargoQty === 0) {
-      const [childItems] = await pool.query(
+
+    if (!totalCargoQty) {
+      const [childItemsAll] = await pool.query(
         'SELECT quantity_mt FROM transport_requirement_items WHERE requirement_id = ?',
         [actualReqId]
       );
-      (childItems || []).forEach((i) => { totalCargoQty += parseFloat(i.quantity_mt || 0); });
+      (childItemsAll || []).forEach((i) => { totalCargoQty += parseFloat(i.quantity_mt || 0); });
     }
 
     const qtyVal = parseFloat(quoted_quantity_mt || required_qty) || totalCargoQty || null;
@@ -568,10 +579,10 @@ async function handleCreateRateSubmission(req, res) {
     // Check if an existing quote exists for (requirement_id, item_id, transporter_id) to maintain ID
     const [existingQuotes] = await pool.query(
       'SELECT id FROM rate_submissions WHERE requirement_id = ? AND item_id = ? AND transporter_id = ? LIMIT 1',
-      [actualReqId, targetItemId, actualTransId]
+      [actualReqId, actualItemId, actualTransId]
     );
 
-    const subId = existingQuotes[0]?.id || id || `rate_sub_${actualTransId}_${targetItemId}_${Date.now()}_${Math.random().toString(36).substring(2,7)}`;
+    const subId = existingQuotes[0]?.id || id || `rate_sub_${actualTransId}_${actualItemId}_${Date.now()}_${Math.random().toString(36).substring(2,7)}`;
     const subStatus = status || 'Submitted';
     const rem = (remarks || comments || notes || '').trim() || null;
 
@@ -586,7 +597,7 @@ async function handleCreateRateSubmission(req, res) {
        status = VALUES(status),
        submitted_at = NOW(),
        updated_at = NOW()`,
-      [subId, actualReqId, targetItemId, actualTransId, rateVal, qtyVal, totalAmount, rem, subStatus]
+      [subId, actualReqId, actualItemId, actualTransId, rateVal, qtyVal, totalAmount, rem, subStatus]
     );
 
     const submissionObj = {
