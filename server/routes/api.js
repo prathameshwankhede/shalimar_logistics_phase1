@@ -1355,8 +1355,6 @@ router.get('/backup/full', authenticateToken, requireRole('admin'), async (req, 
       }
     });
 
-    const childFirstOrder = [...parentFirstOrder].reverse();
-
     const dumpLines = [];
     dumpLines.push(`-- ==================================================`);
     dumpLines.push(`-- SHALIMAR LOGISTICS / TRANSFLOW PHASE 1`);
@@ -1368,14 +1366,6 @@ router.get('/backup/full', authenticateToken, requireRole('admin'), async (req, 
     dumpLines.push(`SET FOREIGN_KEY_CHECKS = 0;`);
     dumpLines.push(``);
 
-    dumpLines.push(`-- Safe Drop Existing Tables in Child-First Dependency Order`);
-    for (const tbl of childFirstOrder) {
-      if (tableNames.includes(tbl)) {
-        dumpLines.push(`DROP TABLE IF EXISTS \`${tbl}\`;`);
-      }
-    }
-    dumpLines.push(``);
-
     for (const tbl of parentFirstOrder) {
       if (!tableNames.includes(tbl)) continue;
 
@@ -1383,8 +1373,9 @@ router.get('/backup/full', authenticateToken, requireRole('admin'), async (req, 
         const [createRows] = await pool.query(`SHOW CREATE TABLE \`${tbl}\``);
         const rawCreateSql = createRows[0]['Create Table'] || createRows[0]['CREATE TABLE'];
         if (rawCreateSql) {
+          const createSql = rawCreateSql.replace(/^CREATE TABLE\s*/i, 'CREATE TABLE IF NOT EXISTS ');
           dumpLines.push(`-- Table structure for \`${tbl}\``);
-          dumpLines.push(`${rawCreateSql};`);
+          dumpLines.push(`${createSql};`);
           dumpLines.push(``);
         }
       } catch (ddlErr) {
@@ -1497,10 +1488,11 @@ router.post('/backup/restore', authenticateToken, requireRole('admin'), async (r
         .trim();
 
       if (cleanStmt.length > 0) {
-        if (/^DROP TABLE/i.test(cleanStmt)) {
-          continue;
+        let finalStmt = cleanStmt;
+        if (/^CREATE TABLE\s+/i.test(finalStmt) && !/CREATE TABLE IF NOT EXISTS/i.test(finalStmt)) {
+          finalStmt = finalStmt.replace(/^CREATE TABLE\s+/i, 'CREATE TABLE IF NOT EXISTS ');
         }
-        await conn.query(cleanStmt);
+        await conn.query(finalStmt);
         executedCount++;
       }
     }
