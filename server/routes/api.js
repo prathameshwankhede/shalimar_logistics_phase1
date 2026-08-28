@@ -1366,10 +1366,10 @@ router.get('/backup/full', authenticateToken, requireRole('admin'), async (req, 
 
       try {
         const [createRows] = await pool.query(`SHOW CREATE TABLE \`${tbl}\``);
-        const createSql = createRows[0]['Create Table'] || createRows[0]['CREATE TABLE'];
-        if (createSql) {
+        const rawCreateSql = createRows[0]['Create Table'] || createRows[0]['CREATE TABLE'];
+        if (rawCreateSql) {
+          const createSql = rawCreateSql.replace(/^CREATE TABLE/i, 'CREATE TABLE IF NOT EXISTS');
           dumpLines.push(`-- Table structure for \`${tbl}\``);
-          dumpLines.push(`DROP TABLE IF EXISTS \`${tbl}\`;`);
           dumpLines.push(`${createSql};`);
           dumpLines.push(``);
         }
@@ -1393,7 +1393,7 @@ router.get('/backup/full', authenticateToken, requireRole('admin'), async (req, 
             return pool.escape(String(val));
           }).join(', ');
 
-          dumpLines.push(`INSERT INTO \`${tbl}\` (${colsStr}) VALUES (${valsStr});`);
+          dumpLines.push(`INSERT INTO \`${tbl}\` (${colsStr}) VALUES (${valsStr}) ON DUPLICATE KEY UPDATE ${keys.map(k => `\`${k}\`=VALUES(\`${k}\`)`).join(', ')};`);
         }
         dumpLines.push(``);
       }
@@ -1437,16 +1437,19 @@ router.post('/backup/restore', authenticateToken, requireRole('admin'), async (r
     await conn.beginTransaction();
     await conn.query('SET FOREIGN_KEY_CHECKS = 0');
 
-    const statements = sqlText
-      .split(/;\s*$/m)
-      .map(s => s.trim())
-      .filter(s => s.length > 0 && !s.startsWith('--'));
+    const rawStatements = sqlText.split(';\n');
 
     let executedCount = 0;
-    for (const stmt of statements) {
-      const cleanStmt = stmt.split('\n').filter(line => !line.trim().startsWith('--')).join('\n').trim();
+    for (const rawStmt of rawStatements) {
+      const cleanStmt = rawStmt
+        .split('\n')
+        .filter(line => !line.trim().startsWith('--'))
+        .join('\n')
+        .trim();
+
       if (cleanStmt.length > 0) {
-        await conn.query(cleanStmt);
+        const finalStmt = cleanStmt.replace(/^CREATE TABLE /i, 'CREATE TABLE IF NOT EXISTS ');
+        await conn.query(finalStmt);
         executedCount++;
       }
     }
