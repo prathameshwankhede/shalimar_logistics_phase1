@@ -462,7 +462,7 @@ async function handleCreateRateSubmission(req, res) {
       [actualReqId, targetItemId, actualTransId]
     );
 
-    const subId = existingQuotes[0]?.id || id || `rate_sub_${actualTransId}_${Date.now()}`;
+    const subId = existingQuotes[0]?.id || id || `rate_sub_${actualTransId}_${targetItemId}_${Date.now()}_${Math.random().toString(36).substring(2,7)}`;
     const subStatus = status || 'Submitted';
     const rem = (remarks || comments || notes || '').trim() || null;
 
