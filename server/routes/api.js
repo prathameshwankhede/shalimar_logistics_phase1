@@ -181,26 +181,30 @@ router.post('/products', authenticateToken, requireRole('admin'), async (req, re
 // Dedicated Company Units & Plants Master CRUD API
 // -------------------------------------------------------------
 async function ensureCompanyUnitsTableExists() {
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS company_units_plants (
-      id VARCHAR(100) PRIMARY KEY,
-      company_name VARCHAR(255) NOT NULL,
-      registered_address TEXT,
-      gstin VARCHAR(30),
-      pan VARCHAR(30),
-      contact_name VARCHAR(255),
-      email VARCHAR(255),
-      mobile VARCHAR(50),
-      state VARCHAR(100),
-      city VARCHAR(100),
-      district VARCHAR(100),
-      pin_code VARCHAR(20),
-      pickup_origin VARCHAR(255),
-      drop_location VARCHAR(255),
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-  `).catch((err) => console.warn('company_units_plants table creation notice:', err.message));
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS company_units_plants (
+        id VARCHAR(100) NOT NULL PRIMARY KEY,
+        company_name VARCHAR(255) NOT NULL,
+        registered_address TEXT,
+        gstin VARCHAR(30),
+        pan VARCHAR(30),
+        contact_name VARCHAR(255),
+        email VARCHAR(255),
+        mobile VARCHAR(50),
+        state VARCHAR(100),
+        city VARCHAR(100),
+        district VARCHAR(100),
+        pin_code VARCHAR(20),
+        pickup_origin VARCHAR(255),
+        drop_location VARCHAR(255),
+        created_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+  } catch (err) {
+    console.warn('company_units_plants table creation notice:', err.message);
+  }
 }
 
 function formatCompanyUnitDto(row) {
