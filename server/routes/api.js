@@ -631,12 +631,10 @@ router.get('/state', authenticateToken, async (req, res) => {
   // Merge normalized transporters table from MySQL database
   try {
     const dbTransporters = await fetchTransportersList();
-    if (Array.isArray(dbTransporters) && dbTransporters.length > 0) {
-      state = {
-        ...state,
-        transporters: dbTransporters
-      };
-    }
+    state = {
+      ...state,
+      transporters: Array.isArray(dbTransporters) ? dbTransporters : []
+    };
   } catch (err) {
     console.warn('MySQL transporters load notice:', err.message);
   }
