@@ -196,6 +196,38 @@ export async function ensureRateSubmissionsTableExists() {
     await pool.query('ALTER TABLE rate_submissions CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci').catch(() => {});
     await pool.query('ALTER TABLE transporters CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci').catch(() => {});
     await pool.query('ALTER TABLE transport_requirements CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci').catch(() => {});
+
+    // Safe deduplication: Keep ONLY the latest quote per (requirement_id, transporter_id)
+    try {
+      const [dupes] = await pool.query(`
+        SELECT requirement_id, transporter_id, COUNT(*) AS cnt 
+        FROM rate_submissions 
+        GROUP BY requirement_id, transporter_id 
+        HAVING COUNT(*) > 1
+      `);
+      if (dupes && dupes.length > 0) {
+        console.log(`🧹 Deduplicating ${dupes.length} duplicate (requirement_id, transporter_id) groups in rate_submissions...`);
+        for (const d of dupes) {
+          const [rows] = await pool.query(
+            `SELECT id FROM rate_submissions 
+             WHERE requirement_id = ? AND transporter_id = ? 
+             ORDER BY submitted_at DESC, updated_at DESC, id DESC`,
+            [d.requirement_id, d.transporter_id]
+          );
+          if (rows.length > 1) {
+            const keepId = rows[0].id;
+            const deleteIds = rows.slice(1).map(r => r.id);
+            await pool.query('DELETE FROM rate_submissions WHERE id IN (?)', [deleteIds]);
+            console.log(`  • Kept latest quote '${keepId}', removed ${deleteIds.length} older duplicate(s) for transporter '${d.transporter_id}'.`);
+          }
+        }
+      }
+    } catch (dedupErr) {
+      console.warn('Deduplication check notice:', dedupErr.message);
+    }
+
+    // Add UNIQUE INDEX uq_req_trans (requirement_id, transporter_id)
+    await pool.query('ALTER TABLE rate_submissions ADD UNIQUE INDEX uq_req_trans (requirement_id, transporter_id)').catch(() => {});
   } catch (err) {
     console.warn('ensureRateSubmissionsTableExists notice:', err.message);
   }
@@ -208,7 +240,7 @@ async function handleGetRequirements(req, res) {
     let bidsCountMap = {};
     try {
       const [bidRows] = await pool.query(
-        'SELECT requirement_id, COUNT(*) as cnt FROM rate_submissions GROUP BY requirement_id'
+        'SELECT requirement_id, COUNT(DISTINCT transporter_id) as cnt FROM rate_submissions GROUP BY requirement_id'
       );
       (bidRows || []).forEach((b) => {
         if (b.requirement_id) bidsCountMap[b.requirement_id] = Number(b.cnt || 0);
@@ -417,7 +449,14 @@ async function handleCreateRateSubmission(req, res) {
 
     const qtyVal = parseFloat(quoted_quantity_mt || required_qty) || totalCargoQty || null;
     const totalAmount = qtyVal ? parseFloat((rateVal * qtyVal).toFixed(2)) : null;
-    const subId = id || `rate_sub_${actualTransId}_${Date.now()}`;
+
+    // Check if an existing quote exists for (requirement_id, transporter_id) to maintain ID
+    const [existingQuotes] = await pool.query(
+      'SELECT id FROM rate_submissions WHERE requirement_id = ? AND transporter_id = ? LIMIT 1',
+      [actualReqId, actualTransId]
+    );
+
+    const subId = existingQuotes[0]?.id || id || `rate_sub_${actualTransId}_${Date.now()}`;
     const subStatus = status || 'Submitted';
     const rem = (remarks || comments || notes || '').trim() || null;
 
@@ -425,11 +464,13 @@ async function handleCreateRateSubmission(req, res) {
       `INSERT INTO rate_submissions (id, requirement_id, transporter_id, rate_per_mt, quoted_quantity_mt, total_amount, remarks, status, submitted_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())
        ON DUPLICATE KEY UPDATE
+       id = VALUES(id),
        rate_per_mt = VALUES(rate_per_mt),
        quoted_quantity_mt = VALUES(quoted_quantity_mt),
        total_amount = VALUES(total_amount),
        remarks = VALUES(remarks),
        status = VALUES(status),
+       submitted_at = NOW(),
        updated_at = NOW()`,
       [subId, actualReqId, actualTransId, rateVal, qtyVal, totalAmount, rem, subStatus]
     );
