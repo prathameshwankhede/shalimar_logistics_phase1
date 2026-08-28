@@ -1262,11 +1262,18 @@ router.delete('/transporters/:id', authenticateToken, requireRole('admin'), asyn
     const exactId = matchedTransporter.id;
     const exactUsername = matchedTransporter.username;
 
-    // 2. Dependency Check: Bids / Rate Submissions
-    const [bidCheck] = await pool.query(
-      'SELECT id FROM rate_submissions WHERE transporter_id = ? OR transporter_name = ? LIMIT 1',
-      [exactId, matchedTransporter.company_name]
-    );
+    // 2. Dependency Check: Bids / Rate Submissions (Safely handles table presence)
+    let bidCheck = [];
+    try {
+      [bidCheck] = await pool.query(
+        'SELECT id FROM rate_submissions WHERE transporter_id = ? OR transporter_name = ? LIMIT 1',
+        [exactId, matchedTransporter.company_name]
+      );
+    } catch (bidErr) {
+      if (bidErr.code !== 'ER_NO_SUCH_TABLE') {
+        console.warn('Notice: rate_submissions check skipped:', bidErr.message);
+      }
+    }
     if (bidCheck && bidCheck.length > 0) {
       return res.status(409).json({
         success: false,
@@ -1274,11 +1281,18 @@ router.delete('/transporters/:id', authenticateToken, requireRole('admin'), asyn
       });
     }
 
-    // 3. Dependency Check: Contract Allocations
-    const [contractCheck] = await pool.query(
-      'SELECT id FROM contracts WHERE transporter_id = ? LIMIT 1',
-      [exactId]
-    );
+    // 3. Dependency Check: Contract Allocations (Safely handles table presence)
+    let contractCheck = [];
+    try {
+      [contractCheck] = await pool.query(
+        'SELECT id FROM contracts WHERE transporter_id = ? LIMIT 1',
+        [exactId]
+      );
+    } catch (contractErr) {
+      if (contractErr.code !== 'ER_NO_SUCH_TABLE') {
+        console.warn('Notice: contracts check skipped:', contractErr.message);
+      }
+    }
     if (contractCheck && contractCheck.length > 0) {
       return res.status(409).json({
         success: false,
