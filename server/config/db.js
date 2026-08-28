@@ -300,11 +300,10 @@ export async function initDatabaseSchema() {
 export async function testConnection() {
   try {
     const connection = await pool.getConnection();
+    await connection.query('SELECT 1');
     console.log(`✅ MySQL Database connected successfully to [${dbHost}:${dbPort}/${dbName}] as '${dbUser}'!`);
     connection.release();
-
-    const schemaOk = await initDatabaseSchema();
-    return schemaOk;
+    return true;
   } catch (error) {
     console.error(`❌ MySQL Connection Failure for user '${dbUser}' on [${dbHost}:${dbPort}/${dbName}]:`, error.message);
     return false;
