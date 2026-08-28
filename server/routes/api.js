@@ -1373,7 +1373,7 @@ router.get('/backup/full', authenticateToken, requireRole('admin'), async (req, 
         const [createRows] = await pool.query(`SHOW CREATE TABLE \`${tbl}\``);
         const rawCreateSql = createRows[0]['Create Table'] || createRows[0]['CREATE TABLE'];
         if (rawCreateSql) {
-          const createSql = rawCreateSql.replace(/^CREATE TABLE\s*/i, 'CREATE TABLE IF NOT EXISTS ');
+          const createSql = String(rawCreateSql).replace(/CREATE TABLE/i, 'CREATE TABLE IF NOT EXISTS');
           dumpLines.push(`-- Table structure for \`${tbl}\``);
           dumpLines.push(`${createSql};`);
           dumpLines.push(``);
@@ -1489,8 +1489,8 @@ router.post('/backup/restore', authenticateToken, requireRole('admin'), async (r
 
       if (cleanStmt.length > 0) {
         let finalStmt = cleanStmt;
-        if (/^CREATE TABLE\s+/i.test(finalStmt) && !/CREATE TABLE IF NOT EXISTS/i.test(finalStmt)) {
-          finalStmt = finalStmt.replace(/^CREATE TABLE\s+/i, 'CREATE TABLE IF NOT EXISTS ');
+        if (/CREATE TABLE/i.test(finalStmt) && !/CREATE TABLE IF NOT EXISTS/i.test(finalStmt)) {
+          finalStmt = finalStmt.replace(/CREATE TABLE/i, 'CREATE TABLE IF NOT EXISTS');
         }
         await conn.query(finalStmt);
         executedCount++;
