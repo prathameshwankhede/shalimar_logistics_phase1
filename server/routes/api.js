@@ -38,6 +38,160 @@ function sanitizeStateForClient(rawState) {
 }
 
 // -------------------------------------------------------------
+// Dedicated Transport Requirements & Rate Requests CRUD API
+// Parent: transport_requirements | Child: transport_requirement_items
+// -------------------------------------------------------------
+async function ensureRequirementsTableExists() {
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS transport_requirements (
+        id VARCHAR(100) NOT NULL PRIMARY KEY,
+        req_no VARCHAR(100) NOT NULL UNIQUE,
+        title VARCHAR(255),
+        pickup_origin VARCHAR(255) NOT NULL,
+        drop_location VARCHAR(255) NOT NULL,
+        target_date DATE NOT NULL,
+        status VARCHAR(50) DEFAULT 'Active',
+        submitted_bids_count INT DEFAULT 0,
+        approval_status VARCHAR(50) DEFAULT 'Pending',
+        created_by VARCHAR(100) DEFAULT 'admin',
+        created_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS transport_requirement_items (
+        id VARCHAR(100) NOT NULL PRIMARY KEY,
+        requirement_id VARCHAR(100) NOT NULL,
+        product_name VARCHAR(255) NOT NULL,
+        quantity_mt DECIMAL(12,3) NOT NULL,
+        unit VARCHAR(50) DEFAULT 'MT',
+        pickup_origin VARCHAR(255),
+        drop_location VARCHAR(255),
+        hsn_code VARCHAR(50),
+        created_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_req_id (requirement_id)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+  } catch (err) {
+    console.warn('transport_requirements table creation notice:', err.message);
+  }
+}
+
+async function generateNextReqNo(clientOrPool) {
+  try {
+    const [rows] = await clientOrPool.query(
+      `SELECT req_no FROM transport_requirements ORDER BY created_at DESC, id DESC LIMIT 200`
+    );
+
+    let maxSeq = 0;
+    for (const r of (rows || [])) {
+      const str = r.req_no || '';
+      const match = str.match(/REQ-(\d+)/i);
+      if (match) {
+        const num = parseInt(match[1], 10);
+        if (num > maxSeq) maxSeq = num;
+      }
+    }
+
+    const nextSeq = maxSeq + 1;
+    const seqPadded = String(nextSeq).padStart(4, '0');
+    return `SNPL/26-27/REQ-${seqPadded}`;
+  } catch (e) {
+    return `SNPL/26-27/REQ-${String(Date.now()).substring(8)}`;
+  }
+}
+
+function formatParentRequirementDto(parentRow, childItems = [], bidsCount = 0) {
+  if (!parentRow) return null;
+  const itemsFormatted = childItems.map((item, idx) => ({
+    id: item.id || `item_${idx}`,
+    requirement_id: parentRow.id,
+    product_name: item.product_name || item.material_type || '',
+    material_type: item.product_name || item.material_type || '',
+    quantity_mt: Number(item.quantity_mt || item.required_qty || 0),
+    required_qty: Number(item.quantity_mt || item.required_qty || 0),
+    unit: item.unit || 'MT',
+    pickup_origin: item.pickup_origin || parentRow.pickup_origin || '',
+    drop_location: item.drop_location || parentRow.drop_location || '',
+    hsn_code: item.hsn_code || ''
+  }));
+
+  const totalQty = itemsFormatted.reduce((acc, curr) => acc + curr.quantity_mt, 0);
+
+  const firstItem = itemsFormatted[0] || {};
+  const pickup = parentRow.pickup_origin || firstItem.pickup_origin || '';
+  const drop = parentRow.drop_location || firstItem.drop_location || '';
+  const reqNo = parentRow.req_no || parentRow.id || '';
+  const targetDateStr = parentRow.target_date ? (parentRow.target_date instanceof Date ? parentRow.target_date.toISOString().split('T')[0] : String(parentRow.target_date).split('T')[0]) : new Date().toISOString().split('T')[0];
+
+  return {
+    id: parentRow.id,
+    req_no: reqNo,
+    request_no: reqNo,
+    batch_no: reqNo,
+    title: parentRow.title || `${pickup} ➔ ${drop}`,
+    pickup_origin: pickup,
+    origin_city: pickup,
+    drop_location: drop,
+    dest_city: drop,
+    target_date: targetDateStr,
+    status: parentRow.status || 'Active',
+    submitted_bids_count: bidsCount || Number(parentRow.submitted_bids_count || 0),
+    approval_status: parentRow.approval_status || 'Pending',
+    created_by: parentRow.created_by || 'admin',
+    created_at: parentRow.created_at || new Date().toISOString(),
+    updated_at: parentRow.updated_at || new Date().toISOString(),
+    items: itemsFormatted,
+    total_quantity_mt: totalQty,
+    quantity_mt: totalQty,
+    required_qty: totalQty,
+    product_name: itemsFormatted.map(i => i.product_name).join(', '),
+    material_type: itemsFormatted.map(i => i.product_name).join(', ')
+  };
+}
+
+async function handleGetRequirements(req, res) {
+  try {
+    await ensureRequirementsTableExists();
+    let bidsCountMap = {};
+    try {
+      const [bidRows] = await pool.query(
+        'SELECT rate_request_id, COUNT(*) as cnt FROM rate_submissions GROUP BY rate_request_id'
+      );
+      (bidRows || []).forEach((b) => {
+        if (b.rate_request_id) bidsCountMap[b.rate_request_id] = Number(b.cnt || 0);
+      });
+    } catch (e) {}
+
+    const [parents] = await pool.query('SELECT * FROM transport_requirements ORDER BY created_at DESC LIMIT 300');
+    if (parents.length === 0) {
+      return res.json({ success: true, count: 0, data: [], requirements: [], rate_requests: [] });
+    }
+
+    const parentIds = parents.map((p) => p.id);
+    const [childRows] = await pool.query(
+      'SELECT * FROM transport_requirement_items WHERE requirement_id IN (?) ORDER BY id ASC',
+      [parentIds]
+    );
+
+    const itemsMap = {};
+    (childRows || []).forEach((item) => {
+      if (!itemsMap[item.requirement_id]) itemsMap[item.requirement_id] = [];
+      itemsMap[item.requirement_id].push(item);
+    });
+
+    const formatted = parents.map((p) => formatParentRequirementDto(p, itemsMap[p.id] || [], bidsCountMap[p.id] || 0));
+    return res.json({ success: true, count: formatted.length, data: formatted, requirements: formatted, rate_requests: formatted });
+  } catch (err) {
+    console.error('❌ GET /api/requirements Error:', err.message);
+    return res.status(500).json({ success: false, error: { code: 'DATABASE_ERROR', message: err.message } });
+  }
+}
+
+// -------------------------------------------------------------
 // Layered Controller Routes (Targeted Minimal DTO Endpoints)
 // -------------------------------------------------------------
 router.get('/dashboard', authenticateToken, handleGetDashboard);
