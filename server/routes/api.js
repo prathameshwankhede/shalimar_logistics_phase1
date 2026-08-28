@@ -242,6 +242,17 @@ export async function ensureRateSubmissionsTableExists() {
       console.warn('Deduplication check notice:', dedupErr.message);
     }
 
+    // Clean up orphan rate_submissions where parent requirement has been deleted
+    try {
+      await pool.query(`
+        DELETE rs FROM rate_submissions rs
+        LEFT JOIN transport_requirements tr ON tr.id = rs.requirement_id
+        WHERE tr.id IS NULL
+      `);
+    } catch (cleanErr) {
+      console.warn('Orphan cleanup notice:', cleanErr.message);
+    }
+
     // Clean up test quote records with non-existent transporter IDs
     try {
       await pool.query("DELETE FROM rate_submissions WHERE transporter_id LIKE 'trans_audit_%' OR transporter_id LIKE 'trans_batch_%'");
@@ -250,6 +261,21 @@ export async function ensureRateSubmissionsTableExists() {
     // Drop old requirement-only unique index and add sub-indent item-level unique index (requirement_id, item_id, transporter_id)
     await pool.query('ALTER TABLE rate_submissions DROP INDEX uq_req_trans').catch(() => {});
     await pool.query('ALTER TABLE rate_submissions ADD UNIQUE INDEX uq_req_item_trans (requirement_id, item_id, transporter_id)').catch(() => {});
+
+    // Enforce Foreign Keys with ON DELETE CASCADE to prevent future orphan records
+    await pool.query(`
+      ALTER TABLE transport_requirement_items 
+      ADD CONSTRAINT fk_tri_req 
+      FOREIGN KEY (requirement_id) REFERENCES transport_requirements(id) 
+      ON DELETE CASCADE
+    `).catch(() => {});
+
+    await pool.query(`
+      ALTER TABLE rate_submissions 
+      ADD CONSTRAINT fk_rs_req 
+      FOREIGN KEY (requirement_id) REFERENCES transport_requirements(id) 
+      ON DELETE CASCADE
+    `).catch(() => {});
   } catch (err) {
     console.warn('ensureRateSubmissionsTableExists notice:', err.message);
   }
@@ -1290,6 +1316,7 @@ router.delete('/requirements/:id', authenticateToken, requireRole('admin'), asyn
     const conn = await pool.getConnection();
     try {
       await conn.beginTransaction();
+      await conn.query('DELETE FROM rate_submissions WHERE requirement_id = ? OR requirement_id = (SELECT req_no FROM transport_requirements WHERE id = ? LIMIT 1)', [id, id]).catch(() => {});
       await conn.query('DELETE FROM transport_requirement_items WHERE requirement_id = ?', [id]);
       const [result] = await conn.query('DELETE FROM transport_requirements WHERE id = ?', [id]);
       await conn.commit();
