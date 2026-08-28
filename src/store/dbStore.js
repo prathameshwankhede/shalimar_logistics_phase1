@@ -130,6 +130,17 @@ export async function fetchTransportersList() {
   }
 }
 
+export async function fetchCompanyUnitsList() {
+  try {
+    const res = await fetch(`${getApiBaseUrl()}/api/company-units`, { headers: getAuthHeaders() });
+    if (!res.ok) return [];
+    const json = await res.json();
+    return json.data || json.company_units || [];
+  } catch (e) {
+    return [];
+  }
+}
+
 export async function fetchMasterData() {
   try {
     const res = await fetch(`${getApiBaseUrl()}/api/master-data`, { headers: getAuthHeaders() });
@@ -233,6 +244,20 @@ export async function loadDBFromSupabase() {
       }
     } catch (err) {
       console.warn('Live transporters fetch notice:', err.message);
+    }
+
+    // Always fetch live company units list from MySQL database
+    try {
+      const liveCompanyUnits = await fetchCompanyUnitsList();
+      if (Array.isArray(liveCompanyUnits)) {
+        data = {
+          ...(data || EMPTY_STATE),
+          company_units: liveCompanyUnits,
+          company_masters: liveCompanyUnits
+        };
+      }
+    } catch (err) {
+      console.warn('Live company units fetch notice:', err.message);
     }
 
     return data;

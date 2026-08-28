@@ -27,6 +27,19 @@ export async function createCompanyUnit(unitPayload) {
   });
 }
 
+export async function updateCompanyUnit(id, unitPayload) {
+  return apiClient(`/api/company-units/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(unitPayload)
+  });
+}
+
+export async function deleteCompanyUnit(id) {
+  return apiClient(`/api/company-units/${id}`, {
+    method: 'DELETE'
+  });
+}
+
 export async function getCities() {
   return apiClient('/api/cities', { method: 'GET' });
 }

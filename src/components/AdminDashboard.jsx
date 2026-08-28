@@ -5,7 +5,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { createRateRequest } from '../api/rateRequestApi';
 import { createTransporter, updateTransporterStatus, resetTransporterPassword } from '../api/transporterApi';
-import { createProduct } from '../api/masterDataApi';
+import { createProduct, createCompanyUnit, updateCompanyUnit, deleteCompanyUnit } from '../api/masterDataApi';
 import { CreateRequirementModal } from './CreateRequirementModal';
 import { TransporterManagerModal } from './TransporterManagerModal';
 import { RateComparisonView } from './RateComparisonView';
@@ -228,49 +228,75 @@ export const AdminDashboard = () => {
     drop_location_name: ''
   });
 
-  const handleAddCompanyMaster = (e) => {
+  const handleAddCompanyMaster = async (e) => {
     e.preventDefault();
-    // Clean company unit name
     const compName = (newCompanyMaster.name || '').trim();
     if (!compName) {
-      alert('🏢 Please enter a Company / Plant Unit or Location Name.');
+      alert('🏢 Please enter a Company / Plant Unit Name.');
       return;
     }
 
-    const newCompObj = {
-      id: `comp_${Date.now()}`,
-      code: (newCompanyMaster?.name || "").slice(0, 5).toUpperCase(),
-      ...newCompanyMaster
+    const payload = {
+      company_name: compName,
+      registered_address: (newCompanyMaster.address || '').trim(),
+      gstin: (newCompanyMaster.gstin || '').trim(),
+      pan: (newCompanyMaster.pan_no || '').trim(),
+      contact_name: (newCompanyMaster.proprietor_name || '').trim(),
+      email: (newCompanyMaster.email || '').trim(),
+      mobile: (newCompanyMaster.mobile_no || '').trim(),
+      state: (newCompanyMaster.state || 'Maharashtra').trim(),
+      city: (newCompanyMaster.city || '').trim(),
+      district: (newCompanyMaster.district || '').trim(),
+      pin_code: (newCompanyMaster.pincode || '').trim(),
+      pickup_origin: (newCompanyMaster.pickup_location_name || '').trim(),
+      drop_location: (newCompanyMaster.drop_location_name || '').trim()
     };
-    const updatedDb = addSecurityLog(
-      {
-        ...db,
-        company_masters: [newCompObj, ...(db.company_masters || [])]
-      },
-      'ADD_COMPANY_MASTER',
-      currentUser?.username || 'admin',
-      'admin',
-      'COMPANY_ADDED 🛡️'
-    );
-    updateDB(updatedDb);
-    setNewCompanyMaster({
-      name: '',
-      address: '',
-      gstin: '',
-      pan_no: '',
-      proprietor_name: '',
-      email: '',
-      mobile_no: '',
-      state: 'Maharashtra',
-      city: '',
-      district: '',
-      pincode: '',
-      pickup_location_name: '',
-      drop_location_name: ''
-    });
-    setIsAddCompanyModalOpen(false);
-    setArchiveNotice(`🏢 New Company / Plant Master '${newCompObj.name}' added to Master Directory!`);
-    setTimeout(() => setArchiveNotice(''), 4000);
+
+    try {
+      const res = await createCompanyUnit(payload);
+      if (res && res.error) {
+        alert(`❌ Failed to save company unit: ${typeof res.error === 'string' ? res.error : res.error.message || 'Server error'}`);
+        return;
+      }
+
+      const savedItem = res.data || { id: `comp_${Date.now()}`, ...payload };
+      const updatedList = [savedItem, ...(db.company_masters || []).filter(c => c.id !== savedItem.id)];
+
+      const updatedDb = addSecurityLog(
+        {
+          ...db,
+          company_masters: updatedList,
+          company_units: updatedList
+        },
+        'ADD_COMPANY_MASTER',
+        currentUser?.username || 'admin',
+        'admin',
+        'COMPANY_ADDED 🛡️'
+      );
+      updateDB(updatedDb);
+
+      setNewCompanyMaster({
+        name: '',
+        address: '',
+        gstin: '',
+        pan_no: '',
+        proprietor_name: '',
+        email: '',
+        mobile_no: '',
+        state: 'Maharashtra',
+        city: '',
+        district: '',
+        pincode: '',
+        pickup_location_name: '',
+        drop_location_name: ''
+      });
+      setIsAddCompanyModalOpen(false);
+      setArchiveNotice(`🏢 New Company / Plant Master '${compName}' saved to MySQL!`);
+      setTimeout(() => setArchiveNotice(''), 4000);
+    } catch (err) {
+      console.error('Company unit creation error:', err);
+      alert(`❌ Error creating company unit: ${err.message}`);
+    }
   };
 
   // EDIT COMPANY MASTER STATE & HANDLERS
@@ -278,44 +304,103 @@ export const AdminDashboard = () => {
     setEditingCompanyMaster({ ...comp });
   };
 
-  const handleSaveEditCompanyMaster = (e) => {
+  const handleSaveEditCompanyMaster = async (e) => {
     e.preventDefault();
     if (!editingCompanyMaster) return;
 
-    const updatedCompanies = (db.company_masters || []).map((c) =>
-      c.id === editingCompanyMaster.id ? editingCompanyMaster : c
-    );
+    const compName = (editingCompanyMaster.name || editingCompanyMaster.company_name || '').trim();
+    if (!compName) {
+      alert('🏢 Company / Plant Name is required.');
+      return;
+    }
 
-    const updatedDb = addSecurityLog(
-      {
-        ...db,
-        company_masters: updatedCompanies
-      },
-      'EDIT_COMPANY_MASTER',
-      currentUser?.username || 'admin',
-      'admin',
-      'COMPANY_EDITED ✏️'
-    );
+    const payload = {
+      company_name: compName,
+      registered_address: (editingCompanyMaster.address || editingCompanyMaster.registered_address || '').trim(),
+      gstin: (editingCompanyMaster.gstin || '').trim(),
+      pan: (editingCompanyMaster.pan_no || editingCompanyMaster.pan || '').trim(),
+      contact_name: (editingCompanyMaster.proprietor_name || editingCompanyMaster.contact_name || '').trim(),
+      email: (editingCompanyMaster.email || '').trim(),
+      mobile: (editingCompanyMaster.mobile_no || editingCompanyMaster.mobile || '').trim(),
+      state: (editingCompanyMaster.state || 'Maharashtra').trim(),
+      city: (editingCompanyMaster.city || '').trim(),
+      district: (editingCompanyMaster.district || '').trim(),
+      pin_code: (editingCompanyMaster.pincode || editingCompanyMaster.pin_code || '').trim(),
+      pickup_origin: (editingCompanyMaster.pickup_location_name || editingCompanyMaster.pickup_origin || '').trim(),
+      drop_location: (editingCompanyMaster.drop_location_name || editingCompanyMaster.drop_location || '').trim()
+    };
 
-    updateDB(updatedDb);
-    setEditingCompanyMaster(null);
-    setArchiveNotice(`✏️ Company / Plant Master '${editingCompanyMaster.name}' updated successfully!`);
-    setTimeout(() => setArchiveNotice(''), 4000);
+    try {
+      const res = await updateCompanyUnit(editingCompanyMaster.id, payload);
+      if (res && res.error) {
+        alert(`❌ Failed to update company unit: ${typeof res.error === 'string' ? res.error : res.error.message || 'Server error'}`);
+        return;
+      }
+
+      const updatedItem = res.data || { ...editingCompanyMaster, ...payload };
+      const updatedCompanies = (db.company_masters || []).map((c) =>
+        c.id === editingCompanyMaster.id ? updatedItem : c
+      );
+
+      const updatedDb = addSecurityLog(
+        {
+          ...db,
+          company_masters: updatedCompanies,
+          company_units: updatedCompanies
+        },
+        'EDIT_COMPANY_MASTER',
+        currentUser?.username || 'admin',
+        'admin',
+        'COMPANY_EDITED ✏️'
+      );
+
+      updateDB(updatedDb);
+      setEditingCompanyMaster(null);
+      setArchiveNotice(`✏️ Company / Plant Master '${compName}' updated successfully in MySQL!`);
+      setTimeout(() => setArchiveNotice(''), 4000);
+    } catch (err) {
+      console.error('Company unit update error:', err);
+      alert(`❌ Error updating company unit: ${err.message}`);
+    }
   };
 
-  const handleDeleteCompanyMaster = (comp) => {
-    if (!window.confirm(`Delete company unit master '${comp.name}'?`)) return;
-    const updatedDb = addSecurityLog(
-      {
-        ...db,
-        company_masters: (db.company_masters || []).filter((c) => c.id !== comp.id)
-      },
-      'DELETE_COMPANY_MASTER',
-      currentUser?.username || 'admin',
-      'admin',
-      'COMPANY_DELETED 🛡️'
-    );
-    updateDB(updatedDb);
+  const handleDeleteCompanyMaster = async (comp) => {
+    if (!comp || !comp.id) return;
+    const compName = comp.name || comp.company_name || 'this plant unit';
+    if (!window.confirm(`Are you sure you want to delete company unit/plant master '${compName}'?`)) return;
+
+    try {
+      const res = await deleteCompanyUnit(comp.id);
+      if (res && res.error) {
+        alert(`❌ Failed to delete company unit: ${typeof res.error === 'string' ? res.error : res.error.message || 'Server error'}`);
+        return;
+      }
+
+      const updatedCompanies = (db.company_masters || []).filter((c) => c.id !== comp.id);
+
+      const updatedDb = addSecurityLog(
+        {
+          ...db,
+          company_masters: updatedCompanies,
+          company_units: updatedCompanies
+        },
+        'DELETE_COMPANY_MASTER',
+        currentUser?.username || 'admin',
+        'admin',
+        'COMPANY_DELETED 🛡️'
+      );
+      updateDB(updatedDb);
+
+      if (editingCompanyMaster && editingCompanyMaster.id === comp.id) {
+        setEditingCompanyMaster(null);
+      }
+
+      setArchiveNotice(`🗑️ Company / Plant Master '${compName}' deleted from MySQL.`);
+      setTimeout(() => setArchiveNotice(''), 4000);
+    } catch (err) {
+      console.error('Company unit delete error:', err);
+      alert(`❌ Error deleting company unit: ${err.message}`);
+    }
   };
 
   // 📑 1. REQUIREMENT TITLE MASTER FORM STATE & HANDLERS (WITH PICKUP & DROP LOCATIONS)

@@ -178,36 +178,299 @@ router.post('/products', authenticateToken, requireRole('admin'), async (req, re
 });
 
 // -------------------------------------------------------------
-// POST /api/company-units & GET /api/company-units — Dedicated Company Units API
+// Dedicated Company Units & Plants Master CRUD API
 // -------------------------------------------------------------
+async function ensureCompanyUnitsTableExists() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS company_units_plants (
+      id VARCHAR(100) PRIMARY KEY,
+      company_name VARCHAR(255) NOT NULL,
+      registered_address TEXT,
+      gstin VARCHAR(30),
+      pan VARCHAR(30),
+      contact_name VARCHAR(255),
+      email VARCHAR(255),
+      mobile VARCHAR(50),
+      state VARCHAR(100),
+      city VARCHAR(100),
+      district VARCHAR(100),
+      pin_code VARCHAR(20),
+      pickup_origin VARCHAR(255),
+      drop_location VARCHAR(255),
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+  `).catch((err) => console.warn('company_units_plants table creation notice:', err.message));
+}
+
+function formatCompanyUnitDto(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    company_name: row.company_name || row.name || '',
+    name: row.company_name || row.name || '',
+    registered_address: row.registered_address || row.address || '',
+    address: row.registered_address || row.address || '',
+    gstin: row.gstin || '',
+    pan: row.pan || row.pan_no || '',
+    pan_no: row.pan || row.pan_no || '',
+    contact_name: row.contact_name || row.proprietor_name || '',
+    proprietor_name: row.contact_name || row.proprietor_name || '',
+    email: row.email || '',
+    mobile: row.mobile || row.mobile_no || '',
+    mobile_no: row.mobile || row.mobile_no || '',
+    state: row.state || 'Maharashtra',
+    city: row.city || '',
+    district: row.district || '',
+    pin_code: row.pin_code || row.pincode || row.pin || '',
+    pincode: row.pin_code || row.pincode || row.pin || '',
+    pickup_origin: row.pickup_origin || row.pickup_location_name || '',
+    pickup_location_name: row.pickup_origin || row.pickup_location_name || '',
+    drop_location: row.drop_location || row.drop_location_name || '',
+    drop_location_name: row.drop_location || row.drop_location_name || '',
+    created_at: row.created_at || new Date().toISOString(),
+    updated_at: row.updated_at || new Date().toISOString()
+  };
+}
+
+// GET /api/company-units — List all Company Units / Plants
 router.get('/company-units', authenticateToken, async (req, res) => {
   try {
-    const [rows] = await pool.query('SELECT id, code, name, contact_name, gstin, pan, mobile, email, city, district, pin, address, status, created_at, updated_at FROM company_units ORDER BY name ASC LIMIT 200');
-    return res.json({ success: true, count: rows.length, company_units: rows });
+    await ensureCompanyUnitsTableExists();
+    const [rows] = await pool.query(
+      'SELECT id, company_name, registered_address, gstin, pan, contact_name, email, mobile, state, city, district, pin_code, pickup_origin, drop_location, created_at, updated_at FROM company_units_plants ORDER BY company_name ASC LIMIT 300'
+    );
+    const formatted = rows.map(formatCompanyUnitDto);
+    return res.json({ success: true, count: formatted.length, data: formatted, company_units: formatted });
   } catch (err) {
-    return res.status(503).json({ success: false, error: { code: 'DATABASE_UNAVAILABLE', message: err.message } });
+    console.error('❌ GET /api/company-units Error:', err.message);
+    return res.status(500).json({ success: false, error: { code: 'DATABASE_ERROR', message: err.message } });
   }
 });
 
+// POST /api/company-units — Create New Company Unit / Plant
 router.post('/company-units', authenticateToken, requireRole('admin'), async (req, res) => {
-  const { id, code, name, contact_name, gstin, pan, mobile, email, city, district, pin, address, status } = req.body;
-  if (!name) {
-    return res.status(400).json({ success: false, error: 'Company unit name required' });
-  }
-
-  const unitId = id || `unit_${Date.now()}`;
-  const unitCode = code || unitId;
   try {
+    await ensureCompanyUnitsTableExists();
+
+    const {
+      company_name, name,
+      registered_address, address,
+      gstin,
+      pan, pan_no,
+      contact_name, proprietor_name,
+      email,
+      mobile, mobile_no,
+      state,
+      city,
+      district,
+      pin_code, pincode,
+      pickup_origin, pickup_location_name,
+      drop_location, drop_location_name
+    } = req.body;
+
+    const compName = (company_name || name || '').trim();
+    if (!compName) {
+      return res.status(400).json({ success: false, error: 'Company / Plant Name is required.' });
+    }
+
+    const regAddress = (registered_address || address || '').trim();
+    const contactName = (contact_name || proprietor_name || '').trim();
+    const mob = (mobile || mobile_no || '').trim();
+    const st = (state || 'Maharashtra').trim();
+    const ct = (city || '').trim();
+    const dist = (district || '').trim();
+    const pin = (pin_code || pincode || '').trim();
+
+    if (!regAddress || !contactName || !mob || !st || !ct || !dist || !pin) {
+      return res.status(400).json({
+        success: false,
+        error: 'Company Name, Registered Address, Contact Name, Mobile, State, City, District, and PIN Code are required.'
+      });
+    }
+
+    if (email && email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+      return res.status(400).json({ success: false, error: 'Invalid email address format.' });
+    }
+
+    const unitId = req.body.id || `cup_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+
     const [result] = await pool.query(
-      `INSERT INTO company_units (id, code, name, contact_name, gstin, pan, mobile, email, city, district, pin, address, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-       ON DUPLICATE KEY UPDATE name = VALUES(name), contact_name = VALUES(contact_name), mobile = VALUES(mobile), email = VALUES(email), address = VALUES(address), status = VALUES(status), updated_at = NOW()`,
-      [unitId, unitCode, name.trim(), contact_name || '', gstin || '', pan || '', mobile || '', email || '', city || '', district || '', pin || '', address || '', status || 'Active']
+      `INSERT INTO company_units_plants (id, company_name, registered_address, gstin, pan, contact_name, email, mobile, state, city, district, pin_code, pickup_origin, drop_location)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE
+       company_name = VALUES(company_name),
+       registered_address = VALUES(registered_address),
+       gstin = VALUES(gstin),
+       pan = VALUES(pan),
+       contact_name = VALUES(contact_name),
+       email = VALUES(email),
+       mobile = VALUES(mobile),
+       state = VALUES(state),
+       city = VALUES(city),
+       district = VALUES(district),
+       pin_code = VALUES(pin_code),
+       pickup_origin = VALUES(pickup_origin),
+       drop_location = VALUES(drop_location),
+       updated_at = NOW()`,
+      [
+        unitId,
+        compName,
+        regAddress,
+        gstin ? gstin.trim() : null,
+        (pan || pan_no) ? (pan || pan_no).trim() : null,
+        contactName,
+        email ? email.trim() : null,
+        mob,
+        st,
+        ct,
+        dist,
+        pin,
+        (pickup_origin || pickup_location_name) ? (pickup_origin || pickup_location_name).trim() : null,
+        (drop_location || drop_location_name) ? (drop_location || drop_location_name).trim() : null
+      ]
     );
 
-    return res.json({ success: true, affectedRows: result.affectedRows, id: unitId, message: 'Company Unit saved to MySQL company_units table' });
+    const [fetched] = await pool.query('SELECT * FROM company_units_plants WHERE id = ?', [unitId]);
+    const dto = formatCompanyUnitDto(fetched[0]);
+
+    return res.json({
+      success: true,
+      affectedRows: result.affectedRows,
+      data: dto,
+      message: 'Company Unit / Plant Master created successfully'
+    });
+
   } catch (err) {
-    console.error('❌ MySQL Company Unit Error:', err.message);
+    console.error('❌ POST /api/company-units Error:', err.message);
+    return res.status(500).json({ success: false, error: { code: 'DATABASE_ERROR', message: err.message } });
+  }
+});
+
+// PUT /api/company-units/:id — Update Company Unit / Plant
+router.put('/company-units/:id', authenticateToken, requireRole('admin'), async (req, res) => {
+  const { id } = req.params;
+  if (!id) return res.status(400).json({ success: false, error: 'Company Unit ID required' });
+
+  try {
+    await ensureCompanyUnitsTableExists();
+
+    const {
+      company_name, name,
+      registered_address, address,
+      gstin,
+      pan, pan_no,
+      contact_name, proprietor_name,
+      email,
+      mobile, mobile_no,
+      state,
+      city,
+      district,
+      pin_code, pincode,
+      pickup_origin, pickup_location_name,
+      drop_location, drop_location_name
+    } = req.body;
+
+    const compName = (company_name || name || '').trim();
+    if (!compName) {
+      return res.status(400).json({ success: false, error: 'Company / Plant Name is required.' });
+    }
+
+    const regAddress = (registered_address || address || '').trim();
+    const contactName = (contact_name || proprietor_name || '').trim();
+    const mob = (mobile || mobile_no || '').trim();
+    const st = (state || 'Maharashtra').trim();
+    const ct = (city || '').trim();
+    const dist = (district || '').trim();
+    const pin = (pin_code || pincode || '').trim();
+
+    if (!regAddress || !contactName || !mob || !st || !ct || !dist || !pin) {
+      return res.status(400).json({
+        success: false,
+        error: 'Company Name, Registered Address, Contact Name, Mobile, State, City, District, and PIN Code are required.'
+      });
+    }
+
+    if (email && email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+      return res.status(400).json({ success: false, error: 'Invalid email address format.' });
+    }
+
+    const [result] = await pool.query(
+      `UPDATE company_units_plants
+       SET company_name = ?,
+           registered_address = ?,
+           gstin = ?,
+           pan = ?,
+           contact_name = ?,
+           email = ?,
+           mobile = ?,
+           state = ?,
+           city = ?,
+           district = ?,
+           pin_code = ?,
+           pickup_origin = ?,
+           drop_location = ?,
+           updated_at = NOW()
+       WHERE id = ?`,
+      [
+        compName,
+        regAddress,
+        gstin ? gstin.trim() : null,
+        (pan || pan_no) ? (pan || pan_no).trim() : null,
+        contactName,
+        email ? email.trim() : null,
+        mob,
+        st,
+        ct,
+        dist,
+        pin,
+        (pickup_origin || pickup_location_name) ? (pickup_origin || pickup_location_name).trim() : null,
+        (drop_location || drop_location_name) ? (drop_location || drop_location_name).trim() : null,
+        id
+      ]
+    );
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ success: false, error: 'Company Unit / Plant not found.' });
+    }
+
+    const [fetched] = await pool.query('SELECT * FROM company_units_plants WHERE id = ?', [id]);
+    const dto = formatCompanyUnitDto(fetched[0]);
+
+    return res.json({
+      success: true,
+      affectedRows: result.affectedRows,
+      data: dto,
+      message: 'Company Unit / Plant Master updated successfully'
+    });
+
+  } catch (err) {
+    console.error('❌ PUT /api/company-units Error:', err.message);
+    return res.status(500).json({ success: false, error: { code: 'DATABASE_ERROR', message: err.message } });
+  }
+});
+
+// DELETE /api/company-units/:id — Delete Company Unit / Plant
+router.delete('/company-units/:id', authenticateToken, requireRole('admin'), async (req, res) => {
+  const { id } = req.params;
+  if (!id) return res.status(400).json({ success: false, error: 'Company Unit ID required' });
+
+  try {
+    await ensureCompanyUnitsTableExists();
+
+    const [result] = await pool.query('DELETE FROM company_units_plants WHERE id = ?', [id]);
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ success: false, error: 'Company Unit / Plant not found.' });
+    }
+
+    return res.json({
+      success: true,
+      affectedRows: result.affectedRows,
+      message: 'Company Unit / Plant Master deleted successfully'
+    });
+
+  } catch (err) {
+    console.error('❌ DELETE /api/company-units Error:', err.message);
     return res.status(500).json({ success: false, error: { code: 'DATABASE_ERROR', message: err.message } });
   }
 });
