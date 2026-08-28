@@ -1437,7 +1437,10 @@ router.post('/backup/restore', authenticateToken, requireRole('admin'), async (r
     await conn.beginTransaction();
     await conn.query('SET FOREIGN_KEY_CHECKS = 0');
 
-    const rawStatements = sqlText.split(';\n');
+    const rawStatements = sqlText
+      .split(/;(?=\s*(?:--|$|\r?\n))/)
+      .map(s => s.trim())
+      .filter(s => s.length > 0);
 
     let executedCount = 0;
     for (const rawStmt of rawStatements) {
@@ -1448,7 +1451,10 @@ router.post('/backup/restore', authenticateToken, requireRole('admin'), async (r
         .trim();
 
       if (cleanStmt.length > 0) {
-        const finalStmt = cleanStmt.replace(/^CREATE TABLE /i, 'CREATE TABLE IF NOT EXISTS ');
+        let finalStmt = cleanStmt;
+        if (/^CREATE TABLE\s+/i.test(finalStmt) && !/CREATE TABLE IF NOT EXISTS/i.test(finalStmt)) {
+          finalStmt = finalStmt.replace(/^CREATE TABLE\s+/i, 'CREATE TABLE IF NOT EXISTS ');
+        }
         await conn.query(finalStmt);
         executedCount++;
       }
