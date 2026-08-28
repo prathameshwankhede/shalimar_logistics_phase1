@@ -160,6 +160,17 @@ async function ensureProductsTableExists() {
         updated_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
     `);
+
+    const cols = [
+      "code VARCHAR(100)",
+      "category VARCHAR(255)",
+      "hsn_code VARCHAR(50)",
+      "default_unit VARCHAR(50) DEFAULT 'MT'",
+      "status VARCHAR(50) DEFAULT 'Active'"
+    ];
+    for (const colDef of cols) {
+      await pool.query(`ALTER TABLE products ADD COLUMN ${colDef}`).catch(() => {});
+    }
   } catch (err) {
     console.warn('products table creation notice:', err.message);
   }
