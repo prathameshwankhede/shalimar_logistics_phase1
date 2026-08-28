@@ -71,9 +71,15 @@ export async function getTransportersList() {
     id: t.id,
     company_name: t.company_name,
     code: t.code,
-    mobile: t.mobile,
-    email: t.email,
-    status: t.status
+    contact_person: t.contact_person || '',
+    mobile: t.mobile || '',
+    email: t.email || '',
+    gstin: t.gstin || '',
+    pan: t.pan || '',
+    address: t.address || '',
+    username: t.username || '',
+    status: t.status || 'Active',
+    created_at: t.created_at ? new Date(t.created_at).toISOString() : new Date().toISOString()
   }));
 }
 
