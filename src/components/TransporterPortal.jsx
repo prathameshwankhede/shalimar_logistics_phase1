@@ -68,42 +68,65 @@ export const TransporterPortal = () => {
   };
 
   const [selectedReqForBid, setSelectedReqForBid] = useState(null);
-  const [quickRates, setQuickRates] = useState({}); // 1-Line Express input rate state per req id
+  const [quickRates, setQuickRates] = useState({}); // 1-Line Express input rate state per sub-indent key
   const [selectedDispatchSlip, setSelectedDispatchSlip] = useState(null);
+
+  const getSubIndentKey = (req) => {
+    if (!req) return 'unknown';
+    if (req.id && req.item_id) return `${req.id}_${req.item_id}`;
+    if (req.item_id) return String(req.item_id);
+    if (req.sub_indent_id) return String(req.sub_indent_id);
+    if (req.sub_indent_no) return String(req.sub_indent_no);
+    if (req.request_no) return String(req.request_no);
+    return String(req.id);
+  };
 
   const handleBatchSubmitAll = (batchKey, items) => {
     const openItems = (items || []).filter((req) => req.status !== 'Awarded');
     
-    // Check which items have rates typed in quickRates
+    // Check which items have rates typed in quickRates using getSubIndentKey
     const filledItems = openItems.filter((req) => {
-      const val = parseFloat(quickRates[req.id]);
+      const key = getSubIndentKey(req);
+      const val = parseFloat(quickRates[key]);
       return val && !isNaN(val) && val > 0;
     });
 
     if (filledItems.length === 0) {
-      alert('Please enter rate (₹/MT) for at least one item in this batch to submit.');
+      alert('Please enter rate (₹/MT) for at least one sub-indent in this batch to submit.');
       return;
     }
 
     let updatedSubmissions = [...(db.rate_submissions || [])];
-
     const transId = currentTransporter?.id || currentTransporter?.code || currentTransporter?.username || 'transporter';
 
     filledItems.forEach((req) => {
-      const rateVal = parseFloat(quickRates[req.id]);
+      const key = getSubIndentKey(req);
+      const rateVal = parseFloat(quickRates[key]);
+      const parentReqId = req.requirement_id || req.id;
+      const targetItemId = req.item_id || req.sub_indent_id || req.id;
+      const subIndentNo = req.sub_indent_no || req.request_no || req.id;
+      const qtyVal = Number(req.required_qty || req.quantity_mt || 0);
+      const totalCalcAmount = parseFloat((rateVal * qtyVal).toFixed(2));
+
       const existingIdx = updatedSubmissions.findIndex(
-        (s) => (String(s.rate_request_id) === String(req.id) || String(s.rate_request_id) === String(req.request_no)) &&
+        (s) => (String(s.requirement_id || s.rate_request_id) === String(parentReqId) || String(s.rate_request_id) === String(req.parent_req_no)) &&
+               (String(s.item_id) === String(targetItemId) || String(s.item_id) === String(subIndentNo)) &&
                (String(s.transporter_id) === String(transId) || String(s.transporter_id) === String(currentTransporter?.code) || String(s.transporter_id) === String(currentTransporter?.username))
       );
 
-      const totalValue = rateVal * (Number(req.required_qty) || 0);
-
       const subObj = {
-        id: existingIdx >= 0 ? updatedSubmissions[existingIdx].id : `sub_${(transId).toLowerCase()}_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
-        rate_request_id: req.id,
+        ...(existingIdx >= 0 ? updatedSubmissions[existingIdx] : {}),
+        id: existingIdx >= 0 ? updatedSubmissions[existingIdx].id : `sub_${(transId).toLowerCase()}_${targetItemId}_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+        requirement_id: parentReqId,
+        rate_request_id: parentReqId,
+        item_id: targetItemId,
         transporter_id: transId,
+        transporter_name: currentTransporter?.company_name || transId,
         rate_per_unit: rateVal,
-        total_estimated_amount: totalValue,
+        rate_per_mt: rateVal,
+        quoted_quantity_mt: qtyVal,
+        total_estimated_amount: totalCalcAmount,
+        total_amount: totalCalcAmount,
         transit_days: '2',
         status: 'Submitted',
         submitted_at: new Date().toISOString()
@@ -112,19 +135,26 @@ export const TransporterPortal = () => {
       if (existingIdx >= 0) {
         updatedSubmissions[existingIdx] = subObj;
       } else {
-        updatedSubmissions.push(subObj);
+        updatedSubmissions.unshift(subObj);
       }
 
       // Persist bid directly to MySQL rate_submissions table via API
       submitBid({
         id: subObj.id,
-        rate_request_id: req.id,
-        request_no: req.request_no || req.id,
+        requirement_id: parentReqId,
+        rate_request_id: parentReqId,
+        item_id: targetItemId,
+        request_no: subIndentNo,
         transporter_id: transId,
         transporter_name: currentTransporter?.company_name || transId,
         rate_per_unit: rateVal,
+        rate_per_mt: rateVal,
+        quoted_quantity_mt: qtyVal,
+        total_amount: totalCalcAmount,
         status: 'Submitted'
       }).catch(err => console.error('Batch bid persistence warning:', err.message));
+
+      setQuickRates((prev) => ({ ...prev, [key]: '' }));
     });
 
     const updatedDb = addSecurityLog(
@@ -343,17 +373,26 @@ export const TransporterPortal = () => {
       return;
     }
 
-    const rawInput = quickRates[req.id] || quickRates[String(req.id)] || (req.request_no ? quickRates[req.request_no] : null);
+    const rateKey = getSubIndentKey(req);
+    const rawInput = quickRates[rateKey] !== undefined ? quickRates[rateKey] : quickRates[req.id];
     const rateVal = parseFloat(String(rawInput || '').replace(/,/g, '').trim());
     if (!rateVal || isNaN(rateVal) || rateVal <= 0) {
       alert('Please enter a valid freight rate per MT (e.g. 2450).');
       return;
     }
 
+    const parentReqId = req.requirement_id || req.id;
+    const targetItemId = req.item_id || req.sub_indent_id || req.id;
+    const subIndentNo = req.sub_indent_no || req.request_no || req.id;
+    const qtyVal = Number(req.required_qty || req.quantity_mt || 0);
+    const totalCalcAmount = parseFloat((rateVal * qtyVal).toFixed(2));
+    const transId = currentTransporter?.id || currentTransporter?.code || currentTransporter?.username || 'transporter';
+
     let updatedSubmissions = [...(db.rate_submissions || [])];
     const existingIdx = updatedSubmissions.findIndex(
-      (s) => (String(s.rate_request_id) === String(req.id) || String(s.rate_request_id) === String(req.request_no)) &&
-             (String(s.transporter_id) === String(currentTransporter.id) || String(s.transporter_id) === String(currentTransporter.code) || String(s.transporter_id) === String(currentTransporter.username))
+      (s) => (String(s.requirement_id || s.rate_request_id) === String(parentReqId) || String(s.rate_request_id) === String(req.parent_req_no)) &&
+             (String(s.item_id) === String(targetItemId) || String(s.item_id) === String(subIndentNo)) &&
+             (String(s.transporter_id) === String(transId) || String(s.transporter_id) === String(currentTransporter?.code) || String(s.transporter_id) === String(currentTransporter?.username))
     );
 
     if (existingIdx >= 0 && updatedSubmissions[existingIdx].is_frozen) {
@@ -369,16 +408,20 @@ export const TransporterPortal = () => {
       return;
     }
 
-    const transId = currentTransporter?.id || currentTransporter?.code || currentTransporter?.username || 'transporter';
-
-    const newSubId = existingIdx >= 0 ? updatedSubmissions[existingIdx].id : `sub_${(transId).toLowerCase()}_${Date.now()}`;
+    const newSubId = existingIdx >= 0 ? updatedSubmissions[existingIdx].id : `sub_${(transId).toLowerCase()}_${targetItemId}_${Date.now()}`;
     const subObj = {
       ...(existingIdx >= 0 ? updatedSubmissions[existingIdx] : {}),
       id: newSubId,
-      rate_request_id: req.id,
+      requirement_id: parentReqId,
+      rate_request_id: parentReqId,
+      item_id: targetItemId,
       transporter_id: transId,
+      transporter_name: currentTransporter?.company_name || transId,
       rate_per_unit: rateVal,
-      total_estimated_amount: rateVal * (Number(req.required_qty) || 0),
+      rate_per_mt: rateVal,
+      quoted_quantity_mt: qtyVal,
+      total_estimated_amount: totalCalcAmount,
+      total_amount: totalCalcAmount,
       transit_days: 2,
       notes: 'Fast 1-line quote submitted.',
       status: 'Submitted',
@@ -398,11 +441,16 @@ export const TransporterPortal = () => {
     // Persist bid directly to MySQL rate_submissions table via API
     submitBid({
       id: subObj.id,
-      rate_request_id: req.id,
-      request_no: req.request_no || req.id,
+      requirement_id: parentReqId,
+      rate_request_id: parentReqId,
+      item_id: targetItemId,
+      request_no: subIndentNo,
       transporter_id: transId,
       transporter_name: currentTransporter?.company_name || transId,
       rate_per_unit: rateVal,
+      rate_per_mt: rateVal,
+      quoted_quantity_mt: qtyVal,
+      total_amount: totalCalcAmount,
       status: 'Submitted'
     }).catch(err => console.error('Quick bid persistence warning:', err.message));
 
@@ -411,16 +459,15 @@ export const TransporterPortal = () => {
         ...db,
         rate_submissions: updatedSubmissions
       },
-      `SUBMIT_RATE_BID (Updated ₹${rateVal}/MT for ${req.request_no})`,
+      `SUBMIT_RATE_BID (Updated ₹${rateVal}/MT for ${subIndentNo})`,
       currentTransporter.company_name,
       'transporter',
       'BID_SUBMITTED 🛡️'
     );
 
     updateDB(updatedDb);
-    alert(`🎉 SUCCESS: Quote rate ₹${rateVal.toLocaleString()}/MT saved & updated for ${req.request_no}!`);
-    setSuccessNotice(`⚡ Quote rate ₹${rateVal.toLocaleString()}/MT saved & updated for ${req.request_no}!`);
-    setQuickRates((prev) => ({ ...prev, [req.id]: '' }));
+    setSuccessNotice(`⚡ Quote rate ₹${rateVal.toLocaleString()}/MT saved & updated for ${subIndentNo}!`);
+    setQuickRates((prev) => ({ ...prev, [rateKey]: '' }));
     setTimeout(() => setSuccessNotice(''), 5000);
   };
 
@@ -1177,7 +1224,8 @@ export const TransporterPortal = () => {
                                                   (String(s.item_id) === String(req.item_id) || String(s.item_id) === String(req.sub_indent_no) || String(s.item_id) === String(req.request_no) || !req.item_id)
                                                 );
                                                const isAwarded = req.status === 'Awarded';
-                                               const currentInputRate = quickRates[req.id] || '';
+                                               const subKey = getSubIndentKey(req);
+                                               const currentInputRate = quickRates[subKey] !== undefined ? quickRates[subKey] : '';
                                                const displayCode = req.request_no || req.title || 'REQ';
 
                                                return (
@@ -1253,9 +1301,9 @@ export const TransporterPortal = () => {
                                                                       value={currentInputRate}
                                                                       onChange={(e) => {
                                                                         const val = e.target.value;
+                                                                        const key = getSubIndentKey(req);
                                                                         setQuickRates((prev) => ({
                                                                           ...prev,
-                                                                          [req.id]: val,
                                                                           [String(req.id)]: val,
                                                                           ...(req.request_no ? { [req.request_no]: val } : {})
                                                                         }));

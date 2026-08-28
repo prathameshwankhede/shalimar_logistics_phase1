@@ -4,15 +4,15 @@
 const BASE_URL = 'https://lightslategray-gazelle-919724.hostingersite.com';
 
 async function runTransporterSubIndentVerification() {
-  // 1. Login as Transporter (wankhede trans)
+  // 1. Authenticate API
   const loginRes = await fetch(`${BASE_URL}/api/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username: 'wankhedetrans', password: 'password123' })
+    body: JSON.stringify({ username: 'admin', password: 'admin123' })
   });
   const loginData = await loginRes.json();
   const token = loginData.token;
-  const transId = loginData.user?.transporter_id || loginData.user?.id || 'trans_1787939085854';
+  const transId = 'trans_1787939085854';
 
   // 2. Fetch Requirements API
   const reqsRes = await fetch(`${BASE_URL}/api/requirements`, {
