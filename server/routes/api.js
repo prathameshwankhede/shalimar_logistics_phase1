@@ -1454,8 +1454,8 @@ router.post('/backup/restore', authenticateToken, requireRole('admin'), async (r
 
     for (const tbl of childFirstClearSequence) {
       if (existingTableNames.includes(tbl)) {
-        await conn.query(`DELETE FROM \`${tbl}\``).catch(err => {
-          console.warn(`Notice clearing ${tbl} before restore:`, err.message);
+        await conn.query(`TRUNCATE TABLE \`${tbl}\``).catch(async () => {
+          await conn.query(`DELETE FROM \`${tbl}\``).catch(() => {});
         });
       }
     }
