@@ -855,8 +855,8 @@ export const AdminDashboard = () => {
   // 📦 PRODUCT MASTER FORM STATE & HANDLERS
   const [newProductMaster, setNewProductMaster] = useState({
     name: '',
-    category: 'Liquid Edible Bulk',
-    hsn_code: '15071000',
+    category: '',
+    hsn_code: '',
     unit: 'MT'
   });
 
@@ -866,8 +866,8 @@ export const AdminDashboard = () => {
     const newProdObj = {
       id: `prod_${Date.now()}`,
       name: newProductMaster.name.trim(),
-      category: newProductMaster.category.trim() || 'General Bulk Cargo',
-      hsn_code: newProductMaster.hsn_code.trim() || '15071000',
+      category: newProductMaster.category.trim(),
+      hsn_code: newProductMaster.hsn_code.trim(),
       unit: newProductMaster.unit || 'MT'
     };
 
@@ -886,8 +886,8 @@ export const AdminDashboard = () => {
     updateDB(updatedDb);
     setNewProductMaster({
       name: '',
-      category: 'Liquid Edible Bulk',
-      hsn_code: '15071000',
+      category: '',
+      hsn_code: '',
       unit: 'MT'
     });
     setIsAddProductModalOpen(false);
@@ -3201,7 +3201,7 @@ export const AdminDashboard = () => {
                       Company apne saare agri commodities, edible oils, raw seeds, and cargo materials yahan add karke store kar sakti hai.
                     </p>
                   </div>
-                  <button onClick={() => setIsAddProductModalOpen(true)} className="btn btn-success" style={{ fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <button onClick={() => { setNewProductMaster({ name: '', category: '', hsn_code: '', unit: 'MT' }); setIsAddProductModalOpen(true); }} className="btn btn-success" style={{ fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
                     <Plus size={15} /> Add New Product Master
                   </button>
                 </div>
@@ -4237,12 +4237,24 @@ export const AdminDashboard = () => {
                 />
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '20px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 0.8fr', gap: '12px', marginBottom: '20px' }}>
+                <div className="form-group">
+                  <label className="form-label">Product Category</label>
+                  <input
+                    type="text"
+                    className="form-control"
+                    placeholder="e.g. Liquid Edible Bulk"
+                    value={editingProductMaster.category || ''}
+                    onChange={(e) => setEditingProductMaster({ ...editingProductMaster, category: e.target.value })}
+                  />
+                </div>
+
                 <div className="form-group">
                   <label className="form-label">HSN / SAC Code</label>
                   <input
                     type="text"
                     className="form-control"
+                    placeholder="e.g. 15071000"
                     value={editingProductMaster.hsn_code || ''}
                     onChange={(e) => setEditingProductMaster({ ...editingProductMaster, hsn_code: e.target.value })}
                   />
