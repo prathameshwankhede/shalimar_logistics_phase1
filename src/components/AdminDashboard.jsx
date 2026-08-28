@@ -2258,15 +2258,16 @@ export const AdminDashboard = () => {
                         const pickupStr = req.pickup_origin || req.origin_city || 'Origin';
                         const dropStr = req.drop_location || req.dest_city || 'Destination';
                         const childItems = req.items && Array.isArray(req.items) ? req.items : [];
+                        const isMultiItemBatch = childItems.length > 1;
                         const totalQty = req.total_quantity_mt || req.required_qty || req.quantity_mt || 0;
                         const bids = (db.rate_submissions || []).filter((s) => String(s.rate_request_id) === String(req.id) || String(s.rate_request_id) === String(reqNoStr));
                         const validRates = bids.map((b) => parseFloat(b.rate_per_unit)).filter((r) => !isNaN(r));
                         const lowestRate = validRates.length > 0 ? Math.min(...validRates) : null;
-                        const isExpanded = expandedBatches[reqNoStr] || expandedBatches[req.id] || false;
+                        const isExpanded = isMultiItemBatch && (expandedBatches[reqNoStr] || expandedBatches[req.id] || false);
 
                         return (
                           <React.Fragment key={req.id}>
-                            {/* 1. MASTER BATCH ROW */}
+                            {/* 1. MASTER REQUIREMENT ROW */}
                             <tr style={{ borderBottom: isExpanded ? 'none' : '1px solid rgba(255, 255, 255, 0.08)', background: isExpanded ? 'rgba(2, 132, 199, 0.15)' : 'transparent' }}>
                               {/* 1. REQ NO. */}
                               <td>
@@ -2298,14 +2299,25 @@ export const AdminDashboard = () => {
 
                               {/* 3. CARGO & QTY */}
                               <td>
-                                <div>
-                                  <div style={{ fontWeight: '900', color: '#38bdf8', fontSize: '0.95rem' }}>
-                                    {Number(totalQty).toLocaleString()} MT Total
+                                {isMultiItemBatch ? (
+                                  <div>
+                                    <div style={{ fontWeight: '900', color: '#38bdf8', fontSize: '0.95rem' }}>
+                                      {Number(totalQty).toLocaleString()} MT Total
+                                    </div>
+                                    <div style={{ fontSize: '0.78rem', color: '#34d399', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}>
+                                      📦 Batch ({childItems.length} Cargo Items)
+                                    </div>
                                   </div>
-                                  <div style={{ fontSize: '0.78rem', color: '#34d399', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}>
-                                    📦 Batch ({childItems.length > 0 ? childItems.length : 1} Cargo {childItems.length === 1 ? 'Item' : 'Items'})
+                                ) : (
+                                  <div>
+                                    <div style={{ fontWeight: '900', color: '#38bdf8', fontSize: '0.9rem' }}>
+                                      {Number(totalQty).toLocaleString()} {req.unit || 'MT'}
+                                    </div>
+                                    <div style={{ fontSize: '0.78rem', color: 'var(--text-sub)' }}>
+                                      {childItems[0]?.product_name || req.material_type || req.product_name || 'General Cargo'}
+                                    </div>
                                   </div>
-                                </div>
+                                )}
                               </td>
 
                               {/* 4. TARGET DATE */}
@@ -2369,26 +2381,28 @@ export const AdminDashboard = () => {
                               {/* 8. ACTIONS */}
                               <td style={{ textAlign: 'right' }}>
                                 <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
-                                  <button
-                                    type="button"
-                                    onClick={() => toggleBatchExpand(reqNoStr)}
-                                    className="btn btn-primary"
-                                    style={{
-                                      background: isExpanded ? 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)' : 'linear-gradient(135deg, #0284c7 0%, #38bdf8 100%)',
-                                      border: '1.5px solid #7dd3fc',
-                                      padding: '6px 14px',
-                                      fontSize: '0.8rem',
-                                      fontWeight: '900',
-                                      borderRadius: '8px',
-                                      display: 'inline-flex',
-                                      alignItems: 'center',
-                                      gap: '6px',
-                                      cursor: 'pointer',
-                                      boxShadow: '0 0 12px rgba(2, 132, 199, 0.4)'
-                                    }}
-                                  >
-                                    {isExpanded ? `📂 Close Batch 🔼` : `📂 Open Batch (${childItems.length > 0 ? childItems.length : 1} Items) 🔽`}
-                                  </button>
+                                  {isMultiItemBatch && (
+                                    <button
+                                      type="button"
+                                      onClick={() => toggleBatchExpand(reqNoStr)}
+                                      className="btn btn-primary"
+                                      style={{
+                                        background: isExpanded ? 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)' : 'linear-gradient(135deg, #0284c7 0%, #38bdf8 100%)',
+                                        border: '1.5px solid #7dd3fc',
+                                        padding: '6px 14px',
+                                        fontSize: '0.8rem',
+                                        fontWeight: '900',
+                                        borderRadius: '8px',
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '6px',
+                                        cursor: 'pointer',
+                                        boxShadow: '0 0 12px rgba(2, 132, 199, 0.4)'
+                                      }}
+                                    >
+                                      {isExpanded ? `📂 Close Batch 🔼` : `📂 Open Batch (${childItems.length} Items) 🔽`}
+                                    </button>
+                                  )}
                                   <button
                                     type="button"
                                     onClick={() => setSelectedRequestForParticularReport(req)}
@@ -2439,8 +2453,8 @@ export const AdminDashboard = () => {
                               </td>
                             </tr>
 
-                            {/* 2. EXPANDED SUB-ITEMS ACCORDION DRAWER CONTAINER */}
-                            {isExpanded && (
+                            {/* 2. EXPANDED SUB-ITEMS ACCORDION DRAWER CONTAINER (ONLY FOR MULTI-ITEM BATCHES) */}
+                            {isExpanded && isMultiItemBatch && (
                               <tr key={`expanded_${req.id}`}>
                                 <td colSpan="8" style={{ padding: '16px 20px 24px 20px', background: '#0f172a', borderBottom: '2px solid #0284c7' }}>
                                   <div style={{
@@ -2464,7 +2478,7 @@ export const AdminDashboard = () => {
                                             </span>
                                           </div>
                                           <div style={{ fontSize: '0.8rem', color: '#94a3b8', fontWeight: '700', marginTop: '2px' }}>
-                                            Showing all {childItems.length > 0 ? childItems.length : 1} sub-indents ({reqNoStr}/01 to {reqNoStr}/{(childItems.length > 0 ? childItems.length : 1).toString().padStart(2, '0')})
+                                            Showing all {childItems.length} sub-indents ({reqNoStr}/01 to {reqNoStr}/{childItems.length.toString().padStart(2, '0')})
                                           </div>
                                         </div>
                                       </div>
@@ -2510,8 +2524,8 @@ export const AdminDashboard = () => {
                                           </tr>
                                         </thead>
                                         <tbody>
-                                          {(childItems.length > 0 ? childItems : [req]).map((item, subIdx) => {
-                                            const subCode = (childItems.length > 1) ? `${reqNoStr}/${(subIdx + 1).toString().padStart(2, '0')}` : reqNoStr;
+                                          {childItems.map((item, subIdx) => {
+                                            const subCode = `${reqNoStr}/${(subIdx + 1).toString().padStart(2, '0')}`;
                                             return (
                                               <tr key={item.id || subIdx} style={{ background: subIdx % 2 === 0 ? '#0f172a' : '#1e293b', borderBottom: '1px solid rgba(255, 255, 255, 0.05)' }}>
                                                 <td style={{ padding: '12px 16px' }}>
