@@ -467,6 +467,7 @@ router.post('/admin/execute-database-reset', authenticateToken, requireRole('adm
 // -------------------------------------------------------------
 router.post('/admin/execute-database-drop', authenticateToken, requireRole('admin'), async (req, res) => {
   try {
+    IN_MEMORY_CACHE = null;
     const report = await runApprovedProductionDrop();
     return res.json({ success: true, report });
   } catch (err) {
@@ -478,7 +479,28 @@ router.post('/admin/execute-database-drop', authenticateToken, requireRole('admi
 // GET /api/state — Backward Compatible State (Authenticated & Role Scoped)
 // -------------------------------------------------------------
 router.get('/state', authenticateToken, async (req, res) => {
-  let state = IN_MEMORY_CACHE || { ...INITIAL_SEED_DATA };
+  const emptyState = {
+    company: INITIAL_SEED_DATA.company,
+    do_master_settings: INITIAL_SEED_DATA.do_master_settings,
+    company_masters: [],
+    product_masters: [],
+    cargo_masters: [],
+    title_masters: [],
+    city_masters: [],
+    company_units: [],
+    products: [],
+    cities: [],
+    transport_titles: [],
+    transporters: [],
+    users: [],
+    rate_requests: [],
+    rate_submissions: [],
+    contracts: [],
+    dispatches: [],
+    security_audit_logs: []
+  };
+
+  let state = IN_MEMORY_CACHE || emptyState;
 
   try {
     const [rows] = await pool.query('SELECT data FROM app_database WHERE id = ?', [CLOUD_ROW_ID]);
@@ -488,9 +510,14 @@ router.get('/state', authenticateToken, async (req, res) => {
         state = parsed;
         IN_MEMORY_CACHE = state;
       }
+    } else if (!IN_MEMORY_CACHE) {
+      state = emptyState;
     }
   } catch (err) {
     console.warn('MySQL state load warning:', err.message);
+    if (!IN_MEMORY_CACHE) {
+      state = emptyState;
+    }
   }
 
   if (req.user.role === 'transporter') {
