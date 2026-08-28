@@ -293,6 +293,7 @@ export const AuthProvider = ({ children }) => {
         return { success: false, error: json.error || 'Invalid Username or Password' };
       }
     } catch (err) {
+      console.error('Login API Error:', err.message);
       let currentDb = db;
       let found = (currentDb.users || []).find((u) => {
         const matchUser = (u?.username || "").toLowerCase() === cleanUser;
@@ -302,6 +303,24 @@ export const AuthProvider = ({ children }) => {
         }
         return u.password ? u.password === cleanPass : (cleanPass === 'password123' || cleanPass === 'admin123');
       });
+
+      if (!found) {
+        let foundTrans = (currentDb.transporters || []).find((t) => {
+          const matchCode = (t?.code || "").toLowerCase() === cleanUser;
+          const matchUser = (t?.username || "").toLowerCase() === cleanUser;
+          return (matchCode || matchUser) && t.status !== 'Inactive' && t.status !== 'Deactivated' && t.status !== 'Suspended';
+        });
+
+        if (foundTrans) {
+          found = {
+            id: foundTrans.id,
+            username: foundTrans.username || foundTrans.code,
+            name: foundTrans.company_name,
+            role: 'transporter',
+            transporter_id: foundTrans.id
+          };
+        }
+      }
 
       if (found) {
         const { password: p, password_hash: ph, ...safeUser } = found;
