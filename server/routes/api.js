@@ -378,7 +378,7 @@ async function handleCreateRateSubmission(req, res) {
 
     // Verify parent requirement exists
     const [reqRows] = await pool.query(
-      'SELECT id, req_no, status, total_quantity_mt FROM transport_requirements WHERE id = ? OR req_no = ? LIMIT 1',
+      'SELECT id, req_no, status FROM transport_requirements WHERE id = ? OR req_no = ? LIMIT 1',
       [targetReqId, targetReqId]
     );
 
@@ -402,7 +402,14 @@ async function handleCreateRateSubmission(req, res) {
     const actualTransId = transRows[0]?.id || targetTransporterId;
     const transName = transRows[0]?.company_name || targetTransporterId;
 
-    const qtyVal = parseFloat(quoted_quantity_mt || required_qty) || parseFloat(reqRecord.total_quantity_mt || 0) || null;
+    let totalCargoQty = 0;
+    const [childItems] = await pool.query(
+      'SELECT quantity_mt FROM transport_requirement_items WHERE requirement_id = ?',
+      [actualReqId]
+    );
+    (childItems || []).forEach((i) => { totalCargoQty += parseFloat(i.quantity_mt || 0); });
+
+    const qtyVal = parseFloat(quoted_quantity_mt || required_qty) || totalCargoQty || null;
     const totalAmount = qtyVal ? parseFloat((rateVal * qtyVal).toFixed(2)) : null;
     const subId = id || `rate_sub_${actualTransId}_${Date.now()}`;
     const subStatus = status || 'Submitted';
