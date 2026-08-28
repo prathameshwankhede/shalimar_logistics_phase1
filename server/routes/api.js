@@ -8,6 +8,7 @@ import { runApprovedProductionDrop } from '../services/dropRunner.js';
 import { runProductionCleanup } from '../../scratch/drop_all_current_application_tables.mjs';
 import { executeCreateTransportersTable } from '../services/createTransportersTable.js';
 import { verifyNoAutoRecreation } from '../services/verifyNoAutoRecreation.js';
+import { fetchTransportersList } from '../repositories/stateRepository.js';
 import {
   handleGetDashboard,
   handleGetRateRequests,
