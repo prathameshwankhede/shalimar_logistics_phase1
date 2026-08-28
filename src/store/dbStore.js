@@ -152,6 +152,17 @@ export async function fetchProductsList() {
   }
 }
 
+export async function fetchRequirementsList() {
+  try {
+    const res = await fetch(`${getApiBaseUrl()}/api/requirements`, { headers: getAuthHeaders() });
+    if (!res.ok) return [];
+    const json = await res.json();
+    return json.data || json.requirements || json.rate_requests || [];
+  } catch (e) {
+    return [];
+  }
+}
+
 export async function fetchMasterData() {
   try {
     const res = await fetch(`${getApiBaseUrl()}/api/master-data`, { headers: getAuthHeaders() });
@@ -283,6 +294,21 @@ export async function loadDBFromSupabase() {
       }
     } catch (err) {
       console.warn('Live products fetch notice:', err.message);
+    }
+
+    // Always fetch live transport requirements list from MySQL database
+    try {
+      const liveRequirements = await fetchRequirementsList();
+      if (Array.isArray(liveRequirements)) {
+        data = {
+          ...(data || EMPTY_STATE),
+          rate_requests: liveRequirements,
+          transport_requirements: liveRequirements,
+          requirements: liveRequirements
+        };
+      }
+    } catch (err) {
+      console.warn('Live requirements fetch notice:', err.message);
     }
 
     return data;

@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { createRateRequest } from '../api/rateRequestApi';
+import { createRateRequest, createRequirement, updateRequirement, deleteRequirement } from '../api/rateRequestApi';
 import { createTransporter, updateTransporterStatus, resetTransporterPassword } from '../api/transporterApi';
 import { createProduct, updateProduct, deleteProduct, createCompanyUnit, updateCompanyUnit, deleteCompanyUnit } from '../api/masterDataApi';
 import { CreateRequirementModal } from './CreateRequirementModal';
@@ -1199,17 +1199,22 @@ export const AdminDashboard = () => {
       }
     });
 
-    // Execute direct REST API calls for each created rate requirement
+    // Execute direct REST API calls for created rate requirements via dedicated POST /api/requirements
     try {
-      await Promise.all(newRequests.map((req) => createRateRequest(req)));
+      const apiRes = await createRequirement(newRequests);
+      if (apiRes && apiRes.error) {
+        alert(`❌ Failed to save requirement to MySQL: ${typeof apiRes.error === 'string' ? apiRes.error : apiRes.error.message || 'Server error'}`);
+        return;
+      }
     } catch (err) {
-      console.error('Direct rate request REST API error:', err.message);
+      console.error('Direct rate requirement REST API error:', err.message);
     }
 
     const updatedDb = addSecurityLog(
       {
         ...db,
         rate_requests: [...newRequests, ...(db.rate_requests || [])],
+        transport_requirements: [...newRequests, ...(db.transport_requirements || [])],
         whatsapp_notifications: [...newNotifications, ...(db.whatsapp_notifications || [])]
       },
       `BULK_CREATE_RATE_REQUIREMENTS (${batchCode})`,
@@ -1249,29 +1254,52 @@ export const AdminDashboard = () => {
     setEditingReq({ ...req });
   };
 
-  const handleSaveEditRequirement = (e) => {
+  const handleSaveEditRequirement = async (e) => {
     e.preventDefault();
     if (!editingReq) return;
 
-    const updatedRequests = (db.rate_requests || []).map((r) =>
-      r.id === editingReq.id ? editingReq : r
-    );
+    const payload = {
+      pickup_origin: editingReq.origin_city || editingReq.pickup_origin,
+      drop_location: editingReq.dest_city || editingReq.drop_location,
+      product_name: editingReq.material_type || editingReq.product_name,
+      quantity_mt: Number(editingReq.required_qty || editingReq.quantity_mt || 0),
+      target_date: editingReq.target_date,
+      status: editingReq.status || 'Active',
+      approval_status: editingReq.approval_status || 'Pending'
+    };
 
-    const updatedDb = addSecurityLog(
-      {
-        ...db,
-        rate_requests: updatedRequests
-      },
-      'EDIT_RATE_REQUIREMENT',
-      currentUser?.username || 'admin',
-      'admin',
-      'REQUIREMENT_EDITED ✏️'
-    );
+    try {
+      const res = await updateRequirement(editingReq.id, payload);
+      if (res && res.error) {
+        alert(`❌ Failed to update requirement: ${typeof res.error === 'string' ? res.error : res.error.message || 'Server error'}`);
+        return;
+      }
 
-    updateDB(updatedDb);
-    setEditingReq(null);
-    setArchiveNotice(`✏️ Transport Indent '${editingReq.request_no}' updated successfully!`);
-    setTimeout(() => setArchiveNotice(''), 4000);
+      const updatedItem = res.data || { ...editingReq, ...payload };
+      const updatedRequests = (db.rate_requests || []).map((r) =>
+        r.id === editingReq.id ? updatedItem : r
+      );
+
+      const updatedDb = addSecurityLog(
+        {
+          ...db,
+          rate_requests: updatedRequests,
+          transport_requirements: updatedRequests
+        },
+        'EDIT_RATE_REQUIREMENT',
+        currentUser?.username || 'admin',
+        'admin',
+        'REQUIREMENT_EDITED ✏️'
+      );
+
+      updateDB(updatedDb);
+      setEditingReq(null);
+      setArchiveNotice(`✏️ Transport Indent '${editingReq.request_no || editingReq.req_no}' updated successfully in MySQL!`);
+      setTimeout(() => setArchiveNotice(''), 4000);
+    } catch (err) {
+      console.error('Update requirement API error:', err);
+      alert(`❌ Error updating requirement: ${err.message}`);
+    }
   };
 
   // ⚡ 1-CLICK QUICK ADD HANDLERS FOR RAPID PROCUREMENT BAR
@@ -1470,21 +1498,37 @@ export const AdminDashboard = () => {
 
 
   // 🗑️ DELETE MISTAKEN / WRONG REQUIREMENT HANDLER
-  const handleDeleteRequirement = (req) => {
-    if (window.confirm(`Are you sure you want to delete Requirement "${req.request_no} - ${req.title}"?\n\nThis will also remove any submitted rate quotes for this requirement.`)) {
-      const updatedRequests = db.rate_requests.filter((r) => r.id !== req.id);
-      const updatedSubmissions = db.rate_submissions.filter((s) => s.rate_request_id !== req.id);
-      const updatedAllocations = db.allocations.filter((a) => a.rate_request_id !== req.id);
+  const handleDeleteRequirement = async (req) => {
+    if (!req || !req.id) return;
+    const reqNoStr = req.req_no || req.request_no || req.id;
+    if (!window.confirm(`Are you sure you want to delete Requirement "${reqNoStr} - ${req.title || ''}"?\n\nThis will remove it from the database.`)) {
+      return;
+    }
+
+    try {
+      const res = await deleteRequirement(req.id);
+      if (res && res.error) {
+        alert(`❌ Cannot delete requirement: ${typeof res.error === 'string' ? res.error : res.error.message || 'Server error'}`);
+        return;
+      }
+
+      const updatedRequests = (db.rate_requests || []).filter((r) => r.id !== req.id);
+      const updatedSubmissions = (db.rate_submissions || []).filter((s) => s.rate_request_id !== req.id);
+      const updatedAllocations = (db.allocations || []).filter((a) => a.rate_request_id !== req.id);
 
       updateDB({
         ...db,
         rate_requests: updatedRequests,
+        transport_requirements: updatedRequests,
         rate_submissions: updatedSubmissions,
         allocations: updatedAllocations
       });
 
-      setArchiveNotice(`🗑️ Requirement ${req.request_no} deleted successfully!`);
+      setArchiveNotice(`🗑️ Requirement ${reqNoStr} deleted successfully from MySQL!`);
       setTimeout(() => setArchiveNotice(''), 4000);
+    } catch (err) {
+      console.error('Delete requirement error:', err);
+      alert(`❌ Error deleting requirement: ${err.message}`);
     }
   };
 

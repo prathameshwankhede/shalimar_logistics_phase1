@@ -661,90 +661,297 @@ router.post('/transport-titles', authenticateToken, requireRole('admin'), async 
 });
 
 // -------------------------------------------------------------
-// POST /api/rate-requests — Dedicated Rate Request Create Endpoint (Admin Only)
+// Dedicated Transport Requirements & Rate Requests CRUD API
 // -------------------------------------------------------------
-router.post('/rate-requests', authenticateToken, requireRole('admin'), async (req, res) => {
-  const {
-    id,
-    request_no,
-    title,
-    batch_no,
-    sub_no,
-    origin_city,
-    origin_pin,
-    dest_city,
-    dest_pin,
-    company_unit,
-    material_type,
-    hsn_code,
-    required_qty,
-    unit,
-    target_date,
-    status,
-    notes
-  } = req.body;
-
-  const reqNo = request_no || id;
-  if (!reqNo) {
-    return res.status(400).json({ success: false, error: 'request_no required' });
-  }
-
-  const reqId = id || `req_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+async function ensureRequirementsTableExists() {
   try {
-    const [result] = await pool.query(
-      `INSERT INTO rate_requests 
-       (id, request_no, title, batch_no, sub_no, origin_city, origin_pin, dest_city, dest_pin, company_unit, material_type, hsn_code, required_qty, unit, target_date, status, notes)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-       ON DUPLICATE KEY UPDATE 
-       title = VALUES(title), 
-       batch_no = VALUES(batch_no),
-       sub_no = VALUES(sub_no),
-       origin_city = VALUES(origin_city),
-       origin_pin = VALUES(origin_pin),
-       dest_city = VALUES(dest_city),
-       dest_pin = VALUES(dest_pin),
-       company_unit = VALUES(company_unit),
-       material_type = VALUES(material_type),
-       hsn_code = VALUES(hsn_code),
-       required_qty = VALUES(required_qty),
-       unit = VALUES(unit),
-       target_date = VALUES(target_date),
-       status = VALUES(status),
-       notes = VALUES(notes),
-       updated_at = NOW()`,
-      [
-        reqId,
-        reqNo,
-        title || reqNo,
-        batch_no || '',
-        sub_no || '1',
-        origin_city || '',
-        origin_pin || '440028',
-        dest_city || '',
-        dest_pin || '413001',
-        company_unit || 'Shalimar Nutrients Pvt Ltd',
-        material_type || '',
-        hsn_code || '15071000',
-        parseFloat(required_qty || 0),
-        unit || 'MT',
-        target_date || null,
-        status || 'Open',
-        notes || ''
-      ]
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS transport_requirements (
+        id VARCHAR(100) NOT NULL PRIMARY KEY,
+        req_no VARCHAR(100) NOT NULL UNIQUE,
+        title VARCHAR(255),
+        pickup_origin VARCHAR(255) NOT NULL,
+        drop_location VARCHAR(255) NOT NULL,
+        product_name VARCHAR(255) NOT NULL,
+        quantity_mt DECIMAL(12,3) NOT NULL,
+        unit VARCHAR(50) DEFAULT 'MT',
+        target_date DATE NOT NULL,
+        status VARCHAR(50) DEFAULT 'Active',
+        submitted_bids_count INT DEFAULT 0,
+        approval_status VARCHAR(50) DEFAULT 'Pending',
+        created_by VARCHAR(100) DEFAULT 'admin',
+        created_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+
+    const cols = [
+      "title VARCHAR(255)",
+      "pickup_origin VARCHAR(255)",
+      "drop_location VARCHAR(255)",
+      "product_name VARCHAR(255)",
+      "quantity_mt DECIMAL(12,3)",
+      "unit VARCHAR(50) DEFAULT 'MT'",
+      "target_date DATE",
+      "status VARCHAR(50) DEFAULT 'Active'",
+      "submitted_bids_count INT DEFAULT 0",
+      "approval_status VARCHAR(50) DEFAULT 'Pending'",
+      "created_by VARCHAR(100) DEFAULT 'admin'"
+    ];
+    for (const colDef of cols) {
+      await pool.query(`ALTER TABLE transport_requirements ADD COLUMN ${colDef}`).catch(() => {});
+    }
+  } catch (err) {
+    console.warn('transport_requirements table creation notice:', err.message);
+  }
+}
+
+async function generateNextReqNo(clientOrPool) {
+  try {
+    const [rows] = await clientOrPool.query(
+      `SELECT req_no FROM transport_requirements ORDER BY created_at DESC, id DESC LIMIT 200`
     );
 
-    console.log(`✅ Rate Request ${reqNo} (${reqId}) persisted to MySQL rate_requests (affectedRows: ${result.affectedRows})`);
+    let maxSeq = 0;
+    for (const r of (rows || [])) {
+      const str = r.req_no || '';
+      const match = str.match(/REQ-(\d+)/i);
+      if (match) {
+        const num = parseInt(match[1], 10);
+        if (num > maxSeq) maxSeq = num;
+      }
+    }
 
+    const nextSeq = maxSeq + 1;
+    const seqPadded = String(nextSeq).padStart(4, '0');
+    return `SNPL/26-27/REQ-${seqPadded}`;
+  } catch (e) {
+    return `SNPL/26-27/REQ-${String(Date.now()).substring(8)}`;
+  }
+}
+
+function formatRequirementDto(row, bidsCount = 0) {
+  if (!row) return null;
+  const pickup = row.pickup_origin || row.origin_city || '';
+  const drop = row.drop_location || row.dest_city || '';
+  const prod = row.product_name || row.material_type || '';
+  const qty = Number(row.quantity_mt || row.required_qty || 0);
+  const reqNo = row.req_no || row.request_no || '';
+  const titleStr = row.title || `${pickup} ➔ ${drop}`;
+  const targetDateStr = row.target_date ? (row.target_date instanceof Date ? row.target_date.toISOString().split('T')[0] : String(row.target_date).split('T')[0]) : new Date().toISOString().split('T')[0];
+
+  return {
+    id: row.id,
+    req_no: reqNo,
+    request_no: reqNo,
+    title: titleStr,
+    pickup_origin: pickup,
+    origin_city: pickup,
+    drop_location: drop,
+    dest_city: drop,
+    product_name: prod,
+    material_type: prod,
+    quantity_mt: qty,
+    required_qty: qty,
+    unit: row.unit || 'MT',
+    target_date: targetDateStr,
+    status: row.status || 'Active',
+    submitted_bids_count: bidsCount || Number(row.submitted_bids_count || 0),
+    approval_status: row.approval_status || 'Pending',
+    created_by: row.created_by || 'admin',
+    created_at: row.created_at || new Date().toISOString(),
+    updated_at: row.updated_at || new Date().toISOString()
+  };
+}
+
+// GET /api/requirements & GET /api/rate-requests
+async function handleGetRequirements(req, res) {
+  try {
+    await ensureRequirementsTableExists();
+    let bidsCountMap = {};
+    try {
+      const [bidRows] = await pool.query(
+        'SELECT rate_request_id, COUNT(*) as cnt FROM rate_submissions GROUP BY rate_request_id'
+      );
+      (bidRows || []).forEach((b) => {
+        if (b.rate_request_id) bidsCountMap[b.rate_request_id] = Number(b.cnt || 0);
+      });
+    } catch (e) {}
+
+    const [rows] = await pool.query('SELECT * FROM transport_requirements ORDER BY created_at DESC LIMIT 300');
+    const formatted = rows.map((r) => formatRequirementDto(r, bidsCountMap[r.id] || 0));
+    return res.json({ success: true, count: formatted.length, data: formatted, requirements: formatted, rate_requests: formatted });
+  } catch (err) {
+    console.error('❌ GET /api/requirements Error:', err.message);
+    return res.status(500).json({ success: false, error: { code: 'DATABASE_ERROR', message: err.message } });
+  }
+}
+
+router.get('/requirements', authenticateToken, handleGetRequirements);
+router.get('/rate-requests', authenticateToken, handleGetRequirements);
+
+// GET /api/requirements/:id
+router.get('/requirements/:id', authenticateToken, async (req, res) => {
+  const { id } = req.params;
+  await ensureRequirementsTableExists();
+  try {
+    const [rows] = await pool.query('SELECT * FROM transport_requirements WHERE id = ?', [id]);
+    if (rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Requirement not found' });
+    }
+    return res.json({ success: true, data: formatRequirementDto(rows[0]) });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: { code: 'DATABASE_ERROR', message: err.message } });
+  }
+});
+
+// POST /api/requirements & POST /api/rate-requests — Bulk & Single Create Endpoint (Admin Only)
+async function handleCreateRequirements(req, res) {
+  const rawBody = req.body;
+  const items = Array.isArray(rawBody) ? rawBody : (rawBody && Array.isArray(rawBody.items) ? rawBody.items : [rawBody]);
+  if (!items || items.length === 0) {
+    return res.status(400).json({ success: false, error: 'No requirement items provided' });
+  }
+
+  // Row-level validation
+  const validItems = [];
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i];
+    const pickup = (item.pickup_origin || item.origin_city || '').trim();
+    const drop = (item.drop_location || item.dest_city || '').trim();
+    const product = (item.product_name || item.material_type || '').trim();
+    const qty = Number(item.quantity_mt || item.required_qty || 0);
+    const dateVal = item.target_date || item.date;
+
+    if (!pickup) return res.status(400).json({ success: false, error: `Row ${i + 1}: Pickup Origin is required` });
+    if (!drop) return res.status(400).json({ success: false, error: `Row ${i + 1}: Drop Location is required` });
+    if (!product) return res.status(400).json({ success: false, error: `Row ${i + 1}: Product Name is required` });
+    if (!qty || isNaN(qty) || qty <= 0) return res.status(400).json({ success: false, error: `Row ${i + 1}: Quantity (MT) must be greater than 0` });
+    if (!dateVal) return res.status(400).json({ success: false, error: `Row ${i + 1}: Target Date is required` });
+
+    validItems.push({ item, pickup, drop, product, qty, dateVal });
+  }
+
+  await ensureRequirementsTableExists();
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+
+    const createdList = [];
+    for (const v of validItems) {
+      const nextReqNo = await generateNextReqNo(conn);
+      const reqId = v.item.id || `req_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+      const titleStr = v.item.title || `${v.pickup} ➔ ${v.drop}`;
+      const statusVal = v.item.status || 'Active';
+      const createdByVal = req.user?.username || 'admin';
+
+      await conn.query(
+        `INSERT INTO transport_requirements
+         (id, req_no, title, pickup_origin, drop_location, product_name, quantity_mt, unit, target_date, status, approval_status, created_by)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE
+         title = VALUES(title), pickup_origin = VALUES(pickup_origin), drop_location = VALUES(drop_location),
+         product_name = VALUES(product_name), quantity_mt = VALUES(quantity_mt), unit = VALUES(unit),
+         target_date = VALUES(target_date), status = VALUES(status), updated_at = NOW()`,
+        [reqId, nextReqNo, titleStr, v.pickup, v.drop, v.product, v.qty, v.item.unit || 'MT', v.dateVal, statusVal, 'Pending', createdByVal]
+      );
+
+      const [rRows] = await conn.query('SELECT * FROM transport_requirements WHERE id = ?', [reqId]);
+      if (rRows.length > 0) createdList.push(formatRequirementDto(rRows[0]));
+    }
+
+    await conn.commit();
+    conn.release();
+
+    const returnObj = createdList.length === 1 && !Array.isArray(rawBody) ? createdList[0] : createdList;
     return res.json({
       success: true,
-      affectedRows: result.affectedRows,
-      insertId: result.insertId,
-      id: reqId,
-      request_no: reqNo,
-      message: 'Rate request saved to MySQL rate_requests table'
+      count: createdList.length,
+      message: `${createdList.length} Requirement(s) saved to MySQL transport_requirements`,
+      data: returnObj,
+      requirement: returnObj,
+      requirements: createdList,
+      rate_requests: createdList
     });
   } catch (err) {
-    console.error('❌ MySQL Rate Request Error:', err.message);
+    await conn.rollback();
+    conn.release();
+    console.error('❌ POST /api/requirements Error:', err.message);
+    return res.status(500).json({ success: false, error: { code: 'DATABASE_ERROR', message: err.message } });
+  }
+}
+
+router.post('/requirements', authenticateToken, requireRole('admin'), handleCreateRequirements);
+router.post('/rate-requests', authenticateToken, requireRole('admin'), handleCreateRequirements);
+
+// PUT /api/requirements/:id — Update existing Requirement
+router.put('/requirements/:id', authenticateToken, requireRole('admin'), async (req, res) => {
+  const { id } = req.params;
+  const { pickup_origin, origin_city, drop_location, dest_city, product_name, material_type, quantity_mt, required_qty, unit, target_date, status, approval_status } = req.body;
+
+  const pickup = (pickup_origin || origin_city || '').trim();
+  const drop = (drop_location || dest_city || '').trim();
+  const product = (product_name || material_type || '').trim();
+  const qty = Number(quantity_mt || required_qty || 0);
+
+  if (!pickup) return res.status(400).json({ success: false, error: 'Pickup Origin is required' });
+  if (!drop) return res.status(400).json({ success: false, error: 'Drop Location is required' });
+  if (!product) return res.status(400).json({ success: false, error: 'Product Name is required' });
+  if (!qty || isNaN(qty) || qty <= 0) return res.status(400).json({ success: false, error: 'Quantity (MT) must be greater than 0' });
+
+  await ensureRequirementsTableExists();
+  try {
+    const titleStr = `${pickup} ➔ ${drop}`;
+    const [result] = await pool.query(
+      `UPDATE transport_requirements
+       SET pickup_origin = ?, drop_location = ?, product_name = ?, quantity_mt = ?, unit = ?, target_date = ?, status = ?, approval_status = ?, title = ?, updated_at = NOW()
+       WHERE id = ?`,
+      [pickup, drop, product, qty, unit || 'MT', target_date || null, status || 'Active', approval_status || 'Pending', titleStr, id]
+    );
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ success: false, error: 'Requirement record not found' });
+    }
+
+    const [rows] = await pool.query('SELECT * FROM transport_requirements WHERE id = ?', [id]);
+    const updated = rows.length > 0 ? formatRequirementDto(rows[0]) : null;
+
+    return res.json({ success: true, message: 'Requirement updated successfully in MySQL', data: updated, requirement: updated });
+  } catch (err) {
+    console.error('❌ PUT /api/requirements/:id Error:', err.message);
+    return res.status(500).json({ success: false, error: { code: 'DATABASE_ERROR', message: err.message } });
+  }
+});
+
+// DELETE /api/requirements/:id — Delete Requirement
+router.delete('/requirements/:id', authenticateToken, requireRole('admin'), async (req, res) => {
+  const { id } = req.params;
+  await ensureRequirementsTableExists();
+  try {
+    let hasBids = false;
+    try {
+      const [bidRows] = await pool.query(
+        'SELECT id FROM rate_submissions WHERE rate_request_id = ? OR requirement_id = ? LIMIT 1',
+        [id, id]
+      );
+      if (bidRows && bidRows.length > 0) hasBids = true;
+    } catch (e) {}
+
+    if (hasBids) {
+      return res.status(409).json({
+        success: false,
+        error: 'Cannot delete requirement: Active bids or awarded contracts are attached to this requirement'
+      });
+    }
+
+    const [result] = await pool.query('DELETE FROM transport_requirements WHERE id = ?', [id]);
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ success: false, error: 'Requirement record not found' });
+    }
+
+    return res.json({ success: true, message: 'Requirement deleted from MySQL' });
+  } catch (err) {
+    console.error('❌ DELETE /api/requirements/:id Error:', err.message);
     return res.status(500).json({ success: false, error: { code: 'DATABASE_ERROR', message: err.message } });
   }
 });
