@@ -1136,54 +1136,50 @@ export const AdminDashboard = () => {
       }
     }
 
-    const currentBatchNum = getNextBatchNum();
-    const batchCode = `SNPL/26-27/REQ-${currentBatchNum.toString().padStart(2, '0')}`;
-    const newRequests = [];
+    const defaultOrigin = masterPickupCity || db.company_masters?.[0]?.pickup_location_name || db.city_masters?.[0]?.city || 'Nagpur (MIDC)';
 
-    for (let i = 0; i < bulkReqRows.length; i++) {
-      const row = bulkReqRows[i];
-
-      const defaultOrigin = masterPickupCity || db.company_masters?.[0]?.pickup_location_name || db.city_masters?.[0]?.city || 'Nagpur (MIDC)';
-      const originVal = row.origin_city.trim() || defaultOrigin;
-      const destVal = row.dest_city.trim();
+    const batchItems = bulkReqRows.map((row, i) => {
       const prodVal = row.material_type.trim();
       const qtyVal = parseFloat(row.required_qty);
       const dateVal = (row.target_date || todayStr).trim() < todayStr ? todayStr : (row.target_date || todayStr).trim();
-
-      const subNum = (i + 1).toString().padStart(2, '0');
-      const reqNo = `${batchCode}/${subNum}`;
-
       const matchedProd = (db.product_masters || []).find(
         (p) => (p.name || '').trim().toLowerCase() === prodVal.toLowerCase()
       );
       const hsnCodeVal = matchedProd?.hsn_code || row.hsn_code || '15071000';
 
-      newRequests.push({
-        id: `req_${Date.now()}_${i}`,
-        request_no: reqNo,
-        title: reqNo,
-        batch_no: batchCode,
-        sub_no: subNum,
-        origin_city: originVal,
-        origin_pin: '440028',
-        dest_city: destVal,
-        dest_pin: '413001',
-        company_unit: row.company_unit || (db.company_masters?.[0]?.name || 'Shalimar Nutrients Pvt Ltd'),
-        material_type: prodVal,
-        hsn_code: hsnCodeVal,
-        required_qty: qtyVal,
+      return {
+        product_name: prodVal,
+        quantity_mt: qtyVal,
         unit: 'MT',
-        target_date: dateVal,
-        status: 'Open',
-        created_at: new Date().toISOString(),
-        notes: `Company Unit: ${row.company_unit || 'Shalimar Group'}. HSN Code: ${hsnCodeVal}. Batch ${batchCode} Item #${subNum}.`
-      });
-    }
+        pickup_origin: row.origin_city.trim() || defaultOrigin,
+        drop_location: row.dest_city.trim(),
+        hsn_code: hsnCodeVal,
+        target_date: dateVal
+      };
+    });
 
-    if (newRequests.length === 0) {
-      alert('Please enter a valid Quantity in MT (e.g. 500) for at least one row.');
+    const batchPayload = {
+      pickup_origin: batchItems[0].pickup_origin,
+      drop_location: batchItems[0].drop_location,
+      target_date: batchItems[0].target_date,
+      items: batchItems
+    };
+
+    let createdReq = null;
+    try {
+      const apiRes = await createRequirement(batchPayload);
+      if (apiRes && apiRes.error) {
+        alert(`❌ Failed to save requirement to MySQL: ${typeof apiRes.error === 'string' ? apiRes.error : apiRes.error.message || 'Server error'}`);
+        return;
+      }
+      createdReq = apiRes.requirement || apiRes.data;
+    } catch (err) {
+      console.error('Direct rate requirement REST API error:', err.message);
+      alert(`❌ Error saving batch requirement: ${err.message}`);
       return;
     }
+
+    const batchCode = createdReq.req_no;
 
     const newNotifications = [];
     (db.transporters || []).forEach((transporter) => {
@@ -1193,34 +1189,23 @@ export const AdminDashboard = () => {
           recipientPhone: transporter.mobile,
           recipientName: transporter.company_name,
           title: `🚨 New Freight Bid Broadcast: ${batchCode}`,
-          message: `🚨 *SHALIMAR LOGISTICS BID ALERT* 🚨\n\n📦 Batch: ${batchCode} (${newRequests.length} Items)\n📍 Route: ${newRequests[0].origin_city} ➔ ${newRequests[0].dest_city}\n⚖️ Volume: ${newRequests.reduce((a, b) => a + (Number(b.required_qty) || 0), 0)} MT\n📅 Target Date: ${newRequests[0].target_date}\n\nSubmit rates: ${typeof window !== 'undefined' ? window.location.origin : ''}/`
+          message: `🚨 *SHALIMAR LOGISTICS BID ALERT* 🚨\n\n📦 Batch: ${batchCode} (${batchItems.length} Items)\n📍 Route: ${createdReq.pickup_origin} ➔ ${createdReq.drop_location}\n⚖️ Volume: ${createdReq.total_quantity_mt || 0} MT\n📅 Target Date: ${createdReq.target_date}\n\nSubmit rates: ${typeof window !== 'undefined' ? window.location.origin : ''}/`
         });
         if (notif) newNotifications.push(notif);
       }
     });
 
-    // Execute direct REST API calls for created rate requirements via dedicated POST /api/requirements
-    try {
-      const apiRes = await createRequirement(newRequests);
-      if (apiRes && apiRes.error) {
-        alert(`❌ Failed to save requirement to MySQL: ${typeof apiRes.error === 'string' ? apiRes.error : apiRes.error.message || 'Server error'}`);
-        return;
-      }
-    } catch (err) {
-      console.error('Direct rate requirement REST API error:', err.message);
-    }
-
     const updatedDb = addSecurityLog(
       {
         ...db,
-        rate_requests: [...newRequests, ...(db.rate_requests || [])],
-        transport_requirements: [...newRequests, ...(db.transport_requirements || [])],
+        rate_requests: [createdReq, ...(db.rate_requests || []).filter((r) => r.id !== createdReq.id)],
+        transport_requirements: [createdReq, ...(db.transport_requirements || []).filter((r) => r.id !== createdReq.id)],
         whatsapp_notifications: [...newNotifications, ...(db.whatsapp_notifications || [])]
       },
       `BULK_CREATE_RATE_REQUIREMENTS (${batchCode})`,
       currentUser?.username || 'admin',
       'admin',
-      `BATCH_BROADCAST (${batchCode} - ${newRequests.length} ITEMS) ⚡`
+      `BATCH_BROADCAST (${batchCode} - ${batchItems.length} ITEMS) ⚡`
     );
 
     updateDB(updatedDb);
@@ -1233,16 +1218,16 @@ export const AdminDashboard = () => {
       isOpen: true,
       data: {
         batchCode,
-        itemsCount: newRequests.length,
-        origin: newRequests[0].origin_city,
-        dest: newRequests[0].dest_city,
-        totalQty: newRequests.reduce((a, b) => a + (Number(b.required_qty) || 0), 0),
-        materialType: newRequests[0].material_type,
-        targetDate: newRequests[0].target_date
+        itemsCount: batchItems.length,
+        origin: createdReq.pickup_origin,
+        dest: createdReq.drop_location,
+        totalQty: createdReq.total_quantity_mt,
+        materialType: createdReq.product_name,
+        targetDate: createdReq.target_date
       }
     });
 
-    alert(`🎉 SUCCESS: Broadcasted ${newRequests.length} Rate Requirement(s) for Batch ${batchCode}!`);
+    alert(`🎉 SUCCESS: Broadcasted Rate Requirement ${batchCode} with ${batchItems.length} Cargo Line(s)! Total Tonnage: ${createdReq.total_quantity_mt} MT.`);
     setArchiveNotice(`🚀 Batch ${batchCode} broadcasted with instant WhatsApp Alerts!`);
     setTimeout(() => setArchiveNotice(''), 5000);
   };

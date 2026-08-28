@@ -663,6 +663,7 @@ router.post('/transport-titles', authenticateToken, requireRole('admin'), async 
 
 // -------------------------------------------------------------
 // Dedicated Transport Requirements & Rate Requests CRUD API
+// Parent: transport_requirements | Child: transport_requirement_items
 // -------------------------------------------------------------
 async function ensureRequirementsTableExists() {
   try {
@@ -673,9 +674,6 @@ async function ensureRequirementsTableExists() {
         title VARCHAR(255),
         pickup_origin VARCHAR(255) NOT NULL,
         drop_location VARCHAR(255) NOT NULL,
-        product_name VARCHAR(255) NOT NULL,
-        quantity_mt DECIMAL(12,3) NOT NULL,
-        unit VARCHAR(50) DEFAULT 'MT',
         target_date DATE NOT NULL,
         status VARCHAR(50) DEFAULT 'Active',
         submitted_bids_count INT DEFAULT 0,
@@ -686,22 +684,21 @@ async function ensureRequirementsTableExists() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
     `);
 
-    const cols = [
-      "title VARCHAR(255)",
-      "pickup_origin VARCHAR(255)",
-      "drop_location VARCHAR(255)",
-      "product_name VARCHAR(255)",
-      "quantity_mt DECIMAL(12,3)",
-      "unit VARCHAR(50) DEFAULT 'MT'",
-      "target_date DATE",
-      "status VARCHAR(50) DEFAULT 'Active'",
-      "submitted_bids_count INT DEFAULT 0",
-      "approval_status VARCHAR(50) DEFAULT 'Pending'",
-      "created_by VARCHAR(100) DEFAULT 'admin'"
-    ];
-    for (const colDef of cols) {
-      await pool.query(`ALTER TABLE transport_requirements ADD COLUMN ${colDef}`).catch(() => {});
-    }
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS transport_requirement_items (
+        id VARCHAR(100) NOT NULL PRIMARY KEY,
+        requirement_id VARCHAR(100) NOT NULL,
+        product_name VARCHAR(255) NOT NULL,
+        quantity_mt DECIMAL(12,3) NOT NULL,
+        unit VARCHAR(50) DEFAULT 'MT',
+        pickup_origin VARCHAR(255),
+        drop_location VARCHAR(255),
+        hsn_code VARCHAR(50),
+        created_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_req_id (requirement_id)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
   } catch (err) {
     console.warn('transport_requirements table creation notice:', err.message);
   }
@@ -731,37 +728,52 @@ async function generateNextReqNo(clientOrPool) {
   }
 }
 
-function formatRequirementDto(row, bidsCount = 0) {
-  if (!row) return null;
-  const pickup = row.pickup_origin || row.origin_city || '';
-  const drop = row.drop_location || row.dest_city || '';
-  const prod = row.product_name || row.material_type || '';
-  const qty = Number(row.quantity_mt || row.required_qty || 0);
-  const reqNo = row.req_no || row.request_no || '';
-  const titleStr = row.title || `${pickup} ➔ ${drop}`;
-  const targetDateStr = row.target_date ? (row.target_date instanceof Date ? row.target_date.toISOString().split('T')[0] : String(row.target_date).split('T')[0]) : new Date().toISOString().split('T')[0];
+function formatParentRequirementDto(parentRow, childItems = [], bidsCount = 0) {
+  if (!parentRow) return null;
+  const itemsFormatted = childItems.map((item, idx) => ({
+    id: item.id || `item_${idx}`,
+    requirement_id: parentRow.id,
+    product_name: item.product_name || item.material_type || '',
+    material_type: item.product_name || item.material_type || '',
+    quantity_mt: Number(item.quantity_mt || item.required_qty || 0),
+    required_qty: Number(item.quantity_mt || item.required_qty || 0),
+    unit: item.unit || 'MT',
+    pickup_origin: item.pickup_origin || parentRow.pickup_origin || '',
+    drop_location: item.drop_location || parentRow.drop_location || '',
+    hsn_code: item.hsn_code || ''
+  }));
+
+  const totalQty = itemsFormatted.reduce((acc, curr) => acc + curr.quantity_mt, 0);
+
+  const firstItem = itemsFormatted[0] || {};
+  const pickup = parentRow.pickup_origin || firstItem.pickup_origin || '';
+  const drop = parentRow.drop_location || firstItem.drop_location || '';
+  const reqNo = parentRow.req_no || parentRow.id || '';
+  const targetDateStr = parentRow.target_date ? (parentRow.target_date instanceof Date ? parentRow.target_date.toISOString().split('T')[0] : String(parentRow.target_date).split('T')[0]) : new Date().toISOString().split('T')[0];
 
   return {
-    id: row.id,
+    id: parentRow.id,
     req_no: reqNo,
     request_no: reqNo,
-    title: titleStr,
+    batch_no: reqNo,
+    title: parentRow.title || `${pickup} ➔ ${drop}`,
     pickup_origin: pickup,
     origin_city: pickup,
     drop_location: drop,
     dest_city: drop,
-    product_name: prod,
-    material_type: prod,
-    quantity_mt: qty,
-    required_qty: qty,
-    unit: row.unit || 'MT',
     target_date: targetDateStr,
-    status: row.status || 'Active',
-    submitted_bids_count: bidsCount || Number(row.submitted_bids_count || 0),
-    approval_status: row.approval_status || 'Pending',
-    created_by: row.created_by || 'admin',
-    created_at: row.created_at || new Date().toISOString(),
-    updated_at: row.updated_at || new Date().toISOString()
+    status: parentRow.status || 'Active',
+    submitted_bids_count: bidsCount || Number(parentRow.submitted_bids_count || 0),
+    approval_status: parentRow.approval_status || 'Pending',
+    created_by: parentRow.created_by || 'admin',
+    created_at: parentRow.created_at || new Date().toISOString(),
+    updated_at: parentRow.updated_at || new Date().toISOString(),
+    items: itemsFormatted,
+    total_quantity_mt: totalQty,
+    quantity_mt: totalQty,
+    required_qty: totalQty,
+    product_name: itemsFormatted.map(i => i.product_name).join(', '),
+    material_type: itemsFormatted.map(i => i.product_name).join(', ')
   };
 }
 
@@ -779,8 +791,24 @@ async function handleGetRequirements(req, res) {
       });
     } catch (e) {}
 
-    const [rows] = await pool.query('SELECT * FROM transport_requirements ORDER BY created_at DESC LIMIT 300');
-    const formatted = rows.map((r) => formatRequirementDto(r, bidsCountMap[r.id] || 0));
+    const [parents] = await pool.query('SELECT * FROM transport_requirements ORDER BY created_at DESC LIMIT 300');
+    if (parents.length === 0) {
+      return res.json({ success: true, count: 0, data: [], requirements: [], rate_requests: [] });
+    }
+
+    const parentIds = parents.map((p) => p.id);
+    const [childRows] = await pool.query(
+      'SELECT * FROM transport_requirement_items WHERE requirement_id IN (?) ORDER BY id ASC',
+      [parentIds]
+    );
+
+    const itemsMap = {};
+    (childRows || []).forEach((item) => {
+      if (!itemsMap[item.requirement_id]) itemsMap[item.requirement_id] = [];
+      itemsMap[item.requirement_id].push(item);
+    });
+
+    const formatted = parents.map((p) => formatParentRequirementDto(p, itemsMap[p.id] || [], bidsCountMap[p.id] || 0));
     return res.json({ success: true, count: formatted.length, data: formatted, requirements: formatted, rate_requests: formatted });
   } catch (err) {
     console.error('❌ GET /api/requirements Error:', err.message);
@@ -796,83 +824,108 @@ router.get('/requirements/:id', authenticateToken, async (req, res) => {
   const { id } = req.params;
   await ensureRequirementsTableExists();
   try {
-    const [rows] = await pool.query('SELECT * FROM transport_requirements WHERE id = ?', [id]);
-    if (rows.length === 0) {
+    const [parents] = await pool.query('SELECT * FROM transport_requirements WHERE id = ?', [id]);
+    if (parents.length === 0) {
       return res.status(404).json({ success: false, error: 'Requirement not found' });
     }
-    return res.json({ success: true, data: formatRequirementDto(rows[0]) });
+    const [childRows] = await pool.query('SELECT * FROM transport_requirement_items WHERE requirement_id = ? ORDER BY id ASC', [id]);
+    const dto = formatParentRequirementDto(parents[0], childRows, parents[0]?.submitted_bids_count || 0);
+    return res.json({ success: true, data: dto });
   } catch (err) {
     return res.status(500).json({ success: false, error: { code: 'DATABASE_ERROR', message: err.message } });
   }
 });
 
-// POST /api/requirements & POST /api/rate-requests — Bulk & Single Create Endpoint (Admin Only)
+// POST /api/requirements & POST /api/rate-requests — Create One Parent REQ with Multiple Child Items (Admin Only)
 async function handleCreateRequirements(req, res) {
   const rawBody = req.body;
-  const items = Array.isArray(rawBody) ? rawBody : (rawBody && Array.isArray(rawBody.items) ? rawBody.items : [rawBody]);
-  if (!items || items.length === 0) {
+  let rawItems = [];
+  let pickupOrigin = (rawBody.pickup_origin || rawBody.origin_city || '').trim();
+  let dropLocation = (rawBody.drop_location || rawBody.dest_city || '').trim();
+  let targetDate = rawBody.target_date || rawBody.date || new Date().toISOString().split('T')[0];
+
+  if (Array.isArray(rawBody)) {
+    rawItems = rawBody;
+  } else if (rawBody && Array.isArray(rawBody.items)) {
+    rawItems = rawBody.items;
+  } else if (rawBody) {
+    rawItems = [rawBody];
+  }
+
+  if (!rawItems || rawItems.length === 0) {
     return res.status(400).json({ success: false, error: 'No requirement items provided' });
   }
 
-  // Row-level validation
-  const validItems = [];
-  for (let i = 0; i < items.length; i++) {
-    const item = items[i];
-    const pickup = (item.pickup_origin || item.origin_city || '').trim();
-    const drop = (item.drop_location || item.dest_city || '').trim();
-    const product = (item.product_name || item.material_type || '').trim();
+  // Validate each item
+  const validChildItems = [];
+  for (let i = 0; i < rawItems.length; i++) {
+    const item = rawItems[i];
+    const prod = (item.product_name || item.material_type || '').trim();
     const qty = Number(item.quantity_mt || item.required_qty || 0);
-    const dateVal = item.target_date || item.date;
+    const itemPickup = (item.pickup_origin || item.origin_city || pickupOrigin || '').trim();
+    const itemDrop = (item.drop_location || item.dest_city || dropLocation || '').trim();
 
-    if (!pickup) return res.status(400).json({ success: false, error: `Row ${i + 1}: Pickup Origin is required` });
-    if (!drop) return res.status(400).json({ success: false, error: `Row ${i + 1}: Drop Location is required` });
-    if (!product) return res.status(400).json({ success: false, error: `Row ${i + 1}: Product Name is required` });
+    if (!prod) return res.status(400).json({ success: false, error: `Row ${i + 1}: Product Name is required` });
     if (!qty || isNaN(qty) || qty <= 0) return res.status(400).json({ success: false, error: `Row ${i + 1}: Quantity (MT) must be greater than 0` });
-    if (!dateVal) return res.status(400).json({ success: false, error: `Row ${i + 1}: Target Date is required` });
+    if (!itemPickup) return res.status(400).json({ success: false, error: `Row ${i + 1}: Pickup Origin is required` });
+    if (!itemDrop) return res.status(400).json({ success: false, error: `Row ${i + 1}: Drop Location is required` });
 
-    validItems.push({ item, pickup, drop, product, qty, dateVal });
+    validChildItems.push({
+      product_name: prod,
+      quantity_mt: qty,
+      unit: item.unit || 'MT',
+      pickup_origin: itemPickup,
+      drop_location: itemDrop,
+      hsn_code: item.hsn_code || ''
+    });
   }
+
+  if (!pickupOrigin && validChildItems[0]) pickupOrigin = validChildItems[0].pickup_origin;
+  if (!dropLocation && validChildItems[0]) dropLocation = validChildItems[0].drop_location;
 
   await ensureRequirementsTableExists();
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
 
-    const createdList = [];
-    for (const v of validItems) {
-      const nextReqNo = await generateNextReqNo(conn);
-      const reqId = v.item.id || `req_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
-      const titleStr = v.item.title || `${v.pickup} ➔ ${v.drop}`;
-      const statusVal = v.item.status || 'Active';
-      const createdByVal = req.user?.username || 'admin';
+    // 1. Generate ONE req_no for the entire batch
+    const nextReqNo = await generateNextReqNo(conn);
+    const parentId = `req_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+    const titleStr = `${pickupOrigin} ➔ ${dropLocation}`;
+    const createdByVal = req.user?.username || 'admin';
 
+    // 2. Insert ONE parent requirement
+    await conn.query(
+      `INSERT INTO transport_requirements
+       (id, req_no, title, pickup_origin, drop_location, target_date, status, approval_status, created_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [parentId, nextReqNo, titleStr, pickupOrigin, dropLocation, targetDate, 'Active', 'Pending', createdByVal]
+    );
+
+    // 3. Insert THREE (or N) child requirement items
+    for (let idx = 0; idx < validChildItems.length; idx++) {
+      const child = validChildItems[idx];
+      const itemId = `req_item_${Date.now()}_${idx}_${Math.random().toString(36).substring(2, 5)}`;
       await conn.query(
-        `INSERT INTO transport_requirements
-         (id, req_no, title, pickup_origin, drop_location, product_name, quantity_mt, unit, target_date, status, approval_status, created_by)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-         ON DUPLICATE KEY UPDATE
-         title = VALUES(title), pickup_origin = VALUES(pickup_origin), drop_location = VALUES(drop_location),
-         product_name = VALUES(product_name), quantity_mt = VALUES(quantity_mt), unit = VALUES(unit),
-         target_date = VALUES(target_date), status = VALUES(status), updated_at = NOW()`,
-        [reqId, nextReqNo, titleStr, v.pickup, v.drop, v.product, v.qty, v.item.unit || 'MT', v.dateVal, statusVal, 'Pending', createdByVal]
+        `INSERT INTO transport_requirement_items
+         (id, requirement_id, product_name, quantity_mt, unit, pickup_origin, drop_location, hsn_code)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [itemId, parentId, child.product_name, child.quantity_mt, child.unit, child.pickup_origin, child.drop_location, child.hsn_code]
       );
-
-      const [rRows] = await conn.query('SELECT * FROM transport_requirements WHERE id = ?', [reqId]);
-      if (rRows.length > 0) createdList.push(formatRequirementDto(rRows[0]));
     }
 
     await conn.commit();
     conn.release();
 
-    const returnObj = createdList.length === 1 && !Array.isArray(rawBody) ? createdList[0] : createdList;
+    const [pRows] = await pool.query('SELECT * FROM transport_requirements WHERE id = ?', [parentId]);
+    const [cRows] = await pool.query('SELECT * FROM transport_requirement_items WHERE requirement_id = ? ORDER BY id ASC', [parentId]);
+    const resultDto = formatParentRequirementDto(pRows[0], cRows, 0);
+
     return res.json({
       success: true,
-      count: createdList.length,
-      message: `${createdList.length} Requirement(s) saved to MySQL transport_requirements`,
-      data: returnObj,
-      requirement: returnObj,
-      requirements: createdList,
-      rate_requests: createdList
+      message: `Batch Requirement ${nextReqNo} saved to MySQL (${validChildItems.length} cargo items)`,
+      data: resultDto,
+      requirement: resultDto
     });
   } catch (err) {
     await conn.rollback();
@@ -885,46 +938,69 @@ async function handleCreateRequirements(req, res) {
 router.post('/requirements', authenticateToken, requireRole('admin'), handleCreateRequirements);
 router.post('/rate-requests', authenticateToken, requireRole('admin'), handleCreateRequirements);
 
-// PUT /api/requirements/:id — Update existing Requirement
+// PUT /api/requirements/:id — Update Parent Requirement and Child Cargo Items
 router.put('/requirements/:id', authenticateToken, requireRole('admin'), async (req, res) => {
   const { id } = req.params;
-  const { pickup_origin, origin_city, drop_location, dest_city, product_name, material_type, quantity_mt, required_qty, unit, target_date, status, approval_status } = req.body;
+  const { pickup_origin, origin_city, drop_location, dest_city, target_date, status, approval_status, items } = req.body;
 
   const pickup = (pickup_origin || origin_city || '').trim();
   const drop = (drop_location || dest_city || '').trim();
-  const product = (product_name || material_type || '').trim();
-  const qty = Number(quantity_mt || required_qty || 0);
-
-  if (!pickup) return res.status(400).json({ success: false, error: 'Pickup Origin is required' });
-  if (!drop) return res.status(400).json({ success: false, error: 'Drop Location is required' });
-  if (!product) return res.status(400).json({ success: false, error: 'Product Name is required' });
-  if (!qty || isNaN(qty) || qty <= 0) return res.status(400).json({ success: false, error: 'Quantity (MT) must be greater than 0' });
 
   await ensureRequirementsTableExists();
+  const conn = await pool.getConnection();
   try {
-    const titleStr = `${pickup} ➔ ${drop}`;
-    const [result] = await pool.query(
-      `UPDATE transport_requirements
-       SET pickup_origin = ?, drop_location = ?, product_name = ?, quantity_mt = ?, unit = ?, target_date = ?, status = ?, approval_status = ?, title = ?, updated_at = NOW()
-       WHERE id = ?`,
-      [pickup, drop, product, qty, unit || 'MT', target_date || null, status || 'Active', approval_status || 'Pending', titleStr, id]
-    );
+    await conn.beginTransaction();
 
-    if (result.affectedRows === 0) {
+    const [existing] = await conn.query('SELECT * FROM transport_requirements WHERE id = ?', [id]);
+    if (existing.length === 0) {
+      await conn.rollback();
+      conn.release();
       return res.status(404).json({ success: false, error: 'Requirement record not found' });
     }
 
-    const [rows] = await pool.query('SELECT * FROM transport_requirements WHERE id = ?', [id]);
-    const updated = rows.length > 0 ? formatRequirementDto(rows[0]) : null;
+    const titleStr = pickup && drop ? `${pickup} ➔ ${drop}` : existing[0].title;
+    await conn.query(
+      `UPDATE transport_requirements
+       SET pickup_origin = COALESCE(?, pickup_origin), drop_location = COALESCE(?, drop_location),
+           target_date = COALESCE(?, target_date), status = COALESCE(?, status),
+           approval_status = COALESCE(?, approval_status), title = ?, updated_at = NOW()
+       WHERE id = ?`,
+      [pickup || null, drop || null, target_date || null, status || null, approval_status || null, titleStr, id]
+    );
 
-    return res.json({ success: true, message: 'Requirement updated successfully in MySQL', data: updated, requirement: updated });
+    if (Array.isArray(items) && items.length > 0) {
+      await conn.query('DELETE FROM transport_requirement_items WHERE requirement_id = ?', [id]);
+      for (let idx = 0; idx < items.length; idx++) {
+        const child = items[idx];
+        const itemId = child.id || `req_item_${Date.now()}_${idx}`;
+        const prod = child.product_name || child.material_type || '';
+        const qty = Number(child.quantity_mt || child.required_qty || 0);
+        await conn.query(
+          `INSERT INTO transport_requirement_items
+           (id, requirement_id, product_name, quantity_mt, unit, pickup_origin, drop_location, hsn_code)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          [itemId, id, prod, qty, child.unit || 'MT', child.pickup_origin || pickup, child.drop_location || drop, child.hsn_code || '']
+        );
+      }
+    }
+
+    await conn.commit();
+    conn.release();
+
+    const [pRows] = await pool.query('SELECT * FROM transport_requirements WHERE id = ?', [id]);
+    const [cRows] = await pool.query('SELECT * FROM transport_requirement_items WHERE requirement_id = ? ORDER BY id ASC', [id]);
+    const updatedDto = formatParentRequirementDto(pRows[0], cRows, pRows[0]?.submitted_bids_count || 0);
+
+    return res.json({ success: true, message: 'Requirement updated successfully in MySQL', data: updatedDto, requirement: updatedDto });
   } catch (err) {
+    await conn.rollback();
+    conn.release();
     console.error('❌ PUT /api/requirements/:id Error:', err.message);
     return res.status(500).json({ success: false, error: { code: 'DATABASE_ERROR', message: err.message } });
   }
 });
 
-// DELETE /api/requirements/:id — Delete Requirement
+// DELETE /api/requirements/:id — Delete Parent Requirement and All Child Cargo Items
 router.delete('/requirements/:id', authenticateToken, requireRole('admin'), async (req, res) => {
   const { id } = req.params;
   await ensureRequirementsTableExists();
@@ -945,10 +1021,29 @@ router.delete('/requirements/:id', authenticateToken, requireRole('admin'), asyn
       });
     }
 
-    const [result] = await pool.query('DELETE FROM transport_requirements WHERE id = ?', [id]);
-    if (result.affectedRows === 0) {
-      return res.status(404).json({ success: false, error: 'Requirement record not found' });
+    const conn = await pool.getConnection();
+    try {
+      await conn.beginTransaction();
+      await conn.query('DELETE FROM transport_requirement_items WHERE requirement_id = ?', [id]);
+      const [result] = await conn.query('DELETE FROM transport_requirements WHERE id = ?', [id]);
+      await conn.commit();
+      conn.release();
+
+      if (result.affectedRows === 0) {
+        return res.status(404).json({ success: false, error: 'Requirement record not found' });
+      }
+
+      return res.json({ success: true, message: 'Requirement and all child items deleted from MySQL' });
+    } catch (e) {
+      await conn.rollback();
+      conn.release();
+      throw e;
     }
+  } catch (err) {
+    console.error('❌ DELETE /api/requirements/:id Error:', err.message);
+    return res.status(500).json({ success: false, error: { code: 'DATABASE_ERROR', message: err.message } });
+  }
+});
 
     return res.json({ success: true, message: 'Requirement deleted from MySQL' });
   } catch (err) {
