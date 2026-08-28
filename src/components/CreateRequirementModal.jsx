@@ -10,10 +10,16 @@ export const CreateRequirementModal = ({ isOpen, onClose }) => {
 
   const titleMasters = db.title_masters || [];
   const companyUnits = db.company_units_plants || db.company_units || db.company_masters || [];
-  const cityMasters = companyUnits.map((c) => ({
-    id: c.id,
-    city: c.drop_location || c.drop_location_name || c.city || c.company_name || c.name,
-    pin: c.pin_code || c.pincode || c.pin || '440028'
+  const cityMasters = Array.from(
+    new Set(
+      companyUnits
+        .map((c) => (c.drop_location || c.drop_location_name || '').trim())
+        .filter((val) => val.length > 0)
+    )
+  ).map((dropLoc, idx) => ({
+    id: `cup_drop_${idx}`,
+    city: dropLoc,
+    pin: '440028'
   }));
 
   // Title Master State

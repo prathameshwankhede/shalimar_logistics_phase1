@@ -1869,9 +1869,8 @@ export const AdminDashboard = () => {
                           const optionsList = Array.from(
                             new Set(
                               companyUnits
-                                .flatMap((c) => [c.pickup_origin, c.pickup_location_name, c.company_name, c.name, c.city])
-                                .filter((val) => val && typeof val === 'string' && val.trim().length > 0)
-                                .map((val) => val.trim())
+                                .map((c) => (c.pickup_origin || c.pickup_location_name || '').trim())
+                                .filter((val) => val.length > 0)
                             )
                           );
                           if (optionsList.length === 0) {
@@ -1981,15 +1980,8 @@ export const AdminDashboard = () => {
                               const dropList = Array.from(
                                 new Set(
                                   companyUnits
-                                    .flatMap((c) => [
-                                      c.drop_location,
-                                      c.drop_location_name,
-                                      c.city,
-                                      c.company_name,
-                                      c.name
-                                    ])
-                                    .filter((val) => val && typeof val === 'string' && val.trim().length > 0)
-                                    .map((val) => val.trim())
+                                    .map((c) => (c.drop_location || c.drop_location_name || '').trim())
+                                    .filter((val) => val.length > 0)
                                 )
                               );
                               if (dropList.length === 0) {
@@ -3433,7 +3425,7 @@ export const AdminDashboard = () => {
                 >
                   {(() => {
                     const companyUnits = db.company_units_plants || db.company_units || db.company_masters || [];
-                    const opts = Array.from(new Set(companyUnits.flatMap(c => [c.pickup_origin, c.pickup_location_name, c.company_name, c.name, c.city]).filter(Boolean)));
+                    const opts = Array.from(new Set(companyUnits.map(c => (c.pickup_origin || c.pickup_location_name || '').trim()).filter(Boolean)));
                     if (editingReq.origin_city && !opts.includes(editingReq.origin_city)) {
                       opts.unshift(editingReq.origin_city);
                     }
@@ -3453,7 +3445,7 @@ export const AdminDashboard = () => {
                 >
                   {(() => {
                     const companyUnits = db.company_units_plants || db.company_units || db.company_masters || [];
-                    const opts = Array.from(new Set(companyUnits.flatMap(c => [c.drop_location, c.drop_location_name, c.city, c.company_name, c.name]).filter(Boolean)));
+                    const opts = Array.from(new Set(companyUnits.map(c => (c.drop_location || c.drop_location_name || '').trim()).filter(Boolean)));
                     if (editingReq.dest_city && !opts.includes(editingReq.dest_city)) {
                       opts.unshift(editingReq.dest_city);
                     }
