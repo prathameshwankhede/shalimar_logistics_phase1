@@ -1350,6 +1350,8 @@ router.get('/backup/full', authenticateToken, requireRole('admin'), async (req, 
       }
     });
 
+    const childFirstOrder = [...parentFirstOrder].reverse();
+
     const dumpLines = [];
     dumpLines.push(`-- ==================================================`);
     dumpLines.push(`-- SHALIMAR LOGISTICS / TRANSFLOW PHASE 1`);
@@ -1361,6 +1363,14 @@ router.get('/backup/full', authenticateToken, requireRole('admin'), async (req, 
     dumpLines.push(`SET FOREIGN_KEY_CHECKS = 0;`);
     dumpLines.push(``);
 
+    dumpLines.push(`-- Safe Drop Existing Tables in Child-First Dependency Order`);
+    for (const tbl of childFirstOrder) {
+      if (tableNames.includes(tbl)) {
+        dumpLines.push(`DROP TABLE IF EXISTS \`${tbl}\`;`);
+      }
+    }
+    dumpLines.push(``);
+
     for (const tbl of parentFirstOrder) {
       if (!tableNames.includes(tbl)) continue;
 
@@ -1369,7 +1379,6 @@ router.get('/backup/full', authenticateToken, requireRole('admin'), async (req, 
         const rawCreateSql = createRows[0]['Create Table'] || createRows[0]['CREATE TABLE'];
         if (rawCreateSql) {
           dumpLines.push(`-- Table structure for \`${tbl}\``);
-          dumpLines.push(`DROP TABLE IF EXISTS \`${tbl}\`;`);
           dumpLines.push(`${rawCreateSql};`);
           dumpLines.push(``);
         }
@@ -1436,7 +1445,6 @@ router.post('/backup/restore', authenticateToken, requireRole('admin'), async (r
   try {
     await conn.query('SET FOREIGN_KEY_CHECKS = 0');
 
-    // 1. Discover current database tables & clear operational data before snapshot execution
     const [existingTablesRows] = await conn.query(
       "SELECT table_name FROM information_schema.tables WHERE table_schema = DATABASE() AND table_type = 'BASE TABLE'"
     );
@@ -1452,11 +1460,15 @@ router.post('/backup/restore', authenticateToken, requireRole('admin'), async (r
       'transporters'
     ];
 
+    existingTableNames.forEach(t => {
+      if (!childFirstClearSequence.includes(t) && t !== 'users') {
+        childFirstClearSequence.push(t);
+      }
+    });
+
     for (const tbl of childFirstClearSequence) {
       if (existingTableNames.includes(tbl)) {
-        await conn.query(`TRUNCATE TABLE \`${tbl}\``).catch(async () => {
-          await conn.query(`DELETE FROM \`${tbl}\``).catch(() => {});
-        });
+        await conn.query(`DROP TABLE IF EXISTS \`${tbl}\``).catch(() => {});
       }
     }
 
@@ -1464,7 +1476,6 @@ router.post('/backup/restore', authenticateToken, requireRole('admin'), async (r
       await conn.query("DELETE FROM users WHERE role != 'admin' AND username != 'admin'").catch(() => {});
     }
 
-    // 2. Parse and execute .sql backup statements
     const statements = sqlText
       .split(/;(?=\s*(?:--|$|\r?\n))/)
       .map(s => s.trim())
