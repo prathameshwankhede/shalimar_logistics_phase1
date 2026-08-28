@@ -1879,7 +1879,7 @@ export const AdminDashboard = () => {
 
                           const optionsList = Array.from(
                             new Set([
-                              ...companyUnits.flatMap((c) => [c.pickup_origin, c.pickup_location_name, c.company_name, c.name, c.city]).filter(Boolean)
+                              ...companyUnits.flatMap((c) => [c.pickup_origin, c.pickup_location_name]).filter(Boolean)
                             ].map((val) => String(val).trim()).filter((val) => val.length > 0))
                           );
 
@@ -1990,7 +1990,7 @@ export const AdminDashboard = () => {
 
                               const dropList = Array.from(
                                 new Set([
-                                  ...companyUnits.flatMap((c) => [c.drop_location, c.drop_location_name, c.company_name, c.name, c.city, c.registered_address]).filter(Boolean)
+                                  ...companyUnits.flatMap((c) => [c.drop_location, c.drop_location_name]).filter(Boolean)
                                 ].map((val) => String(val).trim()).filter((val) => val.length > 0))
                               );
 
