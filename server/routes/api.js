@@ -890,7 +890,6 @@ async function syncNormalizedTables(data) {
            pan = VALUES(pan),
            address = VALUES(address),
            username = VALUES(username),
-           password_hash = COALESCE(VALUES(password_hash), password_hash),
            status = VALUES(status),
            updated_at = NOW()`,
           [
