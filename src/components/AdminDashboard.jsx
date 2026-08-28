@@ -560,25 +560,24 @@ export const AdminDashboard = () => {
 
   const handleDownloadDatabaseBackup = async () => {
     try {
-      setArchiveNotice('⏳ Generating full MySQL database backup...');
-      const backupData = await downloadFullBackupApi();
-      if (!backupData || backupData.success === false) {
-        alert(`Backup creation failed: ${backupData?.message || 'Server error'}`);
+      setArchiveNotice('⏳ Generating native MySQL database backup (.sql)...');
+      const sqlText = await downloadFullBackupApi();
+      if (!sqlText || typeof sqlText !== 'string') {
+        alert('Backup creation failed: Server returned empty backup.');
         return;
       }
 
-      const jsonStr = JSON.stringify(backupData, null, 2);
-      const blob = new Blob([jsonStr], { type: 'application/json' });
+      const blob = new Blob([sqlText], { type: 'application/sql' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `shalimar_mysql_backup_${new Date().toISOString().slice(0, 10)}.json`;
+      link.download = `shalimar_mysql_backup_${new Date().toISOString().slice(0, 10)}.sql`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
 
-      setArchiveNotice('📥 Complete MySQL Database Backup (.json) downloaded successfully!');
+      setArchiveNotice('📥 Complete Native MySQL Database Backup (.sql) downloaded successfully!');
       setTimeout(() => setArchiveNotice(''), 4000);
     } catch (err) {
       console.error('Backup download error:', err);
@@ -590,32 +589,26 @@ export const AdminDashboard = () => {
     const reader = new FileReader();
     reader.onload = async (event) => {
       try {
-        const jsonContent = event.target?.result;
-        if (!jsonContent) return;
-        const parsed = JSON.parse(jsonContent);
+        const sqlContent = event.target?.result;
+        if (!sqlContent) return;
 
-        if (!parsed || typeof parsed !== 'object') {
-          alert('Invalid Backup File. Please upload a valid JSON backup file.');
+        if (!window.confirm('⚠️ MYSQL DATABASE RESTORE CONFIRMATION:\n\nAre you sure you want to restore the system database from this .sql backup file?\n\nThis will execute native DDL & DML statements directly on your Live Hostinger MySQL Database.')) {
           return;
         }
 
-        if (!window.confirm('⚠️ MYSQL DATABASE RESTORE CONFIRMATION:\n\nAre you sure you want to restore system database from this backup file?\n\nThis will update your Live Hostinger MySQL Database with the backup data.')) {
-          return;
-        }
-
-        setArchiveNotice('⏳ Restoring backup into Hostinger MySQL database...');
-        const res = await restoreBackupApi(parsed);
+        setArchiveNotice('⏳ Restoring native .sql backup into Hostinger MySQL database...');
+        const res = await restoreBackupApi(sqlContent);
 
         if (res && res.success === false) {
           alert(`❌ Restore failed: ${res.message || 'Server error'}`);
           return;
         }
 
-        alert(`🎉 SUCCESS: ${res.message || 'Database restored successfully!'}`);
+        alert(`🎉 SUCCESS: ${res.message || 'Database restored successfully from .sql backup!'}`);
         window.location.reload();
       } catch (err) {
         console.error('Restore error:', err);
-        alert(`Failed to restore backup JSON file: ${err.message}`);
+        alert(`Failed to restore backup .sql file: ${err.message}`);
       }
     };
     reader.readAsText(file);
@@ -2697,7 +2690,7 @@ export const AdminDashboard = () => {
                       boxShadow: '0 4px 14px rgba(56, 189, 248, 0.4)'
                     }}
                   >
-                    <Download size={18} /> 📥 Download Full Database Backup (.json)
+                    <Download size={18} /> 📥 Download Full Database Backup (.sql)
                   </button>
 
                   <button
@@ -2719,12 +2712,12 @@ export const AdminDashboard = () => {
                       boxShadow: '0 4px 14px rgba(2, 132, 199, 0.4)'
                     }}
                   >
-                    <Upload size={18} /> 📤 Restore Backup File (.json)
+                    <Upload size={18} /> 📤 Restore Backup File (.sql)
                   </button>
                   <input
                     ref={restoreFileInputRef}
                     type="file"
-                    accept=".json"
+                    accept=".sql"
                     onChange={handleUploadDatabaseBackup}
                     style={{ display: 'none' }}
                   />

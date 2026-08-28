@@ -1326,7 +1326,7 @@ router.delete('/transporters/:id', authenticateToken, requireRole('admin'), asyn
 });
 
 // -------------------------------------------------------------
-// GET /api/backup/full — Full MySQL Database Backup (Admin Only)
+// GET /api/backup/full — Full Native MySQL Database Backup (.sql) (Admin Only)
 // -------------------------------------------------------------
 router.get('/backup/full', authenticateToken, requireRole('admin'), async (req, res) => {
   try {
@@ -1334,65 +1334,7 @@ router.get('/backup/full', authenticateToken, requireRole('admin'), async (req, 
       "SELECT table_name FROM information_schema.tables WHERE table_schema = DATABASE() AND table_type = 'BASE TABLE'"
     );
 
-    const tablesObj = {};
     const tableNames = tablesRows.map(r => r.table_name || r.TABLE_NAME);
-
-    for (const tbl of tableNames) {
-      const [rows] = await pool.query(`SELECT * FROM \`${tbl}\``);
-      if (tbl === 'users') {
-        tablesObj[tbl] = rows.map(u => {
-          const cleanUser = { ...u };
-          delete cleanUser.password;
-          delete cleanUser.password_hash;
-          delete cleanUser.secret;
-          delete cleanUser.jwt_secret;
-          delete cleanUser.token;
-          return cleanUser;
-        });
-      } else {
-        tablesObj[tbl] = rows;
-      }
-    }
-
-    return res.json({
-      backup_version: '1.0',
-      database: 'u704836459_shalimar_logi',
-      created_at: new Date().toISOString(),
-      tables: tablesObj
-    });
-  } catch (err) {
-    console.error('❌ GET /api/backup/full error:', err.message);
-    return res.status(500).json({ success: false, message: `Backup failed: ${err.message}` });
-  }
-});
-
-// -------------------------------------------------------------
-// POST /api/backup/restore — Restore Backup to MySQL (Admin Only)
-// -------------------------------------------------------------
-router.post('/backup/restore', authenticateToken, requireRole('admin'), async (req, res) => {
-  const backupPayload = req.body;
-  if (!backupPayload || typeof backupPayload !== 'object') {
-    return res.status(400).json({ success: false, message: 'Invalid backup JSON payload provided.' });
-  }
-
-  const tablesData = backupPayload.tables || backupPayload.data || backupPayload.db;
-  if (!tablesData || typeof tablesData !== 'object') {
-    return res.status(400).json({ success: false, message: 'Backup JSON missing valid tables object.' });
-  }
-
-  const conn = await pool.getConnection();
-
-  try {
-    const [existingTablesRows] = await conn.query(
-      "SELECT table_name FROM information_schema.tables WHERE table_schema = DATABASE() AND table_type = 'BASE TABLE'"
-    );
-    const validTableNames = new Set(existingTablesRows.map(r => r.table_name || r.TABLE_NAME));
-
-    const inputTableNames = Object.keys(tablesData).filter(t => validTableNames.has(t));
-    if (inputTableNames.length === 0) {
-      conn.release();
-      return res.status(400).json({ success: false, message: 'No matching database tables found in backup file.' });
-    }
 
     const parentFirstOrder = [
       'users',
@@ -1402,65 +1344,110 @@ router.post('/backup/restore', authenticateToken, requireRole('admin'), async (r
       'transport_requirements',
       'transport_requirement_items'
     ];
-
-    inputTableNames.forEach(t => {
+    tableNames.forEach(t => {
       if (!parentFirstOrder.includes(t)) {
         parentFirstOrder.push(t);
       }
     });
 
-    const orderedTablesToRestore = parentFirstOrder.filter(t => inputTableNames.includes(t));
-    const reverseOrderToClear = [...orderedTablesToRestore].reverse();
+    const dumpLines = [];
+    dumpLines.push(`-- ==================================================`);
+    dumpLines.push(`-- SHALIMAR LOGISTICS / TRANSFLOW PHASE 1`);
+    dumpLines.push(`-- Hostinger Native MySQL Database Backup (.sql)`);
+    dumpLines.push(`-- Database: u704836459_shalimar_logi`);
+    dumpLines.push(`-- Export Date: ${new Date().toISOString()}`);
+    dumpLines.push(`-- ==================================================`);
+    dumpLines.push(``);
+    dumpLines.push(`SET FOREIGN_KEY_CHECKS = 0;`);
+    dumpLines.push(``);
 
-    await conn.beginTransaction();
-    await conn.query('SET FOREIGN_KEY_CHECKS = 0');
+    for (const tbl of parentFirstOrder) {
+      if (!tableNames.includes(tbl)) continue;
 
-    for (const tbl of reverseOrderToClear) {
-      if (tbl === 'users') {
-        await conn.query("DELETE FROM users WHERE role != 'admin' AND username != 'admin'");
-      } else {
-        await conn.query(`DELETE FROM \`${tbl}\``);
+      try {
+        const [createRows] = await pool.query(`SHOW CREATE TABLE \`${tbl}\``);
+        const createSql = createRows[0]['Create Table'] || createRows[0]['CREATE TABLE'];
+        if (createSql) {
+          dumpLines.push(`-- Table structure for \`${tbl}\``);
+          dumpLines.push(`DROP TABLE IF EXISTS \`${tbl}\`;`);
+          dumpLines.push(`${createSql};`);
+          dumpLines.push(``);
+        }
+      } catch (ddlErr) {
+        console.warn(`DDL warning for ${tbl}:`, ddlErr.message);
+      }
+
+      const [rows] = await pool.query(`SELECT * FROM \`${tbl}\``);
+      if (rows && rows.length > 0) {
+        dumpLines.push(`-- Data insert for \`${tbl}\``);
+        for (const rowObj of rows) {
+          const keys = Object.keys(rowObj);
+          const colsStr = keys.map(k => `\`${k}\``).join(', ');
+          const valsStr = keys.map(k => {
+            const val = rowObj[k];
+            if (val === null || val === undefined) return 'NULL';
+            if (typeof val === 'number') return val;
+            if (typeof val === 'boolean') return val ? 1 : 0;
+            if (val instanceof Date) return `'${val.toISOString().slice(0, 19).replace('T', ' ')}'`;
+            if (typeof val === 'object') return pool.escape(JSON.stringify(val));
+            return pool.escape(String(val));
+          }).join(', ');
+
+          dumpLines.push(`INSERT INTO \`${tbl}\` (${colsStr}) VALUES (${valsStr});`);
+        }
+        dumpLines.push(``);
       }
     }
 
-    let totalRestoredRows = 0;
-    for (const tbl of orderedTablesToRestore) {
-      const rows = tablesData[tbl];
-      if (Array.isArray(rows) && rows.length > 0) {
-        const [colRows] = await conn.query(
-          "SELECT column_name FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = ?",
-          [tbl]
-        );
-        const validCols = colRows.map(c => c.column_name || c.COLUMN_NAME);
+    dumpLines.push(`SET FOREIGN_KEY_CHECKS = 1;`);
+    dumpLines.push(`-- Dump complete`);
 
-        for (const rowObj of rows) {
-          if (!rowObj || typeof rowObj !== 'object') continue;
+    const sqlContent = dumpLines.join('\n');
+    const filename = `shalimar_mysql_backup_${new Date().toISOString().slice(0, 10)}.sql`;
 
-          const insertCols = [];
-          const insertVals = [];
+    res.setHeader('Content-Type', 'application/sql');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    return res.send(sqlContent);
+  } catch (err) {
+    console.error('❌ GET /api/backup/full (.sql) error:', err.message);
+    return res.status(500).json({ success: false, message: `MySQL SQL backup failed: ${err.message}` });
+  }
+});
 
-          validCols.forEach(col => {
-            if (rowObj[col] !== undefined) {
-              insertCols.push(`\`${col}\``);
-              let val = rowObj[col];
+// -------------------------------------------------------------
+// POST /api/backup/restore — Restore .sql Backup to MySQL (Admin Only)
+// -------------------------------------------------------------
+router.post('/backup/restore', authenticateToken, requireRole('admin'), async (req, res) => {
+  let sqlText = '';
+  if (typeof req.body === 'string') {
+    sqlText = req.body;
+  } else if (req.body && typeof req.body.sql === 'string') {
+    sqlText = req.body.sql;
+  } else if (req.body && typeof req.body.sql_content === 'string') {
+    sqlText = req.body.sql_content;
+  }
 
-              if (tbl === 'users' && col === 'password' && !val) {
-                val = 'password123';
-              }
-              if (typeof val === 'object' && val !== null) {
-                val = JSON.stringify(val);
-              }
-              insertVals.push(val);
-            }
-          });
+  if (!sqlText || sqlText.trim().length === 0) {
+    return res.status(400).json({ success: false, message: 'Invalid or empty .sql backup file provided.' });
+  }
 
-          if (insertCols.length > 0) {
-            const placeholders = insertCols.map(() => '?').join(', ');
-            const sql = `INSERT INTO \`${tbl}\` (${insertCols.join(', ')}) VALUES (${placeholders}) ON DUPLICATE KEY UPDATE ${insertCols.map(c => `${c}=VALUES(${c})`).join(', ')}`;
-            await conn.query(sql, insertVals);
-            totalRestoredRows++;
-          }
-        }
+  const conn = await pool.getConnection();
+
+  try {
+    await conn.beginTransaction();
+    await conn.query('SET FOREIGN_KEY_CHECKS = 0');
+
+    const statements = sqlText
+      .split(/;\s*$/m)
+      .map(s => s.trim())
+      .filter(s => s.length > 0 && !s.startsWith('--'));
+
+    let executedCount = 0;
+    for (const stmt of statements) {
+      const cleanStmt = stmt.split('\n').filter(line => !line.trim().startsWith('--')).join('\n').trim();
+      if (cleanStmt.length > 0) {
+        await conn.query(cleanStmt);
+        executedCount++;
       }
     }
 
@@ -1470,15 +1457,14 @@ router.post('/backup/restore', authenticateToken, requireRole('admin'), async (r
 
     return res.json({
       success: true,
-      restoredRows: totalRestoredRows,
-      tablesCount: orderedTablesToRestore.length,
-      message: `Database successfully restored (${totalRestoredRows} records across ${orderedTablesToRestore.length} tables).`
+      executedStatements: executedCount,
+      message: `MySQL database successfully restored from .sql backup (${executedCount} statements executed).`
     });
   } catch (err) {
     await conn.query('SET FOREIGN_KEY_CHECKS = 1').catch(() => {});
     await conn.rollback().catch(() => {});
     conn.release();
-    console.error('❌ POST /api/backup/restore error:', err.message);
+    console.error('❌ POST /api/backup/restore (.sql) error:', err.message);
     return res.status(500).json({ success: false, message: `Restore transaction failed: ${err.message}` });
   }
 });
