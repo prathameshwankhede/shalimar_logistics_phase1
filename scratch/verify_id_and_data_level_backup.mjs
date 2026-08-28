@@ -3,6 +3,45 @@
 
 const BASE_URL = 'https://lightslategray-gazelle-919724.hostingersite.com';
 
+function parseSqlInsertValues(rawValsStr) {
+  const vals = [];
+  let currentVal = '';
+  let inQuotes = false;
+  let quoteChar = '';
+
+  for (let i = 0; i < rawValsStr.length; i++) {
+    const char = rawValsStr[i];
+    if (inQuotes) {
+      if (char === quoteChar && rawValsStr[i - 1] !== '\\') {
+        inQuotes = false;
+      }
+      currentVal += char;
+    } else {
+      if (char === "'" || char === '"') {
+        inQuotes = true;
+        quoteChar = char;
+        currentVal += char;
+      } else if (char === ',') {
+        vals.push(currentVal.trim());
+        currentVal = '';
+      } else {
+        currentVal += char;
+      }
+    }
+  }
+  if (currentVal.trim()) vals.push(currentVal.trim());
+
+  return vals.map(v => {
+    const clean = v.trim();
+    if (clean === 'NULL' || clean === 'null') return null;
+    if ((clean.startsWith("'") && clean.endsWith("'")) || (clean.startsWith('"') && clean.endsWith('"'))) {
+      return clean.slice(1, -1).replace(/\\'/g, "'").replace(/\\\\/g, "\\");
+    }
+    if (!isNaN(Number(clean))) return Number(clean);
+    return clean;
+  });
+}
+
 async function runIdAndDataLevelVerification() {
   console.log('==================================================');
   console.log('🧪 STRICT ID-LEVEL & DATA-LEVEL MYSQL BACKUP VERIFICATION');
@@ -18,18 +57,18 @@ async function runIdAndDataLevelVerification() {
   console.log('✅ Admin Authenticated via JWT Token.');
 
   // 2. Fetch Live MySQL Database State via API report
-  console.log('\n📡 Step 1: Fetching Actual Live MySQL Table Records...');
+  console.log('\n📡 Step 1: Querying SELECT DATABASE() & Table Records from Live MySQL...');
   const reportRes = await fetch(`${BASE_URL}/api/backup/report`, {
     headers: { 'Authorization': `Bearer ${token}` }
   });
   const reportJson = await reportRes.json();
   const dbName = reportJson.database || 'u704836459_shalimar_logi';
-  console.log(`  • Connected Database: ${dbName}`);
+  console.log(`  • Active MySQL Database: ${dbName}`);
 
   const mysqlData = reportJson.data || {};
-  
+
   // 3. Download Full Database Backup (.sql)
-  console.log('\n📥 Step 2: Downloading GET /api/backup/full (.sql)...');
+  console.log('\n📥 Step 2: Requesting GET /api/backup/full (.sql)...');
   const backupRes = await fetch(`${BASE_URL}/api/backup/full`, {
     headers: { 'Authorization': `Bearer ${token}` }
   });
@@ -51,49 +90,12 @@ async function runIdAndDataLevelVerification() {
     const trimmed = line.trim();
     if (!trimmed.startsWith('INSERT INTO')) return;
 
-    // Match INSERT INTO `table_name` (`col1`, `col2`, ...) VALUES (val1, val2, ...);
-    const tableMatch = trimmed.match(/INSERT INTO `([^`]+)` \(([^)]+)\) VALUES \((.+)\);/);
-    if (!tableMatch) return;
+    const match = trimmed.match(/INSERT INTO `([^`]+)` \(([^)]+)\) VALUES \((.+)\);/);
+    if (!match) return;
 
-    const tableName = tableMatch[1];
-    const cols = tableMatch[2].split(',').map(c => c.trim().replace(/`/g, ''));
-    const rawValsStr = tableMatch[3];
-
-    // Naive split by comma (respecting quoted strings)
-    const vals = [];
-    let currentVal = '';
-    let inQuotes = false;
-    let quoteChar = '';
-
-    for (let i = 0; i < rawValsStr.length; i++) {
-      const char = rawValsStr[i];
-      if (inQuotes) {
-        if (char === quoteChar && rawValsStr[i - 1] !== '\\') {
-          inQuotes = false;
-        }
-        currentVal += char;
-      } else {
-        if (char === "'" || char === '"') {
-          inQuotes = true;
-          quoteChar = char;
-          currentVal += char;
-        } else if (char === ',') {
-          vals.push(currentVal.trim());
-          currentVal = '';
-        } else {
-          currentVal += char;
-        }
-      }
-    }
-    if (currentVal) vals.push(currentVal.trim());
-
-    // Clean value strings
-    const cleanVals = vals.map(v => {
-      if (v === 'NULL') return null;
-      if (v.startsWith("'") && v.endsWith("'")) return v.slice(1, -1).replace(/\\'/g, "'").replace(/\\\\/g, "\\");
-      if (!isNaN(Number(v))) return Number(v);
-      return v;
-    });
+    const tableName = match[1];
+    const cols = match[2].split(',').map(c => c.trim().replace(/`/g, ''));
+    const cleanVals = parseSqlInsertValues(match[3]);
 
     const rowObj = {};
     cols.forEach((col, idx) => {
@@ -107,7 +109,7 @@ async function runIdAndDataLevelVerification() {
 
   // 5. Detailed ID & Field Comparison
   console.log('\n==================================================');
-  console.log('📊 ID-LEVEL & DATA-LEVEL COMPARISON RESULTS');
+  console.log('📊 ID-LEVEL & DATA-LEVEL COMPARISON TABLE');
   console.log('==================================================');
 
   const comparisonTable = [];
