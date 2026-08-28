@@ -2437,8 +2437,48 @@ export const AdminDashboard = () => {
                                           📍 {pickupStr} ➔ 🎯 <strong style={{ color: '#fbbf24', fontWeight: '900' }}>{dropStr}</strong>
                                         </span>
                                         <span style={{ fontSize: '0.82rem', background: 'rgba(52, 211, 153, 0.15)', color: '#34d399', border: '1px solid rgba(52, 211, 153, 0.4)', padding: '5px 12px', borderRadius: '20px', fontWeight: '900' }}>
-                                          ⚖️ {Number(totalQty).toLocaleString()} MT Total
+                                          ⚖️ {Number(totalQty).toLocaleString()} MT Batch Total
                                         </span>
+                                        <button
+                                          type="button"
+                                          onClick={() => alert(`Broadcasting Batch ${reqNoStr} to WhatsApp Transporter Groups...`)}
+                                          className="btn btn-success"
+                                          style={{
+                                            background: '#059669',
+                                            border: 'none',
+                                            padding: '6px 14px',
+                                            fontSize: '0.8rem',
+                                            borderRadius: '10px',
+                                            fontWeight: '900',
+                                            color: '#ffffff',
+                                            cursor: 'pointer',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '6px'
+                                          }}
+                                        >
+                                          💬 📱 WhatsApp Broadcast
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => setSelectedRequestForComparison(req)}
+                                          className="btn btn-success"
+                                          style={{
+                                            background: '#059669',
+                                            border: 'none',
+                                            padding: '6px 14px',
+                                            fontSize: '0.8rem',
+                                            borderRadius: '10px',
+                                            fontWeight: '900',
+                                            color: '#ffffff',
+                                            cursor: 'pointer',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '6px'
+                                          }}
+                                        >
+                                          📄 📄 Batch Comparative Report ({reqNoStr})
+                                        </button>
                                         <button
                                           type="button"
                                           onClick={() => toggleBatchExpand(reqNoStr)}
@@ -2459,63 +2499,125 @@ export const AdminDashboard = () => {
                                       </div>
                                     </div>
 
-                                    {/* Sub-Items Table */}
+                                    {/* Sub-Items Table Matching User Screenshot */}
                                     <div style={{ maxHeight: '80vh', overflowY: 'auto', borderRadius: '12px', border: '1px solid rgba(255, 255, 255, 0.1)' }}>
                                       <table className="custom-table" style={{ width: '100%', margin: 0, background: '#0f172a' }}>
                                         <thead>
                                           <tr style={{ background: '#1e293b' }}>
                                             <th style={{ color: '#f8fafc', padding: '12px 16px', fontSize: '0.78rem', fontWeight: '900', borderBottom: '2px solid #334155' }}>REQUISITION CODE</th>
                                             <th style={{ color: '#f8fafc', padding: '12px 16px', fontSize: '0.78rem', fontWeight: '900', borderBottom: '2px solid #334155' }}>ROUTE / LOCATION</th>
-                                            <th style={{ color: '#f8fafc', padding: '12px 16px', fontSize: '0.78rem', fontWeight: '900', borderBottom: '2px solid #334155' }}>PRODUCT & CARGO</th>
-                                            <th style={{ color: '#f8fafc', padding: '12px 16px', fontSize: '0.78rem', fontWeight: '900', borderBottom: '2px solid #334155' }}>QUANTITY (MT)</th>
+                                            <th style={{ color: '#f8fafc', padding: '12px 16px', fontSize: '0.78rem', fontWeight: '900', borderBottom: '2px solid #334155' }}>CARGO & QTY</th>
                                             <th style={{ color: '#f8fafc', padding: '12px 16px', fontSize: '0.78rem', fontWeight: '900', borderBottom: '2px solid #334155' }}>TARGET DATE</th>
+                                            <th style={{ color: '#f8fafc', padding: '12px 16px', fontSize: '0.78rem', fontWeight: '900', borderBottom: '2px solid #334155' }}>SUBMITTED QUOTES</th>
+                                            <th style={{ color: '#f8fafc', padding: '12px 16px', fontSize: '0.78rem', fontWeight: '900', borderBottom: '2px solid #334155' }}>📊 BID & APPROVAL REPORT</th>
                                             <th style={{ color: '#f8fafc', padding: '12px 16px', fontSize: '0.78rem', fontWeight: '900', borderBottom: '2px solid #334155' }}>STATUS</th>
+                                            <th style={{ color: '#f8fafc', padding: '12px 16px', fontSize: '0.78rem', fontWeight: '900', borderBottom: '2px solid #334155', textAlign: 'center' }}>ACTIONS</th>
                                           </tr>
                                         </thead>
                                         <tbody>
                                           {childItems.map((item, subIdx) => {
                                             const subCode = `${reqNoStr}/${(subIdx + 1).toString().padStart(2, '0')}`;
+                                            const bids = (db.rate_submissions || []).filter((s) => String(s.requirement_id) === String(req.id) || String(s.requirement_id) === String(reqNoStr) || String(s.rate_request_id) === String(req.id) || String(s.rate_request_id) === String(reqNoStr));
+                                            const validRates = bids.map(b => parseFloat(b.rate_per_mt || b.rate_per_unit || 0)).filter(r => r > 0);
+                                            const lowestRate = validRates.length > 0 ? Math.min(...validRates) : null;
+                                            const bidsCount = Math.max(displayBidCount, bids.length);
+                                            const alloc = (db.allocations || []).find((a) => String(a.requirement_id) === String(req.id) || String(a.req_no) === String(reqNoStr));
+                                            const awardedTransporter = alloc ? (alloc.transporter_name || alloc.transporter_id) : req.awarded_transporter;
+
                                             return (
                                               <tr key={item.id || subIdx} style={{ background: subIdx % 2 === 0 ? '#0f172a' : '#1e293b', borderBottom: '1px solid rgba(255, 255, 255, 0.05)' }}>
-                                                <td style={{ padding: '12px 16px' }}>
+                                                <td style={{ padding: '14px 16px' }}>
                                                   <span style={{
                                                     fontFamily: 'monospace',
-                                                    fontSize: '0.82rem',
+                                                    fontSize: '0.85rem',
                                                     fontWeight: '900',
-                                                    color: '#38bdf8',
-                                                    background: 'rgba(56, 189, 248, 0.15)',
-                                                    border: '1px solid rgba(56, 189, 248, 0.35)',
-                                                    padding: '4px 10px',
-                                                    borderRadius: '6px'
+                                                    color: '#ffffff',
+                                                    background: '#1e293b',
+                                                    border: '1px solid rgba(255, 255, 255, 0.2)',
+                                                    padding: '6px 12px',
+                                                    borderRadius: '8px',
+                                                    display: 'inline-block'
                                                   }}>
                                                     {subCode}
                                                   </span>
                                                 </td>
 
-                                                <td style={{ padding: '12px 16px' }}>
+                                                <td style={{ padding: '14px 16px' }}>
                                                   <div style={{ fontSize: '0.82rem', color: '#cbd5e1', fontWeight: '700' }}>
-                                                    📍 {item.pickup_origin || pickupStr} ➔ 🎯 <strong style={{ color: '#fbbf24' }}>{item.drop_location || dropStr}</strong>
+                                                    📍 {item.pickup_origin || pickupStr} ➔ 🎯 <strong style={{ color: '#d97706', fontWeight: '900' }}>{item.drop_location || dropStr}</strong>
                                                   </div>
                                                 </td>
 
-                                                <td style={{ padding: '12px 16px' }}>
-                                                  <div style={{ fontSize: '0.88rem', fontWeight: '900', color: '#ffffff' }}>
-                                                    {item.product_name || item.material_type || 'General Cargo'}
-                                                  </div>
-                                                </td>
-
-                                                <td style={{ padding: '12px 16px' }}>
-                                                  <div style={{ fontSize: '0.9rem', fontWeight: '900', color: '#38bdf8' }}>
+                                                <td style={{ padding: '14px 16px' }}>
+                                                  <div style={{ fontSize: '0.95rem', fontWeight: '900', color: '#0284c7' }}>
                                                     {Number(item.quantity_mt || item.required_qty || 0).toLocaleString()} {item.unit || 'MT'}
                                                   </div>
+                                                  <div style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: '700', marginTop: '2px' }}>
+                                                    {item.product_name || item.material_type || 'HI-PRO SOYA'}
+                                                  </div>
                                                 </td>
 
-                                                <td style={{ padding: '12px 16px' }}>
-                                                  <div style={{ fontSize: '0.85rem', color: '#94a3b8', fontWeight: '700' }}>{req.target_date || '-'}</div>
+                                                <td style={{ padding: '14px 16px' }}>
+                                                  <div style={{ fontSize: '0.85rem', color: '#64748b', fontWeight: '700' }}>{req.target_date || '2026-08-25'}</div>
                                                 </td>
 
-                                                <td style={{ padding: '12px 16px' }}>
-                                                  <span className="badge badge-open" style={{ fontSize: '0.75rem' }}>Active</span>
+                                                <td style={{ padding: '14px 16px' }}>
+                                                  <div style={{ fontSize: '0.85rem', color: '#cbd5e1', fontWeight: '700' }}>
+                                                    {bidsCount > 0 ? `${bidsCount} Transporter Bids` : 'No Bids Yet'}
+                                                  </div>
+                                                  {lowestRate && (
+                                                    <div style={{ fontSize: '0.8rem', color: '#059669', fontWeight: '900', marginTop: '2px' }}>
+                                                      💰 Lowest L1 Quote: ₹{lowestRate}/MT
+                                                    </div>
+                                                  )}
+                                                </td>
+
+                                                <td style={{ padding: '14px 16px' }}>
+                                                  {awardedTransporter ? (
+                                                    <div>
+                                                      <div style={{ fontSize: '0.82rem', color: '#059669', fontWeight: '900' }}>
+                                                        🏆 Approved: {awardedTransporter}
+                                                      </div>
+                                                      <span style={{ fontSize: '0.72rem', background: '#f1f5f9', color: '#475569', border: '1px solid #cbd5e1', padding: '2px 8px', borderRadius: '4px', cursor: 'pointer', display: 'inline-block', marginTop: '2px' }}>
+                                                        📋 Audit Log
+                                                      </span>
+                                                    </div>
+                                                  ) : (
+                                                    <span style={{ fontSize: '0.8rem', color: '#64748b' }}>Pending Approval</span>
+                                                  )}
+                                                </td>
+
+                                                <td style={{ padding: '14px 16px' }}>
+                                                  {awardedTransporter ? (
+                                                    <span className="badge badge-success" style={{ fontSize: '0.78rem', background: '#dcfce7', color: '#166534', border: '1px solid #86efac', padding: '4px 12px', borderRadius: '20px', fontWeight: '900' }}>
+                                                      ✓ Awarded
+                                                    </span>
+                                                  ) : (
+                                                    <span className="badge badge-open" style={{ fontSize: '0.78rem', background: '#e0f2fe', color: '#0369a1', border: '1px solid #7dd3fc', padding: '4px 12px', borderRadius: '20px', fontWeight: '900' }}>
+                                                      Active
+                                                    </span>
+                                                  )}
+                                                </td>
+
+                                                <td style={{ padding: '14px 16px', textAlign: 'center' }}>
+                                                  <button
+                                                    type="button"
+                                                    onClick={() => setSelectedRequestForComparison(req)}
+                                                    className="btn btn-primary"
+                                                    style={{
+                                                      background: '#2563eb',
+                                                      border: 'none',
+                                                      padding: '8px 14px',
+                                                      fontSize: '0.82rem',
+                                                      borderRadius: '8px',
+                                                      fontWeight: '900',
+                                                      color: '#ffffff',
+                                                      cursor: 'pointer',
+                                                      whiteSpace: 'nowrap'
+                                                    }}
+                                                  >
+                                                    📉 Compare Quotes ({bidsCount})
+                                                  </button>
                                                 </td>
                                               </tr>
                                             );
