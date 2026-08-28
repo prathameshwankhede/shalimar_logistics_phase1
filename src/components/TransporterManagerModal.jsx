@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { createTransporter, deleteTransporter } from '../api/transporterApi';
-import { UserPlus, X, Shield, Building, Phone, Mail, FileText, CheckCircle, Edit, Trash2 } from 'lucide-react';
+import { UserPlus, X, Shield, CheckCircle, Trash2 } from 'lucide-react';
 import { validateMobile, validateEmail, validateName } from '../utils/validationRules';
 
 export const TransporterManagerModal = ({ isOpen, onClose, editingTransporter = null }) => {
@@ -64,7 +64,6 @@ export const TransporterManagerModal = ({ isOpen, onClose, editingTransporter = 
   const handleFieldChange = (field, value) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
 
-    // Real-time live field-level validation
     if (field === 'mobile') {
       const v = validateMobile(value);
       setFieldErrors((prev) => ({ ...prev, mobile: value && !v.valid ? v.message : null }));
@@ -83,7 +82,6 @@ export const TransporterManagerModal = ({ isOpen, onClose, editingTransporter = 
     e.preventDefault();
     setErrorMsg('');
 
-    // 🛡️ Live Enterprise Validation Rules
     const mobileVal = validateMobile(formData.mobile);
     if (!mobileVal.valid) {
       setFieldErrors((prev) => ({ ...prev, mobile: mobileVal.message }));
@@ -124,7 +122,6 @@ export const TransporterManagerModal = ({ isOpen, onClose, editingTransporter = 
       status: formData.status
     };
 
-    // 1. Call POST /api/transporters Dedicated API Route
     try {
       const apiRes = await createTransporter(transporterPayload);
       if (apiRes && apiRes.error) {
@@ -164,8 +161,7 @@ export const TransporterManagerModal = ({ isOpen, onClose, editingTransporter = 
     updateDB(updatedDb);
 
     setSuccessMessage(`Transporter Account '${formData.company_name}' (${formData.username}) ${isEdit ? 'updated' : 'created'} successfully!`);
-    
-    // Reset form
+
     setFormData({
       company_name: '',
       code: '',
@@ -374,7 +370,7 @@ export const TransporterManagerModal = ({ isOpen, onClose, editingTransporter = 
             <h4 style={{ fontSize: '0.88rem', fontWeight: '800', color: '#0284c7', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
               <Shield size={16} color="#0284c7" /> Login Credentials for Transporter
             </h4>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: editingTransporter ? '1fr 1fr' : '1fr 1fr 1fr', gap: '12px' }}>
               <div className="form-group" style={{ marginBottom: 0 }}>
                 <label className="form-label">Username</label>
                 <input
@@ -386,17 +382,19 @@ export const TransporterManagerModal = ({ isOpen, onClose, editingTransporter = 
                   required
                 />
               </div>
-              <div className="form-group" style={{ marginBottom: 0 }}>
-                <label className="form-label">Password {editingTransporter ? '(Leave blank to keep unchanged)' : ''}</label>
-                <input
-                  type="text"
-                  className="form-control"
-                  placeholder={editingTransporter ? 'Leave blank to keep current' : 'password123'}
-                  value={formData.password}
-                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                  required={!editingTransporter}
-                />
-              </div>
+              {!editingTransporter && (
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label className="form-label">Password</label>
+                  <input
+                    type="text"
+                    className="form-control"
+                    placeholder="password123"
+                    value={formData.password}
+                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                    required
+                  />
+                </div>
+              )}
               <div className="form-group" style={{ marginBottom: 0 }}>
                 <label className="form-label">Account Status</label>
                 <select
