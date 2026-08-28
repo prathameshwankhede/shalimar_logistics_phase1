@@ -1,7 +1,7 @@
 // src/store/dbStore.js
 // Enterprise Hostinger Node.js API + MySQL Database Store Engine 🛡️⚡
 
-export const INITIAL_SEED_DATA = {
+export const EMPTY_STATE = {
   _updatedAt: Date.now(),
   company: {
     name: 'Shalimar Nutrients Pvt Ltd',
@@ -23,52 +23,26 @@ export const INITIAL_SEED_DATA = {
     dispatch_plant_address: 'Plot No. 12, Industrial Area, MIDC, Nagpur, Maharashtra - 440028',
     terms_conditions: '1. Food-grade tarpaulin covering mandatory for dry cargo.\n2. Automated 24x7 weighbridge tare and gross recorded at Shalimar Plant.'
   },
-  company_masters: [
-    {
-      id: 'comp_1',
-      name: 'Shalimar Nutrients Pvt Ltd (Nagpur Plant)',
-      code: 'SNPL-NGP',
-      gstin: '27AAPCS1419M1ZV',
-      city: 'Nagpur'
-    }
-  ],
-  product_masters: [
-    { id: 'prod_1', name: 'Soya DOC (De-Oiled Cake)', category: 'Agri-Commodities', hsn_code: '23040010', unit: 'MT' },
-    { id: 'prod_2', name: 'Refined Soyabean Oil (Bulk Tanker)', category: 'Edible Oils', hsn_code: '15079010', unit: 'MT' }
-  ],
-  cargo_masters: [
-    { id: 'cargo_1', name: 'Bulk Loose DOC in Tarpaulin Truck', category: 'Dry Cargo', unit: 'MT' },
-    { id: 'cargo_2', name: 'Food Grade Liquid Tanker (30 KL)', category: 'Liquid Cargo', unit: 'MT' }
-  ],
-  title_masters: [
-    { id: 'title_1', name: 'Raw Material Freight Procurement' },
-    { id: 'title_2', name: 'Finished Oil Tanker Dispatch Contract' }
-  ],
-  city_masters: [
-    { id: 'city_1', name: 'Nagpur', state: 'Maharashtra', code: 'NGP' },
-    { id: 'city_2', name: 'Solapur', state: 'Maharashtra', code: 'SLP' },
-    { id: 'city_3', name: 'Mumbai', state: 'Maharashtra', code: 'BOM' },
-    { id: 'city_4', name: 'Pune', state: 'Maharashtra', code: 'PNE' },
-    { id: 'city_5', name: 'Indore', state: 'Madhya Pradesh', code: 'IND' }
-  ],
-  users: [],
+  company_masters: [],
+  product_masters: [],
+  cargo_masters: [],
+  title_masters: [],
+  city_masters: [],
+  company_units: [],
+  products: [],
+  cities: [],
+  transport_titles: [],
   transporters: [],
+  users: [],
   rate_requests: [],
   rate_submissions: [],
-  allocations: [],
-  truck_dispatches: [],
   contracts: [],
+  dispatches: [],
   security_audit_logs: [],
-  whatsapp_api_settings: {
-    enabled: true,
-    provider: 'Green API (Production Enterprise Gateway)',
-    instance_id: '******',
-    token: '******',
-    api_url: 'https://api.green-api.com',
-    target_groups: ['Transporter Broadcast Group', 'Shalimar Logistics Desk']
-  },
   whatsapp_notifications: []
 };
+
+export const INITIAL_SEED_DATA = EMPTY_STATE;
 
 const LOCAL_STORAGE_KEY = 'transflow_live_db';
 const AUTH_TOKEN_KEY = 'transflow_auth_token';
@@ -188,7 +162,10 @@ export async function saveDB(data) {
   };
 
   try {
-    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(dataToSave));
+    localStorage.removeItem(LOCAL_STORAGE_KEY);
+    localStorage.removeItem('transflow_db');
+    localStorage.removeItem('transflow_live_db');
+    localStorage.removeItem('transflow_db_v1');
   } catch (e) {}
 
   try {
@@ -200,9 +177,6 @@ export async function saveDB(data) {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const result = await res.json();
     if (result && result.data) {
-      try {
-        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(result.data));
-      } catch (e) {}
       return result.data;
     }
   } catch (err) {
@@ -213,14 +187,16 @@ export async function saveDB(data) {
 }
 
 /**
- * ☁️ Load Fallback DB from LocalStorage
+ * ☁️ Direct API Database Connection (No LocalStorage Cache)
  */
 export function loadDB() {
   try {
-    const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
-    if (raw) return JSON.parse(raw);
+    localStorage.removeItem(LOCAL_STORAGE_KEY);
+    localStorage.removeItem('transflow_db');
+    localStorage.removeItem('transflow_live_db');
+    localStorage.removeItem('transflow_db_v1');
   } catch (e) {}
-  return { ...INITIAL_SEED_DATA };
+  return { ...EMPTY_STATE };
 }
 
 /**
