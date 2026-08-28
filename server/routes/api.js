@@ -1308,51 +1308,6 @@ router.put('/requirements/:id', authenticateToken, requireRole('admin'), async (
   }
 });
 
-// DELETE /api/requirements/:id — Delete Parent Requirement and All Child Cargo Items
-router.delete('/requirements/:id', authenticateToken, requireRole('admin'), async (req, res) => {
-  const { id } = req.params;
-  await ensureRequirementsTableExists();
-  try {
-    let hasBids = false;
-    try {
-      const [bidRows] = await pool.query(
-        'SELECT id FROM rate_submissions WHERE rate_request_id = ? OR requirement_id = ? LIMIT 1',
-        [id, id]
-      );
-      if (bidRows && bidRows.length > 0) hasBids = true;
-    } catch (e) {}
-
-    if (hasBids) {
-      return res.status(409).json({
-        success: false,
-        error: 'Cannot delete requirement: Active bids or awarded contracts are attached to this requirement'
-      });
-    }
-
-    const conn = await pool.getConnection();
-    try {
-      await conn.beginTransaction();
-      await conn.query('DELETE FROM rate_submissions WHERE requirement_id = ? OR requirement_id = (SELECT req_no FROM transport_requirements WHERE id = ? LIMIT 1)', [id, id]).catch(() => {});
-      await conn.query('DELETE FROM transport_requirement_items WHERE requirement_id = ?', [id]);
-      const [result] = await conn.query('DELETE FROM transport_requirements WHERE id = ?', [id]);
-      await conn.commit();
-      conn.release();
-
-      if (result.affectedRows === 0) {
-        return res.status(404).json({ success: false, error: 'Requirement record not found' });
-      }
-
-      return res.json({ success: true, message: 'Requirement and all child items deleted from MySQL' });
-    } catch (e) {
-      await conn.rollback();
-      conn.release();
-    }
-  } catch (err) {
-    console.error('❌ DELETE /api/requirements/:id Error:', err.message);
-    return res.status(500).json({ success: false, error: { code: 'DATABASE_ERROR', message: err.message } });
-  }
-});
-
 // DELETE /api/requirements/:parentId/items/:itemId — Delete Single Child Sub-Indent Item
 router.delete('/requirements/:parentId/items/:itemId', authenticateToken, requireRole('admin'), async (req, res) => {
   const { parentId, itemId } = req.params;
@@ -1403,6 +1358,51 @@ router.delete('/requirements/:parentId/items/:itemId', authenticateToken, requir
     await conn.rollback();
     conn.release();
     console.error('❌ DELETE /api/requirements/:parentId/items/:itemId Error:', err.message);
+    return res.status(500).json({ success: false, error: { code: 'DATABASE_ERROR', message: err.message } });
+  }
+});
+
+// DELETE /api/requirements/:id — Delete Parent Requirement and All Child Cargo Items
+router.delete('/requirements/:id', authenticateToken, requireRole('admin'), async (req, res) => {
+  const { id } = req.params;
+  await ensureRequirementsTableExists();
+  try {
+    let hasBids = false;
+    try {
+      const [bidRows] = await pool.query(
+        'SELECT id FROM rate_submissions WHERE rate_request_id = ? OR requirement_id = ? LIMIT 1',
+        [id, id]
+      );
+      if (bidRows && bidRows.length > 0) hasBids = true;
+    } catch (e) {}
+
+    if (hasBids) {
+      return res.status(409).json({
+        success: false,
+        error: 'Cannot delete requirement: Active bids or awarded contracts are attached to this requirement'
+      });
+    }
+
+    const conn = await pool.getConnection();
+    try {
+      await conn.beginTransaction();
+      await conn.query('DELETE FROM rate_submissions WHERE requirement_id = ? OR requirement_id = (SELECT req_no FROM transport_requirements WHERE id = ? LIMIT 1)', [id, id]).catch(() => {});
+      await conn.query('DELETE FROM transport_requirement_items WHERE requirement_id = ?', [id]);
+      const [result] = await conn.query('DELETE FROM transport_requirements WHERE id = ?', [id]);
+      await conn.commit();
+      conn.release();
+
+      if (result.affectedRows === 0) {
+        return res.status(404).json({ success: false, error: 'Requirement record not found' });
+      }
+
+      return res.json({ success: true, message: 'Requirement and all child items deleted from MySQL' });
+    } catch (e) {
+      await conn.rollback();
+      conn.release();
+    }
+  } catch (err) {
+    console.error('❌ DELETE /api/requirements/:id Error:', err.message);
     return res.status(500).json({ success: false, error: { code: 'DATABASE_ERROR', message: err.message } });
   }
 });
