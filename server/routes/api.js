@@ -1362,27 +1362,11 @@ router.delete('/requirements/:parentId/items/:itemId', authenticateToken, requir
   }
 });
 
-// DELETE /api/requirements/:id — Delete Parent Requirement and All Child Cargo Items
+// DELETE /api/requirements/:id — Delete Parent Requirement, Child Items, and Related Rate Submissions
 router.delete('/requirements/:id', authenticateToken, requireRole('admin'), async (req, res) => {
   const { id } = req.params;
   await ensureRequirementsTableExists();
   try {
-    let hasBids = false;
-    try {
-      const [bidRows] = await pool.query(
-        'SELECT id FROM rate_submissions WHERE rate_request_id = ? OR requirement_id = ? LIMIT 1',
-        [id, id]
-      );
-      if (bidRows && bidRows.length > 0) hasBids = true;
-    } catch (e) {}
-
-    if (hasBids) {
-      return res.status(409).json({
-        success: false,
-        error: 'Cannot delete requirement: Active bids or awarded contracts are attached to this requirement'
-      });
-    }
-
     const conn = await pool.getConnection();
     try {
       await conn.beginTransaction();
@@ -1400,6 +1384,7 @@ router.delete('/requirements/:id', authenticateToken, requireRole('admin'), asyn
     } catch (e) {
       await conn.rollback();
       conn.release();
+      return res.status(500).json({ success: false, error: e.message });
     }
   } catch (err) {
     console.error('❌ DELETE /api/requirements/:id Error:', err.message);
