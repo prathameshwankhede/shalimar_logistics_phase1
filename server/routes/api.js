@@ -213,8 +213,9 @@ export async function ensureRateSubmissionsTableExists() {
       console.warn('Deduplication check notice:', dedupErr.message);
     }
 
-    // Add UNIQUE INDEX uq_req_trans (requirement_id, transporter_id)
-    await pool.query('ALTER TABLE rate_submissions ADD UNIQUE INDEX uq_req_trans (requirement_id, transporter_id)').catch(() => {});
+    // Drop old requirement-only unique index and add sub-indent item-level unique index (requirement_id, item_id, transporter_id)
+    await pool.query('ALTER TABLE rate_submissions DROP INDEX uq_req_trans').catch(() => {});
+    await pool.query('ALTER TABLE rate_submissions ADD UNIQUE INDEX uq_req_item_trans (requirement_id, item_id, transporter_id)').catch(() => {});
   } catch (err) {
     console.warn('ensureRateSubmissionsTableExists notice:', err.message);
   }
