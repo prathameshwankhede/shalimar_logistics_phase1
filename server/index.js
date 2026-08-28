@@ -1,4 +1,4 @@
-// Hostinger Passenger Process Reload Signal v1.1.0 - Read-Only Orphan Data Audit Collation Fix
+// Hostinger Passenger Process Reload Signal v1.1.1 - Read-Only Orphan Data Audit BINARY Fix
 import express from 'express';
 import cors from 'cors';
 import path from 'path';

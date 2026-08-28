@@ -2332,7 +2332,7 @@ router.get('/audit-orphan-data', authenticateToken, requireRole('admin'), async 
     const [orphanRowsCount] = await pool.query(
       `SELECT COUNT(*) AS orphan_rate_submissions
        FROM rate_submissions rs
-       LEFT JOIN transport_requirements tr ON tr.id COLLATE utf8mb4_unicode_ci = rs.requirement_id COLLATE utf8mb4_unicode_ci
+       LEFT JOIN transport_requirements tr ON BINARY tr.id = BINARY rs.requirement_id
        WHERE tr.id IS NULL`
     );
 
@@ -2348,8 +2348,8 @@ router.get('/audit-orphan-data', authenticateToken, requireRole('admin'), async 
           rs.status,
           rs.submitted_at
        FROM rate_submissions rs
-       LEFT JOIN transport_requirements tr ON tr.id COLLATE utf8mb4_unicode_ci = rs.requirement_id COLLATE utf8mb4_unicode_ci
-       LEFT JOIN transport_requirement_items tri ON tri.id COLLATE utf8mb4_unicode_ci = rs.item_id COLLATE utf8mb4_unicode_ci
+       LEFT JOIN transport_requirements tr ON BINARY tr.id = BINARY rs.requirement_id
+       LEFT JOIN transport_requirement_items tri ON BINARY tri.id = BINARY rs.item_id
        WHERE tr.id IS NULL
           OR (
               rs.item_id IS NOT NULL
@@ -2365,7 +2365,7 @@ router.get('/audit-orphan-data', authenticateToken, requireRole('admin'), async 
           COUNT(*) AS quote_count,
           tr.req_no
        FROM rate_submissions rs
-       LEFT JOIN transport_requirements tr ON tr.id COLLATE utf8mb4_unicode_ci = rs.requirement_id COLLATE utf8mb4_unicode_ci
+       LEFT JOIN transport_requirements tr ON BINARY tr.id = BINARY rs.requirement_id
        GROUP BY rs.requirement_id, tr.req_no
        ORDER BY rs.requirement_id`
     );
