@@ -258,7 +258,7 @@ export async function loadDBFromSupabase() {
     // Always fetch live transporters list from MySQL database
     try {
       const liveTransporters = await fetchTransportersList();
-      if (Array.isArray(liveTransporters) && liveTransporters.length > 0) {
+      if (Array.isArray(liveTransporters)) {
         data = {
           ...(data || EMPTY_STATE),
           transporters: liveTransporters

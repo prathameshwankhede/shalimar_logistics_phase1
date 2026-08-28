@@ -52,90 +52,11 @@ export const AuthProvider = ({ children }) => {
     if (!cloudDb) return prevDb;
     if (!prevDb) return cloudDb;
 
-    // 🧹 EXPLICIT RESET OPERATION OVERRIDE: If reset operation flag is present, accept clearing operational tables!
-    if (cloudDb._isResetOperation) {
-      return {
-        ...prevDb,
-        ...cloudDb,
-        _updatedAt: Math.max(cloudDb._updatedAt || 0, prevDb._updatedAt || 0, Date.now()),
-        rate_requests: cloudDb.rate_requests || [],
-        rate_submissions: cloudDb.rate_submissions || [],
-        allocations: cloudDb.allocations || [],
-        contracts: cloudDb.contracts || [],
-        truck_dispatches: cloudDb.truck_dispatches || []
-      };
-    }
-
-    // Merge rate_submissions by id (taking newest submitted_at / counter_rate / is_frozen)
-    const subMap = new Map();
-    (prevDb.rate_submissions || []).forEach((s) => subMap.set(String(s.id), s));
-    (cloudDb.rate_submissions || []).forEach((s) => {
-      const prevSub = subMap.get(String(s.id));
-      if (!prevSub) {
-        subMap.set(String(s.id), s);
-      } else {
-        const timePrev = new Date(prevSub.submitted_at || prevSub.frozen_at || 0).getTime() || 0;
-        const timeCloud = new Date(s.submitted_at || s.frozen_at || 0).getTime() || 0;
-        const safePrev = isNaN(timePrev) ? 0 : timePrev;
-        const safeCloud = isNaN(timeCloud) ? 0 : timeCloud;
-        if (safeCloud >= safePrev) {
-          subMap.set(String(s.id), s);
-        }
-      }
-    });
-
-    // Merge rate_requests by request_no OR id
-    const reqMap = new Map();
-    (prevDb.rate_requests || []).forEach((r) => reqMap.set(String(r.request_no || r.id), r));
-    (cloudDb.rate_requests || []).forEach((r) => reqMap.set(String(r.request_no || r.id), r));
-
-    // Merge transporters by id / code
-    const transMap = new Map();
-    (prevDb.transporters || []).forEach((t) => transMap.set(String(t.id || t.code), t));
-    (cloudDb.transporters || []).forEach((t) => transMap.set(String(t.id || t.code), t));
-
-    // Merge users by id / username
+    // 🛡️ MYSQL IS SINGLE SOURCE OF TRUTH FOR PRODUCTION DATA
     const userMap = new Map();
     (prevDb.users || []).forEach((u) => userMap.set(String(u.id || u.username), u));
     (cloudDb.users || []).forEach((u) => userMap.set(String(u.id || u.username), u));
 
-    // Merge allocations by id
-    const allocMap = new Map();
-    (prevDb.allocations || []).forEach((a) => allocMap.set(String(a.id), a));
-    (cloudDb.allocations || []).forEach((a) => allocMap.set(String(a.id), a));
-
-    // Merge contracts by id
-    const contractMap = new Map();
-    (prevDb.contracts || []).forEach((c) => contractMap.set(String(c.id), c));
-    (cloudDb.contracts || []).forEach((c) => contractMap.set(String(c.id), c));
-
-    // Merge truck_dispatches by id
-    const dispatchMap = new Map();
-    (prevDb.truck_dispatches || []).forEach((d) => dispatchMap.set(String(d.id), d));
-    (cloudDb.truck_dispatches || []).forEach((d) => dispatchMap.set(String(d.id), d));
-
-    // Merge master directories by id / name to prevent losing product & cargo masters on refresh
-    const prodMap = new Map();
-    (prevDb.product_masters || []).forEach((p) => prodMap.set(String(p.id || p.name), p));
-    (cloudDb.product_masters || []).forEach((p) => prodMap.set(String(p.id || p.name), p));
-
-    const cargoMap = new Map();
-    (prevDb.cargo_masters || []).forEach((c) => cargoMap.set(String(c.id || c.vehicle_type), c));
-    (cloudDb.cargo_masters || []).forEach((c) => cargoMap.set(String(c.id || c.vehicle_type), c));
-
-    const compMap = new Map();
-    (prevDb.company_masters || []).forEach((c) => compMap.set(String(c.id || c.name || c.code), c));
-    (cloudDb.company_masters || []).forEach((c) => compMap.set(String(c.id || c.name || c.code), c));
-
-    const cityMap = new Map();
-    (prevDb.city_masters || []).forEach((c) => cityMap.set(String(c.id || c.city || c.name), c));
-    (cloudDb.city_masters || []).forEach((c) => cityMap.set(String(c.id || c.city || c.name), c));
-
-    const titleMap = new Map();
-    (prevDb.title_masters || []).forEach((t) => titleMap.set(String(t.id || t.title || t.name), t));
-    (cloudDb.title_masters || []).forEach((t) => titleMap.set(String(t.id || t.title || t.name), t));
-
-    // Merge security_audit_logs by id
     const logMap = new Map();
     (prevDb.security_audit_logs || []).forEach((l) => logMap.set(String(l.id), l));
     (cloudDb.security_audit_logs || []).forEach((l) => logMap.set(String(l.id), l));
@@ -144,18 +65,18 @@ export const AuthProvider = ({ children }) => {
       ...prevDb,
       ...cloudDb,
       _updatedAt: Math.max(cloudDb._updatedAt || 0, prevDb._updatedAt || 0, Date.now()),
-      rate_requests: Array.from(reqMap.values()),
-      rate_submissions: Array.from(subMap.values()),
-      transporters: Array.from(transMap.values()),
+      transporters: cloudDb.transporters || [],
+      company_units: cloudDb.company_units || [],
+      company_masters: cloudDb.company_masters || cloudDb.company_units || [],
+      products: cloudDb.products || [],
+      product_masters: cloudDb.product_masters || cloudDb.products || [],
+      rate_requests: cloudDb.rate_requests || [],
+      transport_requirements: cloudDb.transport_requirements || cloudDb.rate_requests || [],
+      rate_submissions: cloudDb.rate_submissions || [],
+      allocations: cloudDb.allocations || [],
+      contracts: cloudDb.contracts || [],
+      truck_dispatches: cloudDb.truck_dispatches || [],
       users: Array.from(userMap.values()),
-      allocations: Array.from(allocMap.values()),
-      contracts: Array.from(contractMap.values()),
-      truck_dispatches: Array.from(dispatchMap.values()),
-      product_masters: Array.from(prodMap.values()),
-      cargo_masters: Array.from(cargoMap.values()),
-      company_masters: Array.from(compMap.values()),
-      city_masters: Array.from(cityMap.values()),
-      title_masters: Array.from(titleMap.values()),
       security_audit_logs: Array.from(logMap.values()).slice(0, 100)
     };
   };
