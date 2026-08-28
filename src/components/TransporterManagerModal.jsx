@@ -1,8 +1,8 @@
 // src/components/TransporterManagerModal.jsx
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { createTransporter } from '../api/transporterApi';
-import { UserPlus, X, Shield, Building, Phone, Mail, FileText, CheckCircle, Edit } from 'lucide-react';
+import { createTransporter, deleteTransporter } from '../api/transporterApi';
+import { UserPlus, X, Shield, Building, Phone, Mail, FileText, CheckCircle, Edit, Trash2 } from 'lucide-react';
 import { validateMobile, validateEmail, validateName } from '../utils/validationRules';
 
 export const TransporterManagerModal = ({ isOpen, onClose, editingTransporter = null }) => {
@@ -183,7 +183,41 @@ export const TransporterManagerModal = ({ isOpen, onClose, editingTransporter = 
     setTimeout(() => {
       setSuccessMessage('');
       onClose();
-    }, 1800);
+    }, 1200);
+  };
+
+  const handleDeleteInsideModal = async () => {
+    if (!editingTransporter || !editingTransporter.id) return;
+    const transName = editingTransporter.company_name || editingTransporter.code || 'this transporter';
+    if (!window.confirm(`⚠️ DELETE TRANSPORTER WARNING:\n\nAre you sure you want to delete Transporter '${transName}' (${editingTransporter.code || editingTransporter.username})?\n\nThis will remove it from the MySQL database.`)) {
+      return;
+    }
+
+    try {
+      const res = await deleteTransporter(editingTransporter.id);
+      if (res && res.error) {
+        setErrorMsg(`❌ Cannot delete transporter: ${typeof res.error === 'string' ? res.error : res.error.message || 'Server error'}`);
+        return;
+      }
+
+      const updatedTransporters = (db.transporters || []).filter((t) => t.id !== editingTransporter.id && t.code !== editingTransporter.code);
+      const updatedUsers = (db.users || []).filter((u) => u.transporter_id !== editingTransporter.id && u.username !== editingTransporter.username);
+
+      updateDB({
+        ...db,
+        transporters: updatedTransporters,
+        users: updatedUsers
+      });
+
+      setSuccessMessage(`🗑️ Transporter '${transName}' deleted successfully!`);
+      setTimeout(() => {
+        setSuccessMessage('');
+        onClose();
+      }, 1200);
+    } catch (err) {
+      console.error('Delete transporter error:', err);
+      setErrorMsg(`❌ Error deleting transporter: ${err.message}`);
+    }
   };
 
   return (
@@ -192,81 +226,55 @@ export const TransporterManagerModal = ({ isOpen, onClose, editingTransporter = 
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <div style={{ background: 'rgba(16, 185, 129, 0.15)', padding: '10px', borderRadius: '10px' }}>
-              <UserPlus size={20} color="#10b981" />
+              <UserPlus size={24} color="#10b981" />
             </div>
             <div>
-              <h2 style={{ fontSize: '1.2rem', fontWeight: '700' }}>Register New Transporter Account</h2>
-              <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Admin panel to onboard transporters and assign login credentials</p>
+              <h3 style={{ fontSize: '1.15rem', fontWeight: '800', margin: 0 }}>
+                {editingTransporter ? `✏️ Edit Transporter Account: ${editingTransporter.company_name}` : 'Onboard New Logistics Vendor / Transporter'}
+              </h3>
+              <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                {editingTransporter ? 'Update company details, contact info, and status' : 'Create vendor profile & generate instant portal access credentials'}
+              </div>
             </div>
           </div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}>
+          <button onClick={onClose} className="btn-close" style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}>
             <X size={20} />
           </button>
         </div>
 
         {errorMsg && (
-          <div style={{
-            background: 'rgba(239, 68, 68, 0.2)',
-            border: '1px solid #ef4444',
-            borderRadius: '10px',
-            padding: '12px 16px',
-            marginBottom: '16px',
-            color: '#fca5a5',
-            fontSize: '0.85rem',
-            fontWeight: '700'
-          }}>
+          <div style={{ background: 'rgba(239, 68, 68, 0.15)', border: '1px solid #ef4444', color: '#fca5a5', padding: '10px 14px', borderRadius: '8px', marginBottom: '16px', fontSize: '0.85rem', fontWeight: '700' }}>
             {errorMsg}
           </div>
         )}
 
         {successMessage && (
-          <div style={{
-            background: 'rgba(16, 185, 129, 0.2)',
-            border: '1px solid #10b981',
-            borderRadius: '10px',
-            padding: '12px 16px',
-            marginBottom: '16px',
-            color: '#34d399',
-            fontSize: '0.9rem',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px'
-          }}>
-            <CheckCircle size={18} />
-            {successMessage}
+          <div style={{ background: 'rgba(16, 185, 129, 0.15)', border: '1px solid #10b981', color: '#34d399', padding: '10px 14px', borderRadius: '8px', marginBottom: '16px', fontSize: '0.85rem', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <CheckCircle size={18} color="#34d399" /> {successMessage}
           </div>
         )}
 
         <form onSubmit={handleSubmit}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '12px' }}>
             <div className="form-group">
-              <label className="form-label">Transporter Company Name</label>
+              <label className="form-label">Company / Transporter Name</label>
               <input
                 type="text"
                 className="form-control"
                 placeholder="e.g. Speed Cargo Logistics"
                 value={formData.company_name}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  const autoUser = val ? val.split(' ')[0].toUpperCase() + '001' : '';
-                  setFormData({
-                    ...formData,
-                    company_name: val,
-                    username: formData.username || autoUser,
-                    code: formData.code || (val ? val.split(' ')[0].toUpperCase() + '001' : '')
-                  });
-                }}
+                onChange={(e) => handleFieldChange('company_name', e.target.value)}
                 required
               />
             </div>
             <div className="form-group">
-              <label className="form-label">Transporter Code</label>
+              <label className="form-label">Vendor Code</label>
               <input
                 type="text"
                 className="form-control"
                 placeholder="e.g. SCL001"
                 value={formData.code}
-                onChange={(e) => handleFieldChange('code', e.target.value)}
+                onChange={(e) => handleFieldChange('code', e.target.value.toUpperCase())}
                 required
               />
             </div>
@@ -278,7 +286,7 @@ export const TransporterManagerModal = ({ isOpen, onClose, editingTransporter = 
               <input
                 type="text"
                 className="form-control"
-                placeholder="Rajesh Sharma"
+                placeholder="e.g. Rajesh Kumar"
                 value={formData.contact_person}
                 onChange={(e) => handleFieldChange('contact_person', e.target.value)}
                 style={{
@@ -293,7 +301,6 @@ export const TransporterManagerModal = ({ isOpen, onClose, editingTransporter = 
                 </div>
               )}
             </div>
-
             <div className="form-group">
               <label className="form-label">Mobile Number</label>
               <input
@@ -380,14 +387,14 @@ export const TransporterManagerModal = ({ isOpen, onClose, editingTransporter = 
                 />
               </div>
               <div className="form-group" style={{ marginBottom: 0 }}>
-                <label className="form-label">Temporary Password</label>
+                <label className="form-label">Password {editingTransporter ? '(Leave blank to keep unchanged)' : ''}</label>
                 <input
                   type="text"
                   className="form-control"
-                  placeholder="password123"
+                  placeholder={editingTransporter ? 'Leave blank to keep current' : 'password123'}
                   value={formData.password}
                   onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                  required
+                  required={!editingTransporter}
                 />
               </div>
               <div className="form-group" style={{ marginBottom: 0 }}>
@@ -404,13 +411,26 @@ export const TransporterManagerModal = ({ isOpen, onClose, editingTransporter = 
             </div>
           </div>
 
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
-            <button type="button" onClick={onClose} className="btn btn-secondary">
-              Cancel
-            </button>
-            <button type="submit" className="btn btn-success">
-              <UserPlus size={16} /> Save & Create Login
-            </button>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', marginTop: '20px' }}>
+            {editingTransporter ? (
+              <button
+                type="button"
+                onClick={handleDeleteInsideModal}
+                className="btn btn-danger"
+                style={{ padding: '8px 16px', fontSize: '0.85rem', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '6px' }}
+              >
+                <Trash2 size={16} /> 🗑️ Delete Transporter Account
+              </button>
+            ) : <div />}
+
+            <div style={{ display: 'flex', gap: '12px' }}>
+              <button type="button" onClick={onClose} className="btn btn-secondary">
+                Cancel
+              </button>
+              <button type="submit" className="btn btn-success">
+                <UserPlus size={16} /> {editingTransporter ? 'Update Transporter' : 'Save & Create Login'}
+              </button>
+            </div>
           </div>
         </form>
       </div>

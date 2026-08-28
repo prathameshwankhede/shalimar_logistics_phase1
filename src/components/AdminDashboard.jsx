@@ -2948,58 +2948,41 @@ export const AdminDashboard = () => {
                               </td>
                               <td style={{ textAlign: 'right' }}>
                                 <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end', alignItems: 'center' }}>
-                                  {/* Column 1: Edit & Delete (Delete directly UNDER Edit) */}
-                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                                    <button
-                                      type="button"
-                                      onClick={() => setEditingTransporterMaster(t)}
-                                      className="btn btn-secondary"
-                                      style={{ padding: '4px 12px', fontSize: '0.76rem', border: '1px solid #38bdf8', color: '#38bdf8', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}
-                                      title="Edit Transporter Details"
-                                    >
-                                      <Edit size={13} /> Edit
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => handleDeleteTransporter(t)}
-                                      className="btn btn-danger"
-                                      style={{ padding: '4px 12px', fontSize: '0.76rem', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}
-                                      title="Delete Transporter Account"
-                                    >
-                                      <Trash2 size={13} /> Delete
-                                    </button>
-                                  </div>
-
-                                  {/* Column 2: Status Toggle & Reset Pass */}
-                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                                    <button
-                                      type="button"
-                                      onClick={() => handleToggleTransporterStatus(t)}
-                                      className={`btn ${t.status === 'Suspended' || t.status === 'Deactivated' || t.status === 'Inactive' ? 'btn-success' : 'btn-secondary'}`}
-                                      style={{
-                                        padding: '4px 10px',
-                                        fontSize: '0.76rem',
-                                        display: 'inline-flex',
-                                        alignItems: 'center',
-                                        justify: 'center',
-                                        gap: '4px',
-                                        border: t.status === 'Suspended' || t.status === 'Deactivated' || t.status === 'Inactive' ? '1px solid #10b981' : '1px solid #ef4444',
-                                        color: t.status === 'Suspended' || t.status === 'Deactivated' || t.status === 'Inactive' ? '#34d399' : '#f87171'
-                                      }}
-                                      title={t.status === 'Suspended' || t.status === 'Deactivated' || t.status === 'Inactive' ? 'Activate Transporter Account' : 'Deactivate Transporter Account'}
-                                    >
-                                      {t.status === 'Suspended' || t.status === 'Deactivated' || t.status === 'Inactive' ? '🟢 Activate' : '🔴 Deactivate'}
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => openResetPasswordModal(t)}
-                                      className="btn btn-secondary"
-                                      style={{ padding: '4px 10px', fontSize: '0.76rem', border: '1px solid #38bdf8', color: '#38bdf8', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}
-                                      title="Reset Login Password"
-                                    >
-                                      <Key size={13} /> Reset Pass
-                                    </button>
-                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => setEditingTransporterMaster(t)}
+                                    className="btn btn-secondary"
+                                    style={{ padding: '4px 10px', fontSize: '0.76rem', border: '1px solid #38bdf8', color: '#38bdf8', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                                    title="Edit Transporter Details"
+                                  >
+                                    <Edit size={13} /> Edit
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleToggleTransporterStatus(t)}
+                                    className={`btn ${t.status === 'Suspended' || t.status === 'Deactivated' || t.status === 'Inactive' ? 'btn-success' : 'btn-secondary'}`}
+                                    style={{
+                                      padding: '4px 10px',
+                                      fontSize: '0.76rem',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '4px',
+                                      border: t.status === 'Suspended' || t.status === 'Deactivated' || t.status === 'Inactive' ? '1px solid #10b981' : '1px solid #ef4444',
+                                      color: t.status === 'Suspended' || t.status === 'Deactivated' || t.status === 'Inactive' ? '#34d399' : '#f87171'
+                                    }}
+                                    title={t.status === 'Suspended' || t.status === 'Deactivated' || t.status === 'Inactive' ? 'Activate Transporter Account' : 'Deactivate Transporter Account'}
+                                  >
+                                    {t.status === 'Suspended' || t.status === 'Deactivated' || t.status === 'Inactive' ? '🟢 Activate' : '🔴 Deactivate'}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => openResetPasswordModal(t)}
+                                    className="btn btn-secondary"
+                                    style={{ padding: '4px 10px', fontSize: '0.76rem', border: '1px solid #38bdf8', color: '#38bdf8', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                                    title="Reset Login Password"
+                                  >
+                                    <Key size={13} /> Reset Pass
+                                  </button>
                                 </div>
                               </td>
                             </tr>
