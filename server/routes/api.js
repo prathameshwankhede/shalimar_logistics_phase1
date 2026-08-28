@@ -276,6 +276,22 @@ export async function ensureRateSubmissionsTableExists() {
       FOREIGN KEY (requirement_id) REFERENCES transport_requirements(id) 
       ON DELETE CASCADE
     `).catch(() => {});
+
+    // Clean up orphan item_id references if any exist before adding item_id Foreign Key
+    try {
+      await pool.query(`
+        DELETE rs FROM rate_submissions rs
+        LEFT JOIN transport_requirement_items tri ON tri.id = rs.item_id
+        WHERE rs.item_id IS NOT NULL AND rs.item_id != 'MAIN' AND tri.id IS NULL
+      `);
+    } catch (cleanErr) {}
+
+    await pool.query(`
+      ALTER TABLE rate_submissions 
+      ADD CONSTRAINT fk_rs_item 
+      FOREIGN KEY (item_id) REFERENCES transport_requirement_items(id) 
+      ON DELETE CASCADE
+    `).catch(() => {});
   } catch (err) {
     console.warn('ensureRateSubmissionsTableExists notice:', err.message);
   }
@@ -1333,6 +1349,60 @@ router.delete('/requirements/:id', authenticateToken, requireRole('admin'), asyn
     }
   } catch (err) {
     console.error('❌ DELETE /api/requirements/:id Error:', err.message);
+    return res.status(500).json({ success: false, error: { code: 'DATABASE_ERROR', message: err.message } });
+  }
+});
+
+// DELETE /api/requirements/:parentId/items/:itemId — Delete Single Child Sub-Indent Item
+router.delete('/requirements/:parentId/items/:itemId', authenticateToken, requireRole('admin'), async (req, res) => {
+  const { parentId, itemId } = req.params;
+  await ensureRequirementsTableExists();
+  await ensureRateSubmissionsTableExists();
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+
+    // 1. Delete quotes specific to this child item
+    await conn.query(
+      'DELETE FROM rate_submissions WHERE requirement_id = ? AND (item_id = ? OR item_id = (SELECT sub_indent_no FROM transport_requirement_items WHERE id = ? LIMIT 1))',
+      [parentId, itemId, itemId]
+    ).catch(() => {});
+
+    // 2. Delete child requirement item
+    const [delItemResult] = await conn.query(
+      'DELETE FROM transport_requirement_items WHERE id = ? OR (requirement_id = ? AND sub_indent_no = ?)',
+      [itemId, parentId, itemId]
+    );
+
+    // 3. Recalculate parent requirement total quantity
+    const [remainingItems] = await conn.query(
+      'SELECT quantity_mt FROM transport_requirement_items WHERE requirement_id = ?',
+      [parentId]
+    );
+
+    if (remainingItems.length === 0) {
+      // If no child items remain, delete parent requirement
+      await conn.query('DELETE FROM transport_requirements WHERE id = ?', [parentId]);
+    } else {
+      const newTotal = remainingItems.reduce((acc, curr) => acc + parseFloat(curr.quantity_mt || 0), 0);
+      await conn.query(
+        'UPDATE transport_requirements SET total_quantity_mt = ?, quantity_mt = ? WHERE id = ?',
+        [newTotal, newTotal, parentId]
+      );
+    }
+
+    await conn.commit();
+    conn.release();
+
+    if (delItemResult.affectedRows === 0) {
+      return res.status(404).json({ success: false, error: 'Sub-indent item record not found' });
+    }
+
+    return res.json({ success: true, message: 'Child sub-indent item deleted successfully from MySQL' });
+  } catch (err) {
+    await conn.rollback();
+    conn.release();
+    console.error('❌ DELETE /api/requirements/:parentId/items/:itemId Error:', err.message);
     return res.status(500).json({ success: false, error: { code: 'DATABASE_ERROR', message: err.message } });
   }
 });
