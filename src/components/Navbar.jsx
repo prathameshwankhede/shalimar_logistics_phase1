@@ -39,39 +39,7 @@ export const Navbar = () => {
           </div>
         </div>
 
-        {/* Quick Transporter Portal Role Switcher Dropdown */}
-        {isAdmin && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', background: 'rgba(2, 132, 199, 0.08)', padding: '6px 14px', borderRadius: '10px', border: '1px solid rgba(2, 132, 199, 0.2)' }}>
-            <span style={{ fontSize: '0.75rem', fontWeight: '700', color: '#0284c7' }}>
-              ⚡ Admin Portal Tester:
-            </span>
-            <select
-              value={currentUser?.username}
-              onChange={(e) => quickSwitchUser(e.target.value)}
-              className="form-control"
-              style={{ padding: '4px 8px', fontSize: '0.8rem', width: 'auto', borderRadius: '6px', fontWeight: '600' }}
-            >
-              <option value="admin">👑 Admin (Logistics Head)</option>
-              <option value="ABC001">🚛 ABC Transport Pvt Ltd</option>
-              <option value="XYZ001">🚛 XYZ Logistics & Freight</option>
-              <option value="PQR001">🚛 PQR National Freight</option>
-            </select>
-          </div>
-        )}
 
-        {/* Quick Switch back to Admin if viewing as Transporter */}
-        {!isAdmin && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <button
-              onClick={() => quickSwitchUser('admin')}
-              className="btn btn-secondary"
-              style={{ fontSize: '0.75rem', padding: '6px 12px', background: 'rgba(2, 132, 199, 0.1)', color: '#0284c7', border: '1px solid #0284c7' }}
-              title="Switch back to Admin Control Center"
-            >
-              👑 Switch to Admin View
-            </button>
-          </div>
-        )}
 
         {/* User Info & Sign Out */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
