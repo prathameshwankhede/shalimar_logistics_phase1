@@ -1,3 +1,4 @@
+// Hostinger Passenger Process Reload Signal v1.0.1
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
