@@ -475,18 +475,20 @@ async function ensureCompanyUnitsTableExists() {
 
 function formatCompanyUnitDto(row) {
   if (!row) return null;
+  const pOrigin = row.pickup_origin && String(row.pickup_origin).trim() ? String(row.pickup_origin).trim() : null;
+  const dLoc = row.drop_location && String(row.drop_location).trim() ? String(row.drop_location).trim() : null;
   return {
     id: row.id,
     company_name: row.company_name || row.name || '',
     name: row.company_name || row.name || '',
     registered_address: row.registered_address || row.address || '',
     address: row.registered_address || row.address || '',
-    gstin: row.gstin || '',
-    pan: row.pan || row.pan_no || '',
-    pan_no: row.pan || row.pan_no || '',
+    gstin: row.gstin || null,
+    pan: row.pan || row.pan_no || null,
+    pan_no: row.pan || row.pan_no || null,
     contact_name: row.contact_name || row.proprietor_name || '',
     proprietor_name: row.contact_name || row.proprietor_name || '',
-    email: row.email || '',
+    email: row.email || null,
     mobile: row.mobile || row.mobile_no || '',
     mobile_no: row.mobile || row.mobile_no || '',
     state: row.state || 'Maharashtra',
@@ -494,10 +496,10 @@ function formatCompanyUnitDto(row) {
     district: row.district || '',
     pin_code: row.pin_code || row.pincode || row.pin || '',
     pincode: row.pin_code || row.pincode || row.pin || '',
-    pickup_origin: row.pickup_origin || row.pickup_location_name || '',
-    pickup_location_name: row.pickup_origin || row.pickup_location_name || '',
-    drop_location: row.drop_location || row.drop_location_name || '',
-    drop_location_name: row.drop_location || row.drop_location_name || '',
+    pickup_origin: pOrigin,
+    pickup_location_name: pOrigin,
+    drop_location: dLoc,
+    drop_location_name: dLoc,
     created_at: row.created_at || new Date().toISOString(),
     updated_at: row.updated_at || new Date().toISOString()
   };

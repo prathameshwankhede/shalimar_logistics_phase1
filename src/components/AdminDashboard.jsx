@@ -2764,14 +2764,14 @@ export const AdminDashboard = () => {
                   className={`btn ${masterFilterTab === 'all' ? 'btn-primary' : 'btn-secondary'}`}
                   style={{ padding: '8px 16px', fontSize: '0.82rem', borderRadius: '20px', fontWeight: '700' }}
                 >
-                  📂 All Master Directories ({ ((db?.title_masters || []).length + (db?.transporters || []).length + (db?.company_masters || []).length + (db?.product_masters || []).length) })
+                  📂 All Master Directories ({ ((db?.title_masters || []).length + (db?.transporters || []).length + (db?.company_units_plants || db?.company_units || db?.company_masters || []).length + (db?.products || db?.product_masters || []).length) })
                 </button>
                 <button
                   onClick={() => setMasterFilterTab('company')}
                   className={`btn ${masterFilterTab === 'company' ? 'btn-primary' : 'btn-secondary'}`}
                   style={{ padding: '8px 16px', fontSize: '0.82rem', borderRadius: '20px', fontWeight: '700' }}
                 >
-                  🏢 Company Units & Plants
+                  🏢 Company Units & Plants ({ (db?.company_units_plants || db?.company_units || db?.company_masters || []).length })
                 </button>
                 <button
                   onClick={() => setMasterFilterTab('products')}
@@ -2934,43 +2934,43 @@ export const AdminDashboard = () => {
                       </tr>
                     </thead>
                     <tbody>
-                      {(db.company_masters || []).map((comp) => (
+                      {(db.company_units_plants || db.company_units || db.company_masters || []).map((comp) => (
                         <tr key={comp.id}>
                           <td>
-                            <div style={{ fontWeight: '700', color: 'var(--text-main)' }}>{comp.name}</div>
+                            <div style={{ fontWeight: '700', color: 'var(--text-main)' }}>{comp.company_name || comp.name}</div>
                             <div style={{ display: 'flex', gap: '4px', marginTop: '3px', flexWrap: 'wrap', alignItems: 'center' }}>
                               {comp.code && <span className="badge badge-open" style={{ fontSize: '0.65rem' }}>{comp.code}</span>}
-                              {comp.pickup_location_name && (
+                              {(comp.pickup_origin || comp.pickup_location_name) && (
                                 <span style={{ fontSize: '0.65rem', fontWeight: '800', padding: '1px 6px', borderRadius: '4px', background: '#dcfce7', color: '#15803d', border: '1px solid #86efac' }}>
-                                  📍 Pickup: {comp.pickup_location_name}
+                                  📍 Pickup: {comp.pickup_origin || comp.pickup_location_name}
                                 </span>
                               )}
-                              {comp.drop_location_name && (
+                              {(comp.drop_location || comp.drop_location_name) && (
                                 <span style={{ fontSize: '0.65rem', fontWeight: '800', padding: '1px 6px', borderRadius: '4px', background: '#e0f2fe', color: '#0369a1', border: '1px solid #7dd3fc' }}>
-                                  🎯 Drop: {comp.drop_location_name}
+                                  🎯 Drop: {comp.drop_location || comp.drop_location_name}
                                 </span>
                               )}
-                              {!comp.pickup_location_name && !comp.drop_location_name && (
+                              {!comp.pickup_origin && !comp.pickup_location_name && !comp.drop_location && !comp.drop_location_name && (
                                 <span style={{ fontSize: '0.65rem', fontWeight: '800', padding: '1px 6px', borderRadius: '4px', background: '#f1f5f9', color: '#475569', border: '1px solid #cbd5e1' }}>
                                   🏢 {comp.city || 'General Plant Unit'}
                                 </span>
                               )}
                             </div>
                           </td>
-                          <td style={{ fontSize: '0.82rem', fontWeight: '700', color: 'var(--text-main)' }}>{comp.proprietor_name || 'N/A'}</td>
+                          <td style={{ fontSize: '0.82rem', fontWeight: '700', color: 'var(--text-main)' }}>{comp.contact_name || comp.proprietor_name || 'N/A'}</td>
                           <td>
                             <div style={{ fontFamily: 'monospace', color: '#0284c7', fontSize: '0.82rem', fontWeight: '700' }}>GST: {comp.gstin || comp.gst || 'N/A'}</div>
-                            {comp.pan_no && <div style={{ fontFamily: 'monospace', color: 'var(--text-muted)', fontSize: '0.75rem' }}>PAN: {comp.pan_no}</div>}
+                            {(comp.pan || comp.pan_no) && <div style={{ fontFamily: 'monospace', color: 'var(--text-muted)', fontSize: '0.75rem' }}>PAN: {comp.pan || comp.pan_no}</div>}
                           </td>
                           <td>
-                            <div style={{ fontSize: '0.82rem', color: 'var(--text-main)', fontWeight: '600' }}>{comp.mobile_no || 'N/A'}</div>
+                            <div style={{ fontSize: '0.82rem', color: 'var(--text-main)', fontWeight: '600' }}>{comp.mobile || comp.mobile_no || 'N/A'}</div>
                             <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{comp.email || 'N/A'}</div>
                           </td>
                           <td>
                             <div style={{ fontSize: '0.82rem', color: 'var(--text-main)', fontWeight: '600' }}>{comp.city || 'Nagpur'}, {comp.district || 'Nagpur'}</div>
-                            <div style={{ fontSize: '0.75rem', color: '#0284c7', fontWeight: '700' }}>PIN: {comp.pincode || comp.pin || '440028'} ({comp.state || 'Maharashtra'})</div>
+                            <div style={{ fontSize: '0.75rem', color: '#0284c7', fontWeight: '700' }}>PIN: {comp.pin_code || comp.pincode || comp.pin || 'N/A'} ({comp.state || 'Maharashtra'})</div>
                           </td>
-                          <td style={{ fontSize: '0.8rem', color: 'var(--text-sub)' }}>{comp.address || comp.register_address || 'MIDC Industrial Area'}</td>
+                          <td style={{ fontSize: '0.8rem', color: 'var(--text-sub)' }}>{comp.registered_address || comp.address || 'N/A'}</td>
                           <td style={{ textAlign: 'right' }}>
                             <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end' }}>
                               <button

@@ -274,6 +274,7 @@ export async function loadDBFromSupabase() {
       if (Array.isArray(liveCompanyUnits)) {
         data = {
           ...(data || EMPTY_STATE),
+          company_units_plants: liveCompanyUnits,
           company_units: liveCompanyUnits,
           company_masters: liveCompanyUnits
         };
