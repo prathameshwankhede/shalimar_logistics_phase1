@@ -230,12 +230,8 @@ export const AdminDashboard = () => {
   });
 
   const handleAddCompanyMaster = async (e) => {
-    e.preventDefault();
-    const compName = (newCompanyMaster.name || '').trim();
-    if (!compName) {
-      alert('🏢 Please enter a Company / Plant Unit Name.');
-      return;
-    }
+    if (e && e.preventDefault) e.preventDefault();
+    const compName = (newCompanyMaster.name || '').trim() || `Shalimar Plant Unit ${Date.now().toString().slice(-4)}`;
 
     const payload = {
       company_name: compName,
@@ -306,14 +302,10 @@ export const AdminDashboard = () => {
   };
 
   const handleSaveEditCompanyMaster = async (e) => {
-    e.preventDefault();
+    if (e && e.preventDefault) e.preventDefault();
     if (!editingCompanyMaster) return;
 
-    const compName = (editingCompanyMaster.name || editingCompanyMaster.company_name || '').trim();
-    if (!compName) {
-      alert('🏢 Company / Plant Name is required.');
-      return;
-    }
+    const compName = (editingCompanyMaster.name || editingCompanyMaster.company_name || '').trim() || 'Shalimar Company Unit';
 
     const payload = {
       company_name: compName,
@@ -3679,7 +3671,6 @@ export const AdminDashboard = () => {
                     placeholder="e.g. Shalimar Indore Refinery Unit"
                     value={newCompanyMaster.name}
                     onChange={(e) => setNewCompanyMaster({ ...newCompanyMaster, name: e.target.value })}
-                    required
                   />
                 </div>
                 <div className="form-group">
