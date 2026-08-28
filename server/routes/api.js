@@ -192,6 +192,10 @@ export async function ensureRateSubmissionsTableExists() {
     for (const colDef of cols) {
       await pool.query(`ALTER TABLE rate_submissions ADD COLUMN ${colDef}`).catch(() => {});
     }
+
+    await pool.query('ALTER TABLE rate_submissions CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci').catch(() => {});
+    await pool.query('ALTER TABLE transporters CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci').catch(() => {});
+    await pool.query('ALTER TABLE transport_requirements CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci').catch(() => {});
   } catch (err) {
     console.warn('ensureRateSubmissionsTableExists notice:', err.message);
   }
@@ -284,8 +288,8 @@ async function handleGetRequirementRates(req, res) {
         rs.submitted_at,
         rs.updated_at
        FROM rate_submissions rs
-       JOIN transporters t ON CONVERT(t.id USING utf8mb4) = CONVERT(rs.transporter_id USING utf8mb4)
-       WHERE CONVERT(rs.requirement_id USING utf8mb4) = CONVERT(? USING utf8mb4)
+       JOIN transporters t ON t.id COLLATE utf8mb4_unicode_ci = rs.transporter_id COLLATE utf8mb4_unicode_ci
+       WHERE rs.requirement_id COLLATE utf8mb4_unicode_ci = ? COLLATE utf8mb4_unicode_ci
        ORDER BY rs.rate_per_mt ASC`,
       [actualReqId]
     );
