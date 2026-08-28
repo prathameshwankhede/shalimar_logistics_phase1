@@ -475,20 +475,24 @@ async function ensureCompanyUnitsTableExists() {
 
 function formatCompanyUnitDto(row) {
   if (!row) return null;
-  const pOrigin = row.pickup_origin && String(row.pickup_origin).trim() ? String(row.pickup_origin).trim() : null;
-  const dLoc = row.drop_location && String(row.drop_location).trim() ? String(row.drop_location).trim() : null;
+  const pOrigin = (row.pickup_origin && String(row.pickup_origin).trim()) ? String(row.pickup_origin).trim() : null;
+  const dLoc = (row.drop_location && String(row.drop_location).trim()) ? String(row.drop_location).trim() : null;
+  const gstinVal = (row.gstin && String(row.gstin).trim()) ? String(row.gstin).trim() : null;
+  const panVal = (row.pan || row.pan_no) && String(row.pan || row.pan_no).trim() ? String(row.pan || row.pan_no).trim() : null;
+  const emailVal = (row.email && String(row.email).trim()) ? String(row.email).trim() : null;
+
   return {
     id: row.id,
     company_name: row.company_name || row.name || '',
     name: row.company_name || row.name || '',
     registered_address: row.registered_address || row.address || '',
     address: row.registered_address || row.address || '',
-    gstin: row.gstin || null,
-    pan: row.pan || row.pan_no || null,
-    pan_no: row.pan || row.pan_no || null,
+    gstin: gstinVal,
+    pan: panVal,
+    pan_no: panVal,
     contact_name: row.contact_name || row.proprietor_name || '',
     proprietor_name: row.contact_name || row.proprietor_name || '',
-    email: row.email || null,
+    email: emailVal,
     mobile: row.mobile || row.mobile_no || '',
     mobile_no: row.mobile || row.mobile_no || '',
     state: row.state || 'Maharashtra',
