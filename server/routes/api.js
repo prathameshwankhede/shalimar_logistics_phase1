@@ -224,7 +224,7 @@ async function handleGetRequirements(req, res) {
     let bidsCountMap = {};
     try {
       const [bidRows] = await pool.query(
-        'SELECT requirement_id, COUNT(DISTINCT transporter_id) as cnt FROM rate_submissions GROUP BY requirement_id'
+        "SELECT requirement_id, COUNT(DISTINCT transporter_id) as cnt FROM rate_submissions WHERE status IN ('Submitted', 'Active', 'Rate Frozen', 'Negotiating') GROUP BY requirement_id"
       );
       (bidRows || []).forEach((b) => {
         if (b.requirement_id) bidsCountMap[b.requirement_id] = Number(b.cnt || 0);
@@ -448,7 +448,6 @@ async function handleCreateRateSubmission(req, res) {
       `INSERT INTO rate_submissions (id, requirement_id, transporter_id, rate_per_mt, quoted_quantity_mt, total_amount, remarks, status, submitted_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())
        ON DUPLICATE KEY UPDATE
-       id = VALUES(id),
        rate_per_mt = VALUES(rate_per_mt),
        quoted_quantity_mt = VALUES(quoted_quantity_mt),
        total_amount = VALUES(total_amount),
