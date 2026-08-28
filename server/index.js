@@ -14,7 +14,7 @@ dotenv.config({ path: path.resolve(process.cwd(), '.env') });
 
 import { testConnection } from './config/db.js';
 import authRoutes from './routes/auth.js';
-import apiRoutes from './routes/api.js';
+import apiRoutes, { ensureRateSubmissionsTableExists } from './routes/api.js';
 
 const app = express();
 
@@ -78,13 +78,12 @@ console.log(`==================================================`);
 app.listen(PORT, () => {
   console.log(`==================================================`);
   console.log(`🚀 Express HTTP Server Listening on: ${PORT}`);
-  console.log(`==================================================`);
-
   // Asynchronously test MySQL Connection
   testConnection()
-    .then((dbConnected) => {
+    .then(async (dbConnected) => {
       if (dbConnected) {
         console.log('✅ MySQL Connection established.');
+        await ensureRateSubmissionsTableExists().catch(e => console.warn('Startup table ensure notice:', e.message));
       } else {
         console.warn('⚠️ MySQL connection check returned false. Verify Hostinger DB environment variables.');
       }
