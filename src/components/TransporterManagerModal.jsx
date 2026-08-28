@@ -191,8 +191,9 @@ export const TransporterManagerModal = ({ isOpen, onClose, editingTransporter = 
 
     try {
       const res = await deleteTransporter(editingTransporter.id);
-      if (res && res.error) {
-        setErrorMsg(`❌ Cannot delete transporter: ${typeof res.error === 'string' ? res.error : res.error.message || 'Server error'}`);
+      if (res && res.success === false) {
+        const message = res.message || (typeof res.error === 'string' ? res.error : res.error?.message) || 'Unable to delete transporter.';
+        setErrorMsg(`Error deleting transporter: ${message}`);
         return;
       }
 
@@ -205,14 +206,21 @@ export const TransporterManagerModal = ({ isOpen, onClose, editingTransporter = 
         users: updatedUsers
       });
 
-      setSuccessMessage(`🗑️ Transporter '${transName}' deleted successfully!`);
+      setSuccessMessage(res?.message || `Transporter deleted successfully.`);
       setTimeout(() => {
         setSuccessMessage('');
         onClose();
       }, 1200);
     } catch (err) {
       console.error('Delete transporter error:', err);
-      setErrorMsg(`❌ Error deleting transporter: ${err.message}`);
+      const message =
+        err?.response?.data?.message ||
+        err?.data?.message ||
+        err?.data?.error?.message ||
+        (typeof err?.data?.error === 'string' ? err.data.error : null) ||
+        err?.message ||
+        'Unable to delete transporter.';
+      setErrorMsg(`Error deleting transporter: ${message}`);
     }
   };
 

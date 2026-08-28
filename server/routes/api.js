@@ -1237,45 +1237,81 @@ router.post('/transporters/reset-password', authenticateToken, requireRole('admi
 });
 
 // -------------------------------------------------------------
-// DELETE /api/transporters/:id — Delete Transporter Record (Admin Only)
+// DELETE /api/transporters/:id — Dedicated Transporter Delete Endpoint (Admin Only)
 // -------------------------------------------------------------
 router.delete('/transporters/:id', authenticateToken, requireRole('admin'), async (req, res) => {
   const { id } = req.params;
-  if (!id) {
-    return res.status(400).json({ success: false, error: 'Transporter id is required.' });
+  if (!id || id.trim().length === 0) {
+    return res.status(400).json({ success: false, message: 'Transporter id is required.' });
   }
 
+  const targetId = id.trim();
+
   try {
-    const [contractCheck] = await pool.query(
-      'SELECT id FROM contracts WHERE transporter_id = ? LIMIT 1',
-      [id]
+    // 1. Verify target transporter exists
+    const [transCheck] = await pool.query(
+      'SELECT id, company_name, code, username FROM transporters WHERE id = ? OR code = ? OR username = ? LIMIT 1',
+      [targetId, targetId, targetId]
     );
-    if (contractCheck && contractCheck.length > 0) {
-      return res.status(409).json({ success: false, error: 'Cannot delete transporter with active contract allocations.' });
+
+    if (!transCheck || transCheck.length === 0) {
+      return res.status(404).json({ success: false, message: 'Transporter not found.' });
     }
 
-    const [result] = await pool.query(
-      'DELETE FROM transporters WHERE id = ? OR code = ? OR username = ?',
-      [id, id, id]
+    const matchedTransporter = transCheck[0];
+    const exactId = matchedTransporter.id;
+    const exactUsername = matchedTransporter.username;
+
+    // 2. Dependency Check: Bids / Rate Submissions
+    const [bidCheck] = await pool.query(
+      'SELECT id FROM rate_submissions WHERE transporter_id = ? OR transporter_name = ? LIMIT 1',
+      [exactId, matchedTransporter.company_name]
+    );
+    if (bidCheck && bidCheck.length > 0) {
+      return res.status(409).json({
+        success: false,
+        message: 'Transporter cannot be deleted because related bids or rate submissions exist.'
+      });
+    }
+
+    // 3. Dependency Check: Contract Allocations
+    const [contractCheck] = await pool.query(
+      'SELECT id FROM contracts WHERE transporter_id = ? LIMIT 1',
+      [exactId]
+    );
+    if (contractCheck && contractCheck.length > 0) {
+      return res.status(409).json({
+        success: false,
+        message: 'Transporter cannot be deleted because related contracts exist.'
+      });
+    }
+
+    // 4. Safe Delete: Parameterized SQL target exact ID only
+    const [delResult] = await pool.query(
+      'DELETE FROM transporters WHERE id = ?',
+      [exactId]
     );
 
+    // Also remove associated login user account
     await pool.query(
       'DELETE FROM users WHERE transporter_id = ? OR username = ?',
-      [id, id]
+      [exactId, exactUsername]
     ).catch(() => {});
 
-    if (result.affectedRows === 0) {
-      return res.status(404).json({ success: false, error: 'Transporter record not found.' });
+    if (delResult.affectedRows === 0) {
+      return res.status(404).json({ success: false, message: 'Transporter not found.' });
     }
 
     return res.json({
       success: true,
-      affectedRows: result.affectedRows,
-      message: `Transporter deleted successfully from MySQL.`
+      message: 'Transporter deleted successfully.'
     });
   } catch (err) {
     console.error('❌ MySQL Transporter Delete Error:', err.message);
-    return res.status(500).json({ success: false, error: { code: 'DATABASE_ERROR', message: err.message } });
+    return res.status(500).json({
+      success: false,
+      message: err.message || 'Database error occurred while deleting transporter.'
+    });
   }
 });
 

@@ -36,7 +36,12 @@ export async function apiClient(endpoint, options = {}) {
   if (contentType && contentType.includes('application/json')) {
     const data = await response.json();
     if (!response.ok) {
-      throw new Error(data.error || `HTTP ${response.status}`);
+      const errMsg = typeof data.error === 'string'
+        ? data.error
+        : data.error?.message || data.message || `HTTP ${response.status}`;
+      const err = new Error(errMsg);
+      err.data = data;
+      throw err;
     }
     return data;
   }
