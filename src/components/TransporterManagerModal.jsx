@@ -1,6 +1,7 @@
 // src/components/TransporterManagerModal.jsx
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { createTransporter } from '../api/transporterApi';
 import { UserPlus, X, Shield, Building, Phone, Mail, FileText, CheckCircle } from 'lucide-react';
 import { validateMobile, validateEmail, validateName } from '../utils/validationRules';
 
@@ -44,7 +45,7 @@ export const TransporterManagerModal = ({ isOpen, onClose }) => {
     }
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setErrorMsg('');
 
@@ -88,6 +89,17 @@ export const TransporterManagerModal = ({ isOpen, onClose }) => {
       status: formData.status,
       created_at: new Date().toISOString()
     };
+
+    // 1. Call POST /api/transporters Dedicated API Route
+    try {
+      const apiRes = await createTransporter(newTransporter);
+      if (apiRes && apiRes.error) {
+        setErrorMsg(`❌ Save Error: ${typeof apiRes.error === 'string' ? apiRes.error : apiRes.error.message || 'Failed to save transporter'}`);
+        return;
+      }
+    } catch (err) {
+      console.warn('POST /api/transporters notice (continuing state sync):', err.message);
+    }
 
     const newUser = {
       id: userId,

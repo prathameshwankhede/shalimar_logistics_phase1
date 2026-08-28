@@ -622,10 +622,22 @@ router.get('/state', authenticateToken, async (req, res) => {
       state = emptyState;
     }
   } catch (err) {
-    console.warn('MySQL state load warning:', err.message);
     if (!IN_MEMORY_CACHE) {
       state = emptyState;
     }
+  }
+
+  // Merge normalized transporters table from MySQL database
+  try {
+    const dbTransporters = await fetchTransportersList();
+    if (Array.isArray(dbTransporters) && dbTransporters.length > 0) {
+      state = {
+        ...state,
+        transporters: dbTransporters
+      };
+    }
+  } catch (err) {
+    console.warn('MySQL transporters load notice:', err.message);
   }
 
   if (req.user.role === 'transporter') {
@@ -659,17 +671,21 @@ router.post('/state', authenticateToken, requireRole('admin'), async (req, res) 
 
   IN_MEMORY_CACHE = payload;
 
+  // 1. Optional write to legacy app_database blob table (isolated try/catch)
   try {
     const jsonStr = JSON.stringify(payload);
     await pool.query(
       `INSERT INTO app_database (id, data, updated_at) VALUES (?, ?, NOW())
        ON DUPLICATE KEY UPDATE data = VALUES(data), updated_at = NOW()`,
       [CLOUD_ROW_ID, jsonStr]
-    );
+    ).catch(() => {});
+  } catch (err) {}
 
+  // 2. Always sync normalized MySQL tables
+  try {
     await syncNormalizedTables(payload);
   } catch (err) {
-    console.warn('MySQL state save warning (cached in memory):', err.message);
+    console.error('❌ MySQL sync error:', err.message);
   }
 
   return res.json({ success: true, timestamp: Date.now(), data: sanitizeStateForClient(payload) });
