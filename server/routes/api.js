@@ -303,7 +303,7 @@ async function handleGetRequirementRates(req, res) {
     let queryParams = [actualReqId];
 
     if (itemId) {
-      ratesQuery += ' AND (item_id = ? OR item_id = "MAIN" OR item_id IS NULL)';
+      ratesQuery += ' AND item_id = ?';
       queryParams.push(itemId);
     }
     ratesQuery += ' ORDER BY rate_per_mt ASC';
