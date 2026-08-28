@@ -10,13 +10,24 @@ export const CreateRequirementModal = ({ isOpen, onClose }) => {
 
   const titleMasters = db.title_masters || [];
   const companyUnits = db.company_units_plants || db.company_units || db.company_masters || [];
-  const cityMasters = Array.from(
+  
+  const pickupOpts = Array.from(
+    new Set(
+      companyUnits
+        .map((c) => (c.pickup_origin || c.pickup_location_name || '').trim())
+        .filter((val) => val.length > 0)
+    )
+  );
+
+  const dropOpts = Array.from(
     new Set(
       companyUnits
         .map((c) => (c.drop_location || c.drop_location_name || '').trim())
         .filter((val) => val.length > 0)
     )
-  ).map((dropLoc, idx) => ({
+  );
+
+  const cityMasters = dropOpts.map((dropLoc, idx) => ({
     id: `cup_drop_${idx}`,
     city: dropLoc,
     pin: '440028'
@@ -30,6 +41,9 @@ export const CreateRequirementModal = ({ isOpen, onClose }) => {
   const [selectedCityId, setSelectedCityId] = useState(cityMasters[0]?.id || '');
   const [currentCityName, setCurrentCityName] = useState(cityMasters[0]?.city || '');
   const [currentPinCode, setCurrentPinCode] = useState(cityMasters[0]?.pin || '');
+
+  // Pickup Origin State
+  const [selectedPickupOrigin, setSelectedPickupOrigin] = useState(pickupOpts[0] || '');
 
   // Other form fields
   const [formData, setFormData] = useState({
@@ -205,7 +219,7 @@ export const CreateRequirementModal = ({ isOpen, onClose }) => {
       id: newReqId,
       request_no: newReqNo,
       title: finalTitle,
-      origin_city: 'Shalimar Central Hub / Plant',
+      origin_city: selectedPickupOrigin || pickupOpts[0] || 'yenva',
       origin_pin: '440028',
       dest_city: currentCityName,
       dest_pin: currentPinCode,
