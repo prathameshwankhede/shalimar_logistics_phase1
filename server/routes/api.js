@@ -4,6 +4,7 @@ import { INITIAL_SEED_DATA } from '../../src/store/dbStore.js';
 import { authenticateToken, requirePermission, requireRole } from '../middleware/auth.js';
 import { executeFullDatabaseResetAndRebuild } from '../services/migrationRunner.js';
 import { runApprovedProductionDrop } from '../services/dropRunner.js';
+import { executeCreateTransportersTable } from '../services/createTransportersTable.js';
 import {
   handleGetDashboard,
   handleGetRateRequests,
@@ -472,6 +473,18 @@ router.post('/admin/execute-database-drop', authenticateToken, requireRole('admi
     return res.json({ success: true, report });
   } catch (err) {
     return res.status(500).json({ success: false, error: { code: 'DATABASE_DROP_ERROR', message: err.message } });
+  }
+});
+
+// -------------------------------------------------------------
+// POST /api/admin/create-transporters-table — Approved Isolated DDL Route
+// -------------------------------------------------------------
+router.post('/admin/create-transporters-table', authenticateToken, requireRole('admin'), async (req, res) => {
+  try {
+    const report = await executeCreateTransportersTable();
+    return res.json({ success: true, report });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: { code: 'TABLE_CREATE_ERROR', message: err.message } });
   }
 });
 
