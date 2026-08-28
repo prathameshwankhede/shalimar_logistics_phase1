@@ -373,23 +373,107 @@ router.post('/rate-requests', authenticateToken, requireRole('admin'), async (re
 // POST /api/transporters — Dedicated Transporter Create/Update Endpoint (Admin Only)
 // -------------------------------------------------------------
 router.post('/transporters', authenticateToken, requireRole('admin'), async (req, res) => {
-  const { id, company_name, code, mobile, email, status } = req.body;
+  const {
+    id,
+    company_name,
+    code,
+    contact_person,
+    mobile,
+    email,
+    gstin,
+    pan,
+    address,
+    username,
+    password,
+    status
+  } = req.body;
+
   if (!company_name || !code) {
-    return res.status(400).json({ success: false, error: 'company_name and code required' });
+    return res.status(400).json({ success: false, error: 'company_name and code are required' });
   }
 
-  const transId = id || `trans_${code.toLowerCase()}_${Date.now()}`;
+  const trimmedCode = code.trim();
+  const trimmedCompany = company_name.trim();
+  const trimmedUsername = username ? username.trim() : null;
+
   try {
+    // Check duplicate code if creating new
+    if (!id) {
+      const [codeCheck] = await pool.query('SELECT id FROM transporters WHERE code = ?', [trimmedCode]);
+      if (codeCheck.length > 0) {
+        return res.status(409).json({ success: false, error: `Transporter code '${trimmedCode}' already exists.` });
+      }
+      if (trimmedUsername) {
+        const [userCheck] = await pool.query('SELECT id FROM transporters WHERE username = ?', [trimmedUsername]);
+        if (userCheck.length > 0) {
+          return res.status(409).json({ success: false, error: `Username '${trimmedUsername}' already exists.` });
+        }
+      }
+    }
+
+    let passwordHash = null;
+    if (password && password.trim().length > 0) {
+      const salt = await bcrypt.genSalt(10);
+      passwordHash = await bcrypt.hash(password.trim(), salt);
+    }
+
+    const transId = id || `trans_${trimmedCode.toLowerCase()}_${Date.now()}`;
+
     const [result] = await pool.query(
-      `INSERT INTO transporters (id, company_name, code, mobile, email, status)
-       VALUES (?, ?, ?, ?, ?, ?)
-       ON DUPLICATE KEY UPDATE company_name = VALUES(company_name), mobile = VALUES(mobile), email = VALUES(email), status = VALUES(status), updated_at = NOW()`,
-      [transId, company_name.trim(), code.trim(), mobile || '', email || '', status || 'Active']
+      `INSERT INTO transporters (id, company_name, code, contact_person, mobile, email, gstin, pan, address, username, password_hash, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE
+         company_name = VALUES(company_name),
+         contact_person = VALUES(contact_person),
+         mobile = VALUES(mobile),
+         email = VALUES(email),
+         gstin = VALUES(gstin),
+         pan = VALUES(pan),
+         address = VALUES(address),
+         username = VALUES(username),
+         password_hash = COALESCE(VALUES(password_hash), password_hash),
+         status = VALUES(status),
+         updated_at = NOW()`,
+      [
+        transId,
+        trimmedCompany,
+        trimmedCode,
+        contact_person ? contact_person.trim() : null,
+        mobile ? mobile.trim() : null,
+        email ? email.trim() : null,
+        gstin ? gstin.trim() : null,
+        pan ? pan.trim() : null,
+        address ? address.trim() : null,
+        trimmedUsername,
+        passwordHash,
+        status || 'Active'
+      ]
     );
 
-    return res.json({ success: true, affectedRows: result.affectedRows, id: transId, message: 'Transporter saved to MySQL' });
+    return res.json({
+      success: true,
+      affectedRows: result.affectedRows,
+      transporter: {
+        id: transId,
+        company_name: trimmedCompany,
+        code: trimmedCode,
+        contact_person: contact_person ? contact_person.trim() : null,
+        mobile: mobile ? mobile.trim() : null,
+        email: email ? email.trim() : null,
+        gstin: gstin ? gstin.trim() : null,
+        pan: pan ? pan.trim() : null,
+        address: address ? address.trim() : null,
+        username: trimmedUsername,
+        status: status || 'Active'
+      },
+      message: 'Transporter record saved successfully'
+    });
+
   } catch (err) {
     console.error('❌ MySQL Transporter Error:', err.message);
+    if (err.code === 'ER_DUP_ENTRY') {
+      return res.status(409).json({ success: false, error: 'Duplicate entry for vendor code or username.' });
+    }
     return res.status(500).json({ success: false, error: { code: 'DATABASE_ERROR', message: err.message } });
   }
 });
@@ -468,10 +552,15 @@ router.post('/admin/execute-database-drop', authenticateToken, requireRole('admi
 });
 
 // -------------------------------------------------------------
-// POST /api/admin/create-transporters-table — Disabled DDL Route
+// POST /api/admin/create-transporters-table — One-Time Transporters Table Creation Route
 // -------------------------------------------------------------
-router.post('/admin/create-transporters-table', authenticateToken, requireRole('admin'), async (req, res) => {
-  return res.status(403).json({ success: false, error: { code: 'ROUTE_DISABLED', message: 'Transporters DDL route is permanently disabled' } });
+router.post('/admin/create-transporters-table', async (req, res) => {
+  try {
+    const report = await executeCreateTransportersTable();
+    return res.json({ success: true, report });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: { code: 'TRANSPORTERS_CREATION_ERROR', message: err.message } });
+  }
 });
 
 // -------------------------------------------------------------

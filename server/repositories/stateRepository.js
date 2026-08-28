@@ -105,7 +105,7 @@ export async function fetchSubmissions(transporterId = null) {
 
 export async function fetchTransportersList() {
   try {
-    const [rows] = await pool.query('SELECT id, company_name, code, mobile, email, status FROM transporters LIMIT 100');
+    const [rows] = await pool.query('SELECT id, company_name, code, contact_person, mobile, email, gstin, pan, address, username, status, created_at, updated_at FROM transporters ORDER BY created_at DESC LIMIT 100');
     return rows;
   } catch (err) {
     const seedTransporters = INITIAL_SEED_DATA.transporters || [];
