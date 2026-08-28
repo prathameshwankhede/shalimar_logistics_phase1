@@ -6,6 +6,7 @@ import { useAuth } from '../context/AuthContext';
 import { createRateRequest, createRequirement, updateRequirement, deleteRequirement } from '../api/rateRequestApi';
 import { createTransporter, updateTransporterStatus, resetTransporterPassword, deleteTransporter } from '../api/transporterApi';
 import { createProduct, updateProduct, deleteProduct, createCompanyUnit, updateCompanyUnit, deleteCompanyUnit } from '../api/masterDataApi';
+import { downloadFullBackupApi, restoreBackupApi, downloadReportApi, clearAllDataApi } from '../api/backupApi';
 import { CreateRequirementModal } from './CreateRequirementModal';
 import { TransporterManagerModal } from './TransporterManagerModal';
 import { RateComparisonView } from './RateComparisonView';
@@ -557,48 +558,32 @@ export const AdminDashboard = () => {
     if (actionToRun) actionToRun();
   };
 
-  const executeDownloadBackup = () => {
+  const handleDownloadDatabaseBackup = async () => {
     try {
-      const backupData = {
-        _exportedAt: new Date().toISOString(),
-        _exportVersion: 'v2.0',
-        company: db.company || {},
-        do_master_settings: db.do_master_settings || {},
-        company_masters: db.company_masters || [],
-        product_masters: db.product_masters || [],
-        cargo_masters: db.cargo_masters || [],
-        title_masters: db.title_masters || [],
-        city_masters: db.city_masters || [],
-        transporters: db.transporters || [],
-        rate_requests: db.rate_requests || [],
-        rate_submissions: db.rate_submissions || [],
-        allocations: db.allocations || [],
-        contracts: db.contracts || [],
-        truck_dispatches: db.truck_dispatches || [],
-        users: db.users || [],
-        security_audit_logs: db.security_audit_logs || []
-      };
+      setArchiveNotice('⏳ Generating full MySQL database backup...');
+      const backupData = await downloadFullBackupApi();
+      if (!backupData || backupData.success === false) {
+        alert(`Backup creation failed: ${backupData?.message || 'Server error'}`);
+        return;
+      }
 
       const jsonStr = JSON.stringify(backupData, null, 2);
       const blob = new Blob([jsonStr], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `TransFlow_Full_ERP_Backup_${new Date().toISOString().slice(0, 10)}.json`;
+      link.download = `shalimar_mysql_backup_${new Date().toISOString().slice(0, 10)}.json`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
 
-      setArchiveNotice('📥 Complete System Database Backup (.json) downloaded successfully!');
+      setArchiveNotice('📥 Complete MySQL Database Backup (.json) downloaded successfully!');
       setTimeout(() => setArchiveNotice(''), 4000);
     } catch (err) {
+      console.error('Backup download error:', err);
       alert(`Backup creation failed: ${err.message}`);
     }
-  };
-
-  const handleDownloadDatabaseBackup = () => {
-    executeDownloadBackup();
   };
 
   const processUploadBackupFile = (file) => {
@@ -610,105 +595,27 @@ export const AdminDashboard = () => {
         const parsed = JSON.parse(jsonContent);
 
         if (!parsed || typeof parsed !== 'object') {
-          alert('Invalid Backup File. Please upload a valid TransFlow JSON backup file.');
+          alert('Invalid Backup File. Please upload a valid JSON backup file.');
           return;
         }
 
-        if (!window.confirm('⚠️ DATABASE RESTORE CONFIRMATION:\n\nAre you sure you want to restore system database from this backup file?\n\nThis will update your Live Cloud Database with the backup data.')) {
+        if (!window.confirm('⚠️ MYSQL DATABASE RESTORE CONFIRMATION:\n\nAre you sure you want to restore system database from this backup file?\n\nThis will update your Live Hostinger MySQL Database with the backup data.')) {
           return;
         }
 
-        const rawObj = parsed.data || parsed.db || parsed;
+        setArchiveNotice('⏳ Restoring backup into Hostinger MySQL database...');
+        const res = await restoreBackupApi(parsed);
 
-        // 🛡️ Flexible Multi-Schema Key Resolvers
-        const rateRequests = Array.isArray(rawObj.rate_requests) ? rawObj.rate_requests :
-                             Array.isArray(rawObj.requests) ? rawObj.requests :
-                             Array.isArray(rawObj.indents) ? rawObj.indents :
-                             Array.isArray(rawObj.requisitions) ? rawObj.requisitions :
-                             Array.isArray(rawObj.items) ? rawObj.items :
-                             Array.isArray(rawObj.rows) ? rawObj.rows : [];
-
-        const companyMasters = Array.isArray(rawObj.company_masters) ? rawObj.company_masters :
-                               Array.isArray(rawObj.companies) ? rawObj.companies :
-                               Array.isArray(rawObj.locations) ? rawObj.locations :
-                               Array.isArray(rawObj.plants) ? rawObj.plants : [];
-
-        const productMasters = Array.isArray(rawObj.product_masters) ? rawObj.product_masters :
-                               Array.isArray(rawObj.products) ? rawObj.products :
-                               Array.isArray(rawObj.commodities) ? rawObj.commodities : [];
-
-        const transporters = Array.isArray(rawObj.transporters) ? rawObj.transporters :
-                             Array.isArray(rawObj.vendors) ? rawObj.vendors : [];
-
-        const rateSubmissions = Array.isArray(rawObj.rate_submissions) ? rawObj.rate_submissions :
-                                Array.isArray(rawObj.submissions) ? rawObj.submissions :
-                                Array.isArray(rawObj.bids) ? rawObj.bids :
-                                Array.isArray(rawObj.quotes) ? rawObj.quotes : [];
-
-        const allocations = Array.isArray(rawObj.allocations) ? rawObj.allocations :
-                            Array.isArray(rawObj.contracts) ? rawObj.contracts : [];
-
-        // 🎯 Auto-extract Drop Locations from Rate Requests if company_masters is empty
-        const finalCompanyMasters = [...companyMasters];
-        if (finalCompanyMasters.length === 0 && rateRequests.length > 0) {
-          const uniqueDests = Array.from(new Set(rateRequests.map((r) => r.dest_city).filter(Boolean)));
-          uniqueDests.forEach((dest, i) => {
-            finalCompanyMasters.push({
-              id: `comp_restored_${i}`,
-              name: dest,
-              drop_location_name: dest,
-              city: dest,
-              code: `DST${i + 1}`
-            });
-          });
+        if (res && res.success === false) {
+          alert(`❌ Restore failed: ${res.message || 'Server error'}`);
+          return;
         }
 
-        // 📦 Auto-extract Product Names from Rate Requests if product_masters is empty
-        const finalProductMasters = [...productMasters];
-        if (finalProductMasters.length === 0 && rateRequests.length > 0) {
-          const uniqueProds = Array.from(new Set(rateRequests.map((r) => r.material_type).filter(Boolean)));
-          uniqueProds.forEach((prod, i) => {
-            finalProductMasters.push({
-              id: `prod_restored_${i}`,
-              name: prod,
-              category: 'Restored Commodity',
-              hsn_code: '23040010',
-              unit: 'MT'
-            });
-          });
-        }
-
-        const restoredDb = addSecurityLog(
-          {
-            ...rawObj,
-            _updatedAt: Date.now() + 500000,
-            company: rawObj.company || db.company || {},
-            do_master_settings: rawObj.do_master_settings || db.do_master_settings || {},
-            company_masters: finalCompanyMasters,
-            product_masters: finalProductMasters,
-            cargo_masters: Array.isArray(rawObj.cargo_masters) ? rawObj.cargo_masters : [],
-            title_masters: Array.isArray(rawObj.title_masters) ? rawObj.title_masters : [],
-            city_masters: Array.isArray(rawObj.city_masters) ? rawObj.city_masters : [],
-            transporters: transporters,
-            rate_requests: rateRequests,
-            rate_submissions: rateSubmissions,
-            allocations: allocations,
-            contracts: Array.isArray(rawObj.contracts) ? rawObj.contracts : [],
-            truck_dispatches: Array.isArray(rawObj.truck_dispatches) ? rawObj.truck_dispatches : [],
-            users: Array.isArray(rawObj.users) && rawObj.users.length > 0 ? rawObj.users : (db.users || []),
-            security_audit_logs: Array.isArray(rawObj.security_audit_logs) ? rawObj.security_audit_logs : []
-          },
-          'RESTORE_DATABASE_FROM_JSON_BACKUP',
-          currentUser?.username || 'admin',
-          'admin',
-          'DB_RESTORED 🛡️'
-        );
-
-        await updateDB(restoredDb);
-        alert(`🎉 SUCCESS: Restored ${rateRequests.length} Indents, ${finalCompanyMasters.length} Locations & ${finalProductMasters.length} Products to Supabase Cloud Server! Page will reload.`);
+        alert(`🎉 SUCCESS: ${res.message || 'Database restored successfully!'}`);
         window.location.reload();
       } catch (err) {
-        alert(`Failed to parse backup JSON file: ${err.message}`);
+        console.error('Restore error:', err);
+        alert(`Failed to restore backup JSON file: ${err.message}`);
       }
     };
     reader.readAsText(file);
@@ -728,32 +635,28 @@ export const AdminDashboard = () => {
     if (e.target) e.target.value = '';
   };
 
-  const executeResetDatabase = () => {
-    if (!window.confirm('⚠️ CLEAR ALL SYSTEM OPERATIONAL DATA CONFIRMATION:\n\nAre you sure you want to clear all active rate requests, freight bids, awarded contracts, and truck dispatches?\n\nThis will reset operational tables and sync to Supabase Cloud.')) {
+  const executeResetDatabase = async () => {
+    if (!window.confirm('⚠️ WARNING: CLEAR ALL SYSTEM OPERATIONAL DATA CONFIRMATION:\n\nAre you sure you want to permanently clear all operational tables from MySQL?\n\nThis will reset operational data in Hostinger MySQL. System admin account will be preserved.')) {
       return;
     }
 
-    const cleanFreshDb = addSecurityLog(
-      {
-        ...db,
-        _updatedAt: Date.now() + 100000,
-        _isResetOperation: true,
-        rate_requests: [],
-        rate_submissions: [],
-        allocations: [],
-        contracts: [],
-        truck_dispatches: [],
-        whatsapp_notifications: []
-      },
-      'SYSTEM_DATABASE_RESET_FRESH_START',
-      currentUser?.username || 'admin',
-      'admin',
-      'SYSTEM_RESET 🚀'
-    );
+    try {
+      setArchiveNotice('⏳ Clearing operational data from MySQL...');
+      const res = await clearAllDataApi();
+      if (res && res.success === false) {
+        alert(`❌ Clear data failed: ${res.message || 'Server error'}`);
+        return;
+      }
 
-    updateDB(cleanFreshDb);
-    setArchiveNotice('🎉 System Database cleared completely! Operational tables are now 100% clean & ready for fresh live start.');
-    setTimeout(() => setArchiveNotice(''), 5000);
+      setArchiveNotice('🎉 System Database cleared completely from MySQL! Operational tables are now 100% clean.');
+      setTimeout(() => {
+        setArchiveNotice('');
+        window.location.reload();
+      }, 2000);
+    } catch (err) {
+      console.error('Clear data error:', err);
+      alert(`Clear data failed: ${err.message}`);
+    }
   };
 
   const handleResetDatabaseToFreshStart = () => {

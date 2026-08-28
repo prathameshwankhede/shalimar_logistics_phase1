@@ -1326,6 +1326,253 @@ router.delete('/transporters/:id', authenticateToken, requireRole('admin'), asyn
 });
 
 // -------------------------------------------------------------
+// GET /api/backup/full — Full MySQL Database Backup (Admin Only)
+// -------------------------------------------------------------
+router.get('/backup/full', authenticateToken, requireRole('admin'), async (req, res) => {
+  try {
+    const [tablesRows] = await pool.query(
+      "SELECT table_name FROM information_schema.tables WHERE table_schema = DATABASE() AND table_type = 'BASE TABLE'"
+    );
+
+    const tablesObj = {};
+    const tableNames = tablesRows.map(r => r.table_name || r.TABLE_NAME);
+
+    for (const tbl of tableNames) {
+      const [rows] = await pool.query(`SELECT * FROM \`${tbl}\``);
+      if (tbl === 'users') {
+        tablesObj[tbl] = rows.map(u => {
+          const cleanUser = { ...u };
+          delete cleanUser.password;
+          delete cleanUser.password_hash;
+          delete cleanUser.secret;
+          delete cleanUser.jwt_secret;
+          delete cleanUser.token;
+          return cleanUser;
+        });
+      } else {
+        tablesObj[tbl] = rows;
+      }
+    }
+
+    return res.json({
+      backup_version: '1.0',
+      database: 'u704836459_shalimar_logi',
+      created_at: new Date().toISOString(),
+      tables: tablesObj
+    });
+  } catch (err) {
+    console.error('❌ GET /api/backup/full error:', err.message);
+    return res.status(500).json({ success: false, message: `Backup failed: ${err.message}` });
+  }
+});
+
+// -------------------------------------------------------------
+// POST /api/backup/restore — Restore Backup to MySQL (Admin Only)
+// -------------------------------------------------------------
+router.post('/backup/restore', authenticateToken, requireRole('admin'), async (req, res) => {
+  const backupPayload = req.body;
+  if (!backupPayload || typeof backupPayload !== 'object') {
+    return res.status(400).json({ success: false, message: 'Invalid backup JSON payload provided.' });
+  }
+
+  const tablesData = backupPayload.tables || backupPayload.data || backupPayload.db;
+  if (!tablesData || typeof tablesData !== 'object') {
+    return res.status(400).json({ success: false, message: 'Backup JSON missing valid tables object.' });
+  }
+
+  const conn = await pool.getConnection();
+
+  try {
+    const [existingTablesRows] = await conn.query(
+      "SELECT table_name FROM information_schema.tables WHERE table_schema = DATABASE() AND table_type = 'BASE TABLE'"
+    );
+    const validTableNames = new Set(existingTablesRows.map(r => r.table_name || r.TABLE_NAME));
+
+    const inputTableNames = Object.keys(tablesData).filter(t => validTableNames.has(t));
+    if (inputTableNames.length === 0) {
+      conn.release();
+      return res.status(400).json({ success: false, message: 'No matching database tables found in backup file.' });
+    }
+
+    const parentFirstOrder = [
+      'users',
+      'transporters',
+      'company_units_plants',
+      'products',
+      'transport_requirements',
+      'transport_requirement_items'
+    ];
+
+    inputTableNames.forEach(t => {
+      if (!parentFirstOrder.includes(t)) {
+        parentFirstOrder.push(t);
+      }
+    });
+
+    const orderedTablesToRestore = parentFirstOrder.filter(t => inputTableNames.includes(t));
+    const reverseOrderToClear = [...orderedTablesToRestore].reverse();
+
+    await conn.beginTransaction();
+    await conn.query('SET FOREIGN_KEY_CHECKS = 0');
+
+    for (const tbl of reverseOrderToClear) {
+      if (tbl === 'users') {
+        await conn.query("DELETE FROM users WHERE role != 'admin' AND username != 'admin'");
+      } else {
+        await conn.query(`DELETE FROM \`${tbl}\``);
+      }
+    }
+
+    let totalRestoredRows = 0;
+    for (const tbl of orderedTablesToRestore) {
+      const rows = tablesData[tbl];
+      if (Array.isArray(rows) && rows.length > 0) {
+        const [colRows] = await conn.query(
+          "SELECT column_name FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = ?",
+          [tbl]
+        );
+        const validCols = colRows.map(c => c.column_name || c.COLUMN_NAME);
+
+        for (const rowObj of rows) {
+          if (!rowObj || typeof rowObj !== 'object') continue;
+
+          const insertCols = [];
+          const insertVals = [];
+
+          validCols.forEach(col => {
+            if (rowObj[col] !== undefined) {
+              insertCols.push(`\`${col}\``);
+              let val = rowObj[col];
+
+              if (tbl === 'users' && col === 'password' && !val) {
+                val = 'password123';
+              }
+              if (typeof val === 'object' && val !== null) {
+                val = JSON.stringify(val);
+              }
+              insertVals.push(val);
+            }
+          });
+
+          if (insertCols.length > 0) {
+            const placeholders = insertCols.map(() => '?').join(', ');
+            const sql = `INSERT INTO \`${tbl}\` (${insertCols.join(', ')}) VALUES (${placeholders}) ON DUPLICATE KEY UPDATE ${insertCols.map(c => `${c}=VALUES(${c})`).join(', ')}`;
+            await conn.query(sql, insertVals);
+            totalRestoredRows++;
+          }
+        }
+      }
+    }
+
+    await conn.query('SET FOREIGN_KEY_CHECKS = 1');
+    await conn.commit();
+    conn.release();
+
+    return res.json({
+      success: true,
+      restoredRows: totalRestoredRows,
+      tablesCount: orderedTablesToRestore.length,
+      message: `Database successfully restored (${totalRestoredRows} records across ${orderedTablesToRestore.length} tables).`
+    });
+  } catch (err) {
+    await conn.query('SET FOREIGN_KEY_CHECKS = 1').catch(() => {});
+    await conn.rollback().catch(() => {});
+    conn.release();
+    console.error('❌ POST /api/backup/restore error:', err.message);
+    return res.status(500).json({ success: false, message: `Restore transaction failed: ${err.message}` });
+  }
+});
+
+// -------------------------------------------------------------
+// GET /api/backup/report — Export Operational Report Data (Admin Only)
+// -------------------------------------------------------------
+router.get('/backup/report', authenticateToken, requireRole('admin'), async (req, res) => {
+  try {
+    const [transporters] = await pool.query('SELECT id, company_name, code, contact_person, mobile, email, status FROM transporters').catch(() => [[]]);
+    const [companyUnits] = await pool.query('SELECT id, company_name, name, city, state, pickup_origin, drop_location FROM company_units_plants').catch(() => [[]]);
+    const [products] = await pool.query('SELECT id, name, category, hsn_code, default_unit FROM products').catch(() => [[]]);
+    const [reqs] = await pool.query('SELECT id, req_no, batch_code, title, pickup_origin, drop_location, target_date, total_tonnage, status, created_at FROM transport_requirements').catch(() => [[]]);
+    const [items] = await pool.query('SELECT id, requirement_id, product_name, total_quantity, unit FROM transport_requirement_items').catch(() => [[]]);
+
+    return res.json({
+      success: true,
+      report_generated_at: new Date().toISOString(),
+      summary: {
+        total_transporters: transporters.length,
+        total_company_units: companyUnits.length,
+        total_products: products.length,
+        total_transport_requirements: reqs.length,
+        total_requirement_items: items.length
+      },
+      data: {
+        transporters,
+        company_units_plants: companyUnits,
+        products,
+        transport_requirements: reqs,
+        transport_requirement_items: items
+      }
+    });
+  } catch (err) {
+    console.error('❌ GET /api/backup/report error:', err.message);
+    return res.status(500).json({ success: false, message: `Report generation failed: ${err.message}` });
+  }
+});
+
+// -------------------------------------------------------------
+// POST /api/backup/clear — Clear All Operational Data from MySQL (Admin Only)
+// -------------------------------------------------------------
+router.post('/backup/clear', authenticateToken, requireRole('admin'), async (req, res) => {
+  const { confirm } = req.body || {};
+  if (confirm !== true) {
+    return res.status(400).json({
+      success: false,
+      message: 'Explicit confirmation required to clear system data ({ confirm: true }).'
+    });
+  }
+
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    await conn.query('SET FOREIGN_KEY_CHECKS = 0');
+
+    const safeClearSequence = [
+      'transport_requirement_items',
+      'transport_requirements',
+      'contracts',
+      'rate_submissions',
+      'products',
+      'company_units_plants',
+      'transporters'
+    ];
+
+    for (const tbl of safeClearSequence) {
+      await conn.query(`DELETE FROM \`${tbl}\``).catch(err => {
+        if (err.code !== 'ER_NO_SUCH_TABLE') {
+          console.warn(`Notice clearing ${tbl}:`, err.message);
+        }
+      });
+    }
+
+    await conn.query("DELETE FROM users WHERE role != 'admin' AND username != 'admin'").catch(() => {});
+
+    await conn.query('SET FOREIGN_KEY_CHECKS = 1');
+    await conn.commit();
+    conn.release();
+
+    return res.json({
+      success: true,
+      message: 'All operational data successfully cleared from MySQL database. System admin account preserved.'
+    });
+  } catch (err) {
+    await conn.query('SET FOREIGN_KEY_CHECKS = 1').catch(() => {});
+    await conn.rollback().catch(() => {});
+    conn.release();
+    console.error('❌ POST /api/backup/clear error:', err.message);
+    return res.status(500).json({ success: false, message: `Clear data transaction failed: ${err.message}` });
+  }
+});
+
+// -------------------------------------------------------------
 // POST /api/contracts — Dedicated Contract Allocation Endpoint (Admin Only)
 // -------------------------------------------------------------
 router.post('/contracts', authenticateToken, requireRole('admin'), async (req, res) => {

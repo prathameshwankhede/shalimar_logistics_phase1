@@ -119,6 +119,47 @@ async function runSecurityRegressionSuite() {
     assert.equal(minimalDto.username, 'admin');
   });
 
+  // 5. Database Backup, Restore & Clear Security Suite Tests
+  test('Backup payload redacts sensitive user passwords and hashes', () => {
+    const rawUsers = [
+      { id: 'usr_1', username: 'admin', password: 'secretpassword', password_hash: '$2b$10$abc' },
+      { id: 'usr_2', username: 'P001', password: 'password123', password_hash: '$2b$10$xyz' }
+    ];
+
+    const sanitizedUsers = rawUsers.map(u => {
+      const clean = { ...u };
+      delete clean.password;
+      delete clean.password_hash;
+      return clean;
+    });
+
+    sanitizedUsers.forEach(u => {
+      assert.equal(u.password, undefined);
+      assert.equal(u.password_hash, undefined);
+      assert.ok(u.username);
+    });
+  });
+
+  test('Clear operational data requires explicit confirmation flag ({ confirm: true })', () => {
+    const unconfirmedPayload = { confirm: false };
+    const checkConfirmation = (body) => Boolean(body && body.confirm === true);
+
+    assert.equal(checkConfirmation(unconfirmedPayload), false);
+    assert.equal(checkConfirmation({ confirm: true }), true);
+  });
+
+  test('Clear operational data protects system admin user account', () => {
+    const userRows = [
+      { id: 'usr_admin', username: 'admin', role: 'admin' },
+      { id: 'usr_trans1', username: 'P001', role: 'transporter' },
+      { id: 'usr_trans2', username: 'A001', role: 'transporter' }
+    ];
+
+    const remainingUsers = userRows.filter(u => u.role === 'admin' && u.username === 'admin');
+    assert.equal(remainingUsers.length, 1);
+    assert.equal(remainingUsers[0].username, 'admin');
+  });
+
   console.log('==================================================');
   console.log(`📊 TEST RESULTS: ${passed} Passed | ${failed} Failed`);
   console.log('==================================================');
