@@ -199,29 +199,13 @@ export async function ensureRateSubmissionsTableExists() {
 
     // Safe deduplication: Keep ONLY the latest quote per (requirement_id, transporter_id)
     try {
-      const [dupes] = await pool.query(`
-        SELECT requirement_id, transporter_id, COUNT(*) AS cnt 
-        FROM rate_submissions 
-        GROUP BY requirement_id, transporter_id 
-        HAVING COUNT(*) > 1
+      await pool.query(`
+        DELETE t1 FROM rate_submissions t1
+        INNER JOIN rate_submissions t2 
+        ON t1.requirement_id = t2.requirement_id 
+        AND t1.transporter_id = t2.transporter_id 
+        AND (t1.submitted_at < t2.submitted_at OR (t1.submitted_at = t2.submitted_at AND t1.id < t2.id))
       `);
-      if (dupes && dupes.length > 0) {
-        console.log(`🧹 Deduplicating ${dupes.length} duplicate (requirement_id, transporter_id) groups in rate_submissions...`);
-        for (const d of dupes) {
-          const [rows] = await pool.query(
-            `SELECT id FROM rate_submissions 
-             WHERE requirement_id = ? AND transporter_id = ? 
-             ORDER BY submitted_at DESC, updated_at DESC, id DESC`,
-            [d.requirement_id, d.transporter_id]
-          );
-          if (rows.length > 1) {
-            const keepId = rows[0].id;
-            const deleteIds = rows.slice(1).map(r => r.id);
-            await pool.query('DELETE FROM rate_submissions WHERE id IN (?)', [deleteIds]);
-            console.log(`  • Kept latest quote '${keepId}', removed ${deleteIds.length} older duplicate(s) for transporter '${d.transporter_id}'.`);
-          }
-        }
-      }
     } catch (dedupErr) {
       console.warn('Deduplication check notice:', dedupErr.message);
     }
