@@ -2207,8 +2207,10 @@ export const AdminDashboard = () => {
                         const childItems = req.items && Array.isArray(req.items) ? req.items : [];
                         const isMultiItemBatch = childItems.length > 1;
                         const totalQty = req.total_quantity_mt || req.required_qty || req.quantity_mt || 0;
-                        const bids = (db.rate_submissions || []).filter((s) => String(s.rate_request_id) === String(req.id) || String(s.rate_request_id) === String(reqNoStr));
-                        const validRates = bids.map((b) => parseFloat(b.rate_per_unit)).filter((r) => !isNaN(r));
+                        const bidsCount = Number(req.submitted_bids_count || 0);
+                        const bids = (db.rate_submissions || []).filter((s) => String(s.rate_request_id) === String(req.id) || String(s.rate_request_id) === String(reqNoStr) || String(s.requirement_id) === String(req.id) || String(s.requirement_id) === String(reqNoStr));
+                        const displayBidCount = Math.max(bids.length, bidsCount);
+                        const validRates = bids.map((b) => parseFloat(b.rate_per_unit || b.rate_per_mt)).filter((r) => !isNaN(r) && r > 0);
                         const lowestRate = validRates.length > 0 ? Math.min(...validRates) : null;
                         const isExpanded = isMultiItemBatch && (expandedBatches[reqNoStr] || expandedBatches[req.id] || false);
 
@@ -2275,7 +2277,7 @@ export const AdminDashboard = () => {
                               {/* 5. SUBMITTED BIDS */}
                               <td>
                                 <div>
-                                  <span style={{ fontWeight: '800', color: 'var(--text-main)' }}>{bids.length} Bids</span>
+                                  <span style={{ fontWeight: '800', color: 'var(--text-main)' }}>{displayBidCount} Bids</span>
                                   {lowestRate && (
                                     <div style={{ fontSize: '0.78rem', color: '#34d399', fontWeight: '700' }}>
                                       Lowest: ₹{lowestRate}/MT
@@ -2296,9 +2298,9 @@ export const AdminDashboard = () => {
                                         <div style={{ fontSize: '0.78rem', color: '#34d399', fontWeight: '900' }}>
                                           🏆 Approved: {transporter?.company_name || 'Transporter'}
                                         </div>
-                                      ) : bids.length > 0 ? (
+                                      ) : displayBidCount > 0 ? (
                                         <div style={{ fontSize: '0.78rem', color: '#38bdf8', fontWeight: '800' }}>
-                                          📥 {bids.length} Transporter Quote(s)
+                                          📥 {displayBidCount} Transporter Quote(s)
                                         </div>
                                       ) : (
                                         <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
@@ -2376,7 +2378,7 @@ export const AdminDashboard = () => {
                                     className="btn btn-primary"
                                     style={{ padding: '6px 12px', fontSize: '0.78rem', fontWeight: '800', borderRadius: '8px' }}
                                   >
-                                    <TrendingDown size={14} /> Compare Rates ({bids.length})
+                                    <TrendingDown size={14} /> Compare Rates ({displayBidCount})
                                   </button>
                                   <button
                                     type="button"

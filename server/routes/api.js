@@ -153,16 +153,51 @@ function formatParentRequirementDto(parentRow, childItems = [], bidsCount = 0) {
   };
 }
 
+export async function ensureRateSubmissionsTableExists() {
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS rate_submissions (
+        id VARCHAR(100) NOT NULL PRIMARY KEY,
+        requirement_id VARCHAR(100) NOT NULL,
+        transporter_id VARCHAR(100) NOT NULL,
+        rate_per_mt DECIMAL(12,2) NOT NULL,
+        quoted_quantity_mt DECIMAL(12,3) DEFAULT NULL,
+        total_amount DECIMAL(14,2) DEFAULT NULL,
+        remarks TEXT DEFAULT NULL,
+        status VARCHAR(50) DEFAULT 'Submitted',
+        submitted_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_rate_requirement (requirement_id),
+        INDEX idx_rate_transporter (transporter_id)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+
+    const cols = [
+      "quoted_quantity_mt DECIMAL(12,3) DEFAULT NULL",
+      "total_amount DECIMAL(14,2) DEFAULT NULL",
+      "remarks TEXT DEFAULT NULL",
+      "status VARCHAR(50) DEFAULT 'Submitted'",
+      "submitted_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP"
+    ];
+    for (const colDef of cols) {
+      await pool.query(`ALTER TABLE rate_submissions ADD COLUMN ${colDef}`).catch(() => {});
+    }
+  } catch (err) {
+    console.warn('ensureRateSubmissionsTableExists notice:', err.message);
+  }
+}
+
 async function handleGetRequirements(req, res) {
   try {
     await ensureRequirementsTableExists();
+    await ensureRateSubmissionsTableExists();
     let bidsCountMap = {};
     try {
       const [bidRows] = await pool.query(
-        'SELECT rate_request_id, COUNT(*) as cnt FROM rate_submissions GROUP BY rate_request_id'
+        'SELECT requirement_id, COUNT(*) as cnt FROM rate_submissions GROUP BY requirement_id'
       );
       (bidRows || []).forEach((b) => {
-        if (b.rate_request_id) bidsCountMap[b.rate_request_id] = Number(b.cnt || 0);
+        if (b.requirement_id) bidsCountMap[b.requirement_id] = Number(b.cnt || 0);
       });
     } catch (e) {}
 
@@ -183,10 +218,231 @@ async function handleGetRequirements(req, res) {
       itemsMap[item.requirement_id].push(item);
     });
 
-    const formatted = parents.map((p) => formatParentRequirementDto(p, itemsMap[p.id] || [], bidsCountMap[p.id] || 0));
+    const formatted = parents.map((p) => formatParentRequirementDto(p, itemsMap[p.id] || [], bidsCountMap[p.id] || bidsCountMap[p.req_no] || 0));
     return res.json({ success: true, count: formatted.length, data: formatted, requirements: formatted, rate_requests: formatted });
   } catch (err) {
     console.error('❌ GET /api/requirements Error:', err.message);
+    return res.status(500).json({ success: false, error: { code: 'DATABASE_ERROR', message: err.message } });
+  }
+}
+
+// GET /api/requirements/:id/rates — Compare Rates for a Parent Requirement (Joined with Transporters)
+async function handleGetRequirementRates(req, res) {
+  const { id } = req.params;
+  if (!id) return res.status(400).json({ success: false, error: 'Requirement ID required' });
+
+  try {
+    await ensureRateSubmissionsTableExists();
+    await ensureRequirementsTableExists();
+
+    const [parentRows] = await pool.query(
+      'SELECT id, req_no, title, pickup_origin, drop_location, status, approval_status FROM transport_requirements WHERE id = ? OR req_no = ? LIMIT 1',
+      [id, id]
+    );
+
+    if (parentRows.length === 0) {
+      return res.status(404).json({ success: false, error: `Requirement '${id}' not found.` });
+    }
+
+    const parentReq = parentRows[0];
+    const actualReqId = parentReq.id;
+
+    const [childRows] = await pool.query(
+      'SELECT product_name, quantity_mt, unit FROM transport_requirement_items WHERE requirement_id = ? ORDER BY id ASC',
+      [actualReqId]
+    );
+
+    let totalCargoQty = 0;
+    childRows.forEach(item => {
+      totalCargoQty += parseFloat(item.quantity_mt || 0);
+    });
+
+    const [rates] = await pool.query(
+      `SELECT
+        rs.id,
+        rs.requirement_id,
+        rs.transporter_id,
+        t.company_name,
+        t.code AS vendor_code,
+        t.contact_person,
+        t.mobile,
+        rs.rate_per_mt,
+        rs.quoted_quantity_mt,
+        rs.total_amount,
+        rs.remarks,
+        rs.status,
+        rs.submitted_at,
+        rs.updated_at
+       FROM rate_submissions rs
+       JOIN transporters t ON t.id = rs.transporter_id
+       WHERE rs.requirement_id = ?
+       ORDER BY rs.rate_per_mt ASC`,
+      [actualReqId]
+    );
+
+    const formattedRates = rates.map(r => {
+      const rateVal = parseFloat(r.rate_per_mt || 0);
+      const qtyVal = parseFloat(r.quoted_quantity_mt || 0) || totalCargoQty;
+      const calcTotal = r.total_amount ? parseFloat(r.total_amount) : parseFloat((rateVal * qtyVal).toFixed(2));
+      return {
+        id: r.id,
+        requirement_id: r.requirement_id,
+        rate_request_id: r.requirement_id,
+        transporter_id: r.transporter_id,
+        company_name: r.company_name,
+        transporter_name: r.company_name,
+        vendor_code: r.vendor_code || '',
+        contact_person: r.contact_person || '',
+        mobile: r.mobile || '',
+        rate_per_mt: rateVal,
+        rate_per_unit: rateVal,
+        quoted_quantity_mt: qtyVal,
+        total_amount: calcTotal,
+        remarks: r.remarks || '',
+        status: r.status || 'Submitted',
+        submitted_at: r.submitted_at
+      };
+    });
+
+    let lowestRate = null;
+    let lowestTransporter = null;
+    let lowestTotalAmount = null;
+
+    if (formattedRates.length > 0) {
+      const lowestObj = formattedRates[0];
+      lowestRate = lowestObj.rate_per_mt;
+      lowestTransporter = lowestObj.company_name;
+      lowestTotalAmount = lowestObj.total_amount;
+    }
+
+    return res.json({
+      success: true,
+      count: formattedRates.length,
+      requirement: {
+        id: parentReq.id,
+        req_no: parentReq.req_no,
+        title: parentReq.title,
+        pickup_origin: parentReq.pickup_origin,
+        drop_location: parentReq.drop_location,
+        status: parentReq.status,
+        approval_status: parentReq.approval_status,
+        total_cargo_mt: totalCargoQty,
+        cargo_items_count: childRows.length
+      },
+      lowest_rate: lowestRate,
+      lowest_transporter: lowestTransporter,
+      lowest_total_amount: lowestTotalAmount,
+      rates: formattedRates
+    });
+  } catch (err) {
+    console.error('❌ GET /api/requirements/:id/rates Error:', err.message);
+    return res.status(500).json({ success: false, error: { code: 'DATABASE_ERROR', message: err.message } });
+  }
+}
+
+// POST /api/rate-submissions — Transporter Rate Quote Creation Endpoint
+async function handleCreateRateSubmission(req, res) {
+  try {
+    await ensureRateSubmissionsTableExists();
+    await ensureRequirementsTableExists();
+
+    const {
+      id,
+      requirement_id, rate_request_id, request_id,
+      transporter_id,
+      rate_per_mt, rate_per_unit,
+      quoted_quantity_mt, required_qty,
+      remarks, comments, notes,
+      status
+    } = req.body;
+
+    const authenticatedTransporterId = req.user.transporter_id || req.user.id;
+    let targetTransporterId = transporter_id || authenticatedTransporterId;
+
+    if (req.user.role === 'transporter') {
+      if (transporter_id && transporter_id !== authenticatedTransporterId && transporter_id !== req.user.username) {
+        return res.status(403).json({ success: false, error: 'Access denied. You can only submit bids under your own transporter account.' });
+      }
+      targetTransporterId = authenticatedTransporterId;
+    }
+
+    const targetReqId = (requirement_id || rate_request_id || request_id || '').trim();
+    if (!targetReqId) {
+      return res.status(400).json({ success: false, error: 'requirement_id is required.' });
+    }
+
+    const rateVal = parseFloat(rate_per_mt || rate_per_unit);
+    if (isNaN(rateVal) || rateVal <= 0) {
+      return res.status(400).json({ success: false, error: 'rate_per_mt must be a positive number greater than 0.' });
+    }
+
+    // Verify parent requirement exists
+    const [reqRows] = await pool.query(
+      'SELECT id, req_no, status, total_quantity_mt FROM transport_requirements WHERE id = ? OR req_no = ? LIMIT 1',
+      [targetReqId, targetReqId]
+    );
+
+    if (reqRows.length === 0) {
+      return res.status(404).json({ success: false, error: `Requirement '${targetReqId}' not found.` });
+    }
+
+    const reqRecord = reqRows[0];
+    const actualReqId = reqRecord.id;
+
+    if (reqRecord.status && reqRecord.status !== 'Active' && reqRecord.status !== 'Open') {
+      return res.status(400).json({ success: false, error: `Requirement '${targetReqId}' is closed for bids (status: ${reqRecord.status}).` });
+    }
+
+    // Verify transporter exists
+    const [transRows] = await pool.query(
+      'SELECT id, company_name, code FROM transporters WHERE id = ? OR code = ? OR username = ? LIMIT 1',
+      [targetTransporterId, targetTransporterId, targetTransporterId]
+    );
+
+    const actualTransId = transRows[0]?.id || targetTransporterId;
+    const transName = transRows[0]?.company_name || targetTransporterId;
+
+    const qtyVal = parseFloat(quoted_quantity_mt || required_qty) || parseFloat(reqRecord.total_quantity_mt || 0) || null;
+    const totalAmount = qtyVal ? parseFloat((rateVal * qtyVal).toFixed(2)) : null;
+    const subId = id || `rate_sub_${actualTransId}_${Date.now()}`;
+    const subStatus = status || 'Submitted';
+    const rem = (remarks || comments || notes || '').trim() || null;
+
+    await pool.query(
+      `INSERT INTO rate_submissions (id, requirement_id, transporter_id, rate_per_mt, quoted_quantity_mt, total_amount, remarks, status, submitted_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())
+       ON DUPLICATE KEY UPDATE
+       rate_per_mt = VALUES(rate_per_mt),
+       quoted_quantity_mt = VALUES(quoted_quantity_mt),
+       total_amount = VALUES(total_amount),
+       remarks = VALUES(remarks),
+       status = VALUES(status),
+       updated_at = NOW()`,
+      [subId, actualReqId, actualTransId, rateVal, qtyVal, totalAmount, rem, subStatus]
+    );
+
+    const submissionObj = {
+      id: subId,
+      requirement_id: actualReqId,
+      transporter_id: actualTransId,
+      transporter_name: transName,
+      rate_per_mt: rateVal,
+      rate_per_unit: rateVal,
+      quoted_quantity_mt: qtyVal,
+      total_amount: totalAmount,
+      remarks: rem,
+      status: subStatus,
+      submitted_at: new Date().toISOString()
+    };
+
+    return res.json({
+      success: true,
+      message: 'Rate submitted successfully',
+      submission: submissionObj,
+      bid: submissionObj
+    });
+  } catch (err) {
+    console.error('❌ POST /api/rate-submissions Error:', err.message);
     return res.status(500).json({ success: false, error: { code: 'DATABASE_ERROR', message: err.message } });
   }
 }
@@ -197,105 +453,13 @@ async function handleGetRequirements(req, res) {
 router.get('/dashboard', authenticateToken, handleGetDashboard);
 router.get('/requirements', authenticateToken, handleGetRequirements);
 router.get('/rate-requests', authenticateToken, handleGetRequirements);
+router.get('/requirements/:id/rates', authenticateToken, handleGetRequirementRates);
+router.get('/rate-requests/:id/rates', authenticateToken, handleGetRequirementRates);
+router.post('/rate-submissions', authenticateToken, handleCreateRateSubmission);
+router.post('/bids', authenticateToken, handleCreateRateSubmission);
 router.get('/rate-submissions', authenticateToken, handleGetRateSubmissions);
 router.get('/transporters', authenticateToken, handleGetTransporters);
 router.get('/master-data', authenticateToken, handleGetMasterData);
-
-// -------------------------------------------------------------
-// GET /api/security/audit-logs — Protected Admin Audit Logs (Relational MySQL)
-// -------------------------------------------------------------
-router.get('/security/audit-logs', authenticateToken, requireRole('admin'), async (req, res) => {
-  try {
-    const [rows] = await pool.query('SELECT id, action, username, user_role, status, created_at FROM security_audit_logs ORDER BY created_at DESC LIMIT 50');
-    return res.json({ success: true, count: rows.length, audit_logs: rows });
-  } catch (err) {
-    const state = IN_MEMORY_CACHE || INITIAL_SEED_DATA;
-    const logs = (state.security_audit_logs || []).slice(0, 50);
-    return res.json({ success: true, count: logs.length, audit_logs: logs });
-  }
-});
-
-// -------------------------------------------------------------
-// POST /api/bids — Dedicated Bid Submission Endpoint (MySQL Relational Persistence)
-// -------------------------------------------------------------
-router.post('/bids', authenticateToken, async (req, res) => {
-  const { id, rate_request_id, request_id, request_no, transporter_id, transporter_name, rate_per_unit, vehicle_type, comments, status } = req.body;
-
-  const authenticatedTransporterId = req.user.transporter_id || req.user.id;
-  if (req.user.role === 'transporter' && transporter_id && transporter_id !== authenticatedTransporterId) {
-    return res.status(403).json({ success: false, error: 'Access denied. You can only submit bids under your own transporter account.' });
-  }
-
-  const effectiveReqId = rate_request_id || request_id;
-  if (!effectiveReqId || !rate_per_unit) {
-    return res.status(400).json({ success: false, error: 'Missing required bid parameters: rate_request_id and rate_per_unit' });
-  }
-
-  const effectiveTransporterId = req.user.role === 'transporter' ? authenticatedTransporterId : (transporter_id || authenticatedTransporterId);
-  const bidId = id || `sub_${effectiveTransporterId}_${Date.now()}`;
-  const reqNo = request_no || effectiveReqId;
-  const transName = transporter_name || req.user.name || effectiveTransporterId;
-  const rateVal = parseFloat(rate_per_unit) || 0;
-  const bidStatus = status || 'Submitted';
-  const submittedAt = new Date().toISOString().slice(0, 19).replace('T', ' ');
-
-  const newBidObj = {
-    id: bidId,
-    request_id: effectiveReqId,
-    rate_request_id: effectiveReqId,
-    request_no: reqNo,
-    transporter_id: effectiveTransporterId,
-    transporter_name: transName,
-    rate_per_unit: rateVal,
-    vehicle_type: vehicle_type || '',
-    comments: comments || '',
-    status: bidStatus,
-    submitted_at: submittedAt
-  };
-
-  try {
-    const [result] = await pool.query(
-      `INSERT INTO rate_submissions 
-       (id, request_id, request_no, transporter_id, transporter_name, rate_per_unit, vehicle_type, comments, status, submitted_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-       ON DUPLICATE KEY UPDATE 
-       rate_per_unit = VALUES(rate_per_unit), 
-       vehicle_type = VALUES(vehicle_type),
-       comments = VALUES(comments),
-       status = VALUES(status), 
-       updated_at = NOW()`,
-      [bidId, effectiveReqId, reqNo, effectiveTransporterId, transName, rateVal, vehicle_type || '', comments || '', bidStatus, submittedAt]
-    );
-
-    if (IN_MEMORY_CACHE) {
-      const subs = IN_MEMORY_CACHE.rate_submissions || [];
-      const idx = subs.findIndex(b => b.id === bidId || (b.request_id === effectiveReqId && b.transporter_id === effectiveTransporterId));
-      if (idx >= 0) subs[idx] = newBidObj;
-      else subs.unshift(newBidObj);
-      IN_MEMORY_CACHE.rate_submissions = subs;
-    }
-
-    console.log(`✅ Bid ${bidId} persisted to MySQL rate_submissions (affectedRows: ${result.affectedRows})`);
-
-    return res.json({
-      success: true,
-      bid_id: bidId,
-      affectedRows: result.affectedRows,
-      insertId: result.insertId,
-      bid: newBidObj,
-      message: 'Bid saved and persisted to MySQL rate_submissions successfully'
-    });
-  } catch (err) {
-    console.error('❌ MySQL Bid Insert Error:', err.message);
-    return res.status(500).json({
-      success: false,
-      error: {
-        code: 'DATABASE_ERROR',
-        message: 'Failed to persist bid to MySQL rate_submissions table'
-      }
-    });
-  }
-});
 
 // -------------------------------------------------------------
 // Dedicated Products & Cargo Master CRUD API
@@ -1594,6 +1758,7 @@ router.get('/backup/report', authenticateToken, requireRole('admin'), async (req
     const [products] = await pool.query('SELECT * FROM products').catch(() => [[]]);
     const [reqs] = await pool.query('SELECT * FROM transport_requirements').catch(() => [[]]);
     const [items] = await pool.query('SELECT * FROM transport_requirement_items').catch(() => [[]]);
+    const [rateSubs] = await pool.query('SELECT * FROM rate_submissions').catch(() => [[]]);
 
     return res.json({
       success: true,
@@ -1605,14 +1770,16 @@ router.get('/backup/report', authenticateToken, requireRole('admin'), async (req
         total_company_units: companyUnits.length,
         total_products: products.length,
         total_transport_requirements: reqs.length,
-        total_requirement_items: items.length
+        total_requirement_items: items.length,
+        total_rate_submissions: rateSubs.length
       },
       data: {
         transporters,
         company_units_plants: companyUnits,
         products,
         transport_requirements: reqs,
-        transport_requirement_items: items
+        transport_requirement_items: items,
+        rate_submissions: rateSubs
       }
     });
   } catch (err) {

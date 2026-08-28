@@ -1,14 +1,17 @@
 // src/components/RateComparisonView.jsx
 // Rate Comparison Dashboard with Counter-Offer Acceptance Locking 🛡️ (Contracts CANNOT be awarded until Transporter accepts Admin Counter-Offer)
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { Award, CheckCircle2, TrendingDown, Clock, Sparkles, MessageSquare, Snowflake, Send, X, AlertCircle, Lock, FileText, Printer } from 'lucide-react';
 import { ParticularBidReportModal } from './ParticularBidReportModal';
+import { getRequirementRates, awardRequirementRate } from '../api/rateSubmissionApi';
 
 export const RateComparisonView = ({ rateRequest, onBack }) => {
   const { db, updateDB, currentUser, addSecurityLog } = useAuth();
   const [showParticularReportModal, setShowParticularReportModal] = useState(false);
+  const [liveRates, setLiveRates] = useState([]);
+  const [loadingRates, setLoadingRates] = useState(true);
   
   // Negotiation state
   const [activeCounterSub, setActiveCounterSub] = useState(null);
@@ -19,10 +22,32 @@ export const RateComparisonView = ({ rateRequest, onBack }) => {
 
   const [notice, setNotice] = useState('');
 
-  // Fetch all submissions for this rate request (Flexible ID & Request No matching 🛡️)
-  const submissions = (db.rate_submissions || []).filter((s) =>
+  useEffect(() => {
+    let isMounted = true;
+    const loadRates = async () => {
+      if (!rateRequest?.id && !rateRequest?.req_no) return;
+      try {
+        setLoadingRates(true);
+        const reqId = rateRequest.id || rateRequest.req_no;
+        const res = await getRequirementRates(reqId);
+        if (res && res.success && Array.isArray(res.rates) && isMounted) {
+          setLiveRates(res.rates);
+        }
+      } catch (err) {
+        console.warn('Live rates fetch notice:', err.message);
+      } finally {
+        if (isMounted) setLoadingRates(false);
+      }
+    };
+    loadRates();
+  }, [rateRequest?.id, rateRequest?.req_no]);
+
+  // Fetch all submissions for this rate request (MySQL Live + Local Fallback 🛡️)
+  const submissions = liveRates.length > 0 ? liveRates : (db.rate_submissions || []).filter((s) =>
     String(s.rate_request_id) === String(rateRequest?.id) ||
-    String(s.rate_request_id) === String(rateRequest?.request_no)
+    String(s.rate_request_id) === String(rateRequest?.request_no) ||
+    String(s.requirement_id) === String(rateRequest?.id) ||
+    String(s.requirement_id) === String(rateRequest?.request_no)
   );
 
   // Identify lowest rate (L1)
