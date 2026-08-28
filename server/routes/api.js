@@ -5,6 +5,7 @@ import { authenticateToken, requirePermission, requireRole } from '../middleware
 import { executeFullDatabaseResetAndRebuild } from '../services/migrationRunner.js';
 import { runApprovedProductionDrop } from '../services/dropRunner.js';
 import { executeCreateTransportersTable } from '../services/createTransportersTable.js';
+import { verifyNoAutoRecreation } from '../services/verifyNoAutoRecreation.js';
 import {
   handleGetDashboard,
   handleGetRateRequests,
@@ -485,6 +486,18 @@ router.post('/admin/create-transporters-table', authenticateToken, requireRole('
     return res.json({ success: true, report });
   } catch (err) {
     return res.status(500).json({ success: false, error: { code: 'TABLE_CREATE_ERROR', message: err.message } });
+  }
+});
+
+// -------------------------------------------------------------
+// POST /api/admin/verify-no-auto-recreation — Read-Only Verification Route
+// -------------------------------------------------------------
+router.post('/admin/verify-no-auto-recreation', authenticateToken, requireRole('admin'), async (req, res) => {
+  try {
+    const report = await verifyNoAutoRecreation();
+    return res.json({ success: true, report });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: { code: 'VERIFICATION_ERROR', message: err.message } });
   }
 });
 
