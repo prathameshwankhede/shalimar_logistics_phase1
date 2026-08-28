@@ -191,7 +191,9 @@ function formatParentRequirementDto(parentRow, childItems = [], bidsCount = 0, i
   };
 }
 
+let isRateSubmissionsTableEnsured = false;
 export async function ensureRateSubmissionsTableExists() {
+  if (isRateSubmissionsTableEnsured) return;
   try {
     await pool.query(`
       CREATE TABLE IF NOT EXISTS rate_submissions (
@@ -292,6 +294,7 @@ export async function ensureRateSubmissionsTableExists() {
       FOREIGN KEY (item_id) REFERENCES transport_requirement_items(id) 
       ON DELETE CASCADE
     `).catch(() => {});
+    isRateSubmissionsTableEnsured = true;
   } catch (err) {
     console.warn('ensureRateSubmissionsTableExists notice:', err.message);
   }
