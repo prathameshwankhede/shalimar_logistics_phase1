@@ -1,4 +1,4 @@
-// Hostinger Passenger Process Reload Signal v1.1.5 - Unblocked Batch Deletion CASCADE Fix
+// Hostinger Passenger Process Reload Signal v1.1.6 - Sub-Indent Item Foreign Key Resolution Hardened
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
