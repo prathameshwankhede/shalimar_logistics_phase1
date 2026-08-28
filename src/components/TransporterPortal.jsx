@@ -1230,7 +1230,7 @@ export const TransporterPortal = () => {
 
                                                return (
                                                  <tr
-                                                   key={req.id || `sub_trans_${rIdx}`}
+                                                   key={req.item_id ? `${req.id}_${req.item_id}` : (req.id || `sub_trans_${rIdx}`)}
                                                    style={{ background: rIdx % 2 === 0 ? '#ffffff' : '#f8fafc', borderBottom: '1px solid #e2e8f0' }}
                                                  >
                                                    <td style={{ padding: '10px 14px' }}>
@@ -1294,7 +1294,9 @@ export const TransporterPortal = () => {
                                                                     <span style={{ position: 'absolute', left: '8px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', fontSize: '0.85rem' }}>₹</span>
                                                                     <input
                                                                       type="number"
-                                                                      min="1"
+                                                                      inputMode="decimal"
+                                                                      min="0"
+                                                                      step="0.01"
                                                                       max={counterCeiling > 0 ? counterCeiling - 1 : undefined}
                                                                       placeholder={counterCeiling > 0 ? `< ₹${counterCeiling}` : 'Lower Rate'}
                                                                       className="form-control"
@@ -1304,8 +1306,7 @@ export const TransporterPortal = () => {
                                                                         const key = getSubIndentKey(req);
                                                                         setQuickRates((prev) => ({
                                                                           ...prev,
-                                                                          [String(req.id)]: val,
-                                                                          ...(req.request_no ? { [req.request_no]: val } : {})
+                                                                          [key]: val
                                                                         }));
                                                                       }}
                                                                       style={{ paddingLeft: '22px', fontSize: '0.82rem', fontWeight: '800', height: '32px', width: '105px' }}
@@ -1327,11 +1328,20 @@ export const TransporterPortal = () => {
                                                            <span style={{ position: 'absolute', left: '8px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', fontSize: '0.85rem' }}>₹</span>
                                                            <input
                                                              type="number"
-                                                             min="1"
+                                                             inputMode="decimal"
+                                                             min="0"
+                                                             step="0.01"
                                                              placeholder="Rate"
                                                              className="form-control"
                                                              value={currentInputRate}
-                                                             onChange={(e) => setQuickRates({ ...quickRates, [req.id]: e.target.value })}
+                                                             onChange={(e) => {
+                                                               const val = e.target.value;
+                                                               const key = getSubIndentKey(req);
+                                                               setQuickRates((prev) => ({
+                                                                 ...prev,
+                                                                 [key]: val
+                                                               }));
+                                                             }}
                                                              style={{ paddingLeft: '22px', fontSize: '0.86rem', fontWeight: '800', height: '36px', width: '110px' }}
                                                              required
                                                            />
