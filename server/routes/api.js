@@ -2322,4 +2322,78 @@ async function syncNormalizedTables(data) {
   }
 }
 
+router.get('/audit-orphan-data', authenticateToken, requireRole('admin'), async (req, res) => {
+  try {
+    await ensureRateSubmissionsTableExists();
+    await ensureRequirementsTableExists();
+
+    const [totalRows] = await pool.query('SELECT COUNT(*) AS total_rate_submissions FROM rate_submissions');
+    const [orphanRowsCount] = await pool.query(
+      `SELECT COUNT(*) AS orphan_rate_submissions
+       FROM rate_submissions rs
+       LEFT JOIN transport_requirements tr ON tr.id = rs.requirement_id
+       WHERE tr.id IS NULL`
+    );
+
+    const [orphanRowsDetail] = await pool.query(
+      `SELECT
+          rs.id,
+          rs.requirement_id,
+          rs.item_id,
+          rs.transporter_id,
+          rs.rate_per_mt,
+          rs.quoted_quantity_mt,
+          rs.total_amount,
+          rs.status,
+          rs.submitted_at
+       FROM rate_submissions rs
+       LEFT JOIN transport_requirements tr ON tr.id = rs.requirement_id
+       LEFT JOIN transport_requirement_items tri ON tri.id = rs.item_id
+       WHERE tr.id IS NULL
+          OR (
+              rs.item_id IS NOT NULL
+              AND rs.item_id <> 'MAIN'
+              AND tri.id IS NULL
+          )
+       ORDER BY rs.submitted_at DESC`
+    );
+
+    const [groupedSubmissions] = await pool.query(
+      `SELECT
+          rs.requirement_id,
+          COUNT(*) AS quote_count,
+          tr.req_no
+       FROM rate_submissions rs
+       LEFT JOIN transport_requirements tr ON tr.id = rs.requirement_id
+       GROUP BY rs.requirement_id, tr.req_no
+       ORDER BY rs.requirement_id`
+    );
+
+    const [parentCount] = await pool.query('SELECT COUNT(*) AS total_parents FROM transport_requirements');
+    const [childCount] = await pool.query('SELECT COUNT(*) AS total_child_items FROM transport_requirement_items');
+
+    const [trDdl] = await pool.query('SHOW CREATE TABLE transport_requirements');
+    const [triDdl] = await pool.query('SHOW CREATE TABLE transport_requirement_items');
+    const [rsDdl] = await pool.query('SHOW CREATE TABLE rate_submissions');
+
+    return res.json({
+      success: true,
+      total_rate_submissions: totalRows[0]?.total_rate_submissions || 0,
+      orphan_rate_submissions: orphanRowsCount[0]?.orphan_rate_submissions || 0,
+      total_parents: parentCount[0]?.total_parents || 0,
+      total_child_items: childCount[0]?.total_child_items || 0,
+      orphan_rows_detail: orphanRowsDetail,
+      grouped_submissions: groupedSubmissions,
+      ddl: {
+        transport_requirements: trDdl[0]['Create Table'] || trDdl[0]['CREATE TABLE'],
+        transport_requirement_items: triDdl[0]['Create Table'] || triDdl[0]['CREATE TABLE'],
+        rate_submissions: rsDdl[0]['Create Table'] || rsDdl[0]['CREATE TABLE']
+      }
+    });
+  } catch (err) {
+    console.error('Audit orphan data error:', err.message);
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 export default router;
