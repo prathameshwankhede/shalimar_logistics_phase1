@@ -2503,8 +2503,8 @@ export const AdminDashboard = () => {
                                               (String(s.item_id) === String(item.id) || String(s.item_id) === String(item.sub_indent_no) || String(s.item_id) === String(subCode))
                                             );
                                             const validRates = bids.map(b => parseFloat(b.rate_per_mt || b.rate_per_unit || 0)).filter(r => r > 0);
-                                            const lowestRate = validRates.length > 0 ? Math.min(...validRates) : null;
-                                            const bidsCount = bids.length;
+                                            const lowestRate = validRates.length > 0 ? Math.min(...validRates) : (item.lowest_rate ? Number(item.lowest_rate) : null);
+                                            const bidsCount = (bids && bids.length > 0) ? bids.length : Number(item.submitted_bids_count || 0);
                                             const alloc = (db.allocations || []).find((a) => String(a.requirement_id) === String(req.id) || String(a.req_no) === String(reqNoStr));
                                             const awardedTransporter = alloc ? (alloc.transporter_name || alloc.transporter_id) : req.awarded_transporter;
 

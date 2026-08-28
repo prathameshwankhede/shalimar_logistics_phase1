@@ -126,7 +126,7 @@ async function generateNextReqNo(clientOrPool) {
   }
 }
 
-function formatParentRequirementDto(parentRow, childItems = [], bidsCount = 0) {
+function formatParentRequirementDto(parentRow, childItems = [], bidsCount = 0, itemStatsMap = {}) {
   if (!parentRow) return null;
   const parentReqNo = parentRow.req_no || parentRow.id || '';
 
@@ -136,6 +136,8 @@ function formatParentRequirementDto(parentRow, childItems = [], bidsCount = 0) {
     const itemTargetDate = item.target_date
       ? (item.target_date instanceof Date ? item.target_date.toISOString().split('T')[0] : String(item.target_date).split('T')[0])
       : (parentRow.target_date ? (parentRow.target_date instanceof Date ? parentRow.target_date.toISOString().split('T')[0] : String(parentRow.target_date).split('T')[0]) : new Date().toISOString().split('T')[0]);
+
+    const stats = itemStatsMap[`${parentRow.id}_${item.id}`] || itemStatsMap[item.id] || itemStatsMap[autoSubIndentNo] || {};
 
     return {
       id: item.id || `item_${idx}`,
@@ -149,7 +151,9 @@ function formatParentRequirementDto(parentRow, childItems = [], bidsCount = 0) {
       pickup_origin: item.pickup_origin || parentRow.pickup_origin || '',
       drop_location: item.drop_location || parentRow.drop_location || '',
       hsn_code: item.hsn_code || '',
-      target_date: itemTargetDate
+      target_date: itemTargetDate,
+      submitted_bids_count: stats.bids_count || 0,
+      lowest_rate: stats.lowest_rate || null
     };
   });
 
@@ -255,12 +259,26 @@ async function handleGetRequirements(req, res) {
     await ensureRequirementsTableExists();
     await ensureRateSubmissionsTableExists();
     let bidsCountMap = {};
+    let itemStatsMap = {};
     try {
       const [bidRows] = await pool.query(
         "SELECT requirement_id, COUNT(DISTINCT transporter_id) as cnt FROM rate_submissions WHERE status IN ('Submitted', 'Active', 'Rate Frozen', 'Negotiating') GROUP BY requirement_id"
       );
       (bidRows || []).forEach((b) => {
         if (b.requirement_id) bidsCountMap[b.requirement_id] = Number(b.cnt || 0);
+      });
+
+      const [itemBidRows] = await pool.query(
+        "SELECT requirement_id, item_id, COUNT(DISTINCT transporter_id) as cnt, MIN(rate_per_mt) as min_rate FROM rate_submissions WHERE status IN ('Submitted', 'Active', 'Rate Frozen', 'Negotiating') GROUP BY requirement_id, item_id"
+      );
+      (itemBidRows || []).forEach((b) => {
+        const stats = {
+          bids_count: Number(b.cnt || 0),
+          lowest_rate: b.min_rate ? Number(b.min_rate) : null
+        };
+        const comboKey = `${b.requirement_id}_${b.item_id}`;
+        itemStatsMap[comboKey] = stats;
+        if (b.item_id) itemStatsMap[b.item_id] = stats;
       });
     } catch (e) {}
 
@@ -281,7 +299,7 @@ async function handleGetRequirements(req, res) {
       itemsMap[item.requirement_id].push(item);
     });
 
-    const formatted = parents.map((p) => formatParentRequirementDto(p, itemsMap[p.id] || [], bidsCountMap[p.id] || bidsCountMap[p.req_no] || 0));
+    const formatted = parents.map((p) => formatParentRequirementDto(p, itemsMap[p.id] || [], bidsCountMap[p.id] || bidsCountMap[p.req_no] || 0, itemStatsMap));
     return res.json({ success: true, count: formatted.length, data: formatted, requirements: formatted, rate_requests: formatted });
   } catch (err) {
     console.error('❌ GET /api/requirements Error:', err.message);
@@ -312,15 +330,16 @@ async function handleGetRequirementRates(req, res) {
     const actualReqId = parentReq.id;
 
     const [childRows] = await pool.query(
-      'SELECT id, requirement_id, product_name, quantity_mt, unit FROM transport_requirement_items WHERE requirement_id = ? ORDER BY id ASC',
+      'SELECT id, sub_indent_no, requirement_id, product_name, quantity_mt, unit FROM transport_requirement_items WHERE requirement_id = ? ORDER BY id ASC',
       [actualReqId]
     );
 
     let totalCargoQty = 0;
+    let targetItemObj = null;
     if (itemId) {
-      const matchItem = childRows.find(i => String(i.id) === String(itemId) || String(i.id).endsWith(String(itemId)));
-      if (matchItem) {
-        totalCargoQty = parseFloat(matchItem.quantity_mt || 0);
+      targetItemObj = childRows.find(i => String(i.id) === String(itemId) || String(i.sub_indent_no) === String(itemId) || String(i.id).endsWith(String(itemId)));
+      if (targetItemObj) {
+        totalCargoQty = parseFloat(targetItemObj.quantity_mt || 0);
       }
     }
     if (totalCargoQty === 0) {
@@ -333,8 +352,13 @@ async function handleGetRequirementRates(req, res) {
     let queryParams = [actualReqId];
 
     if (itemId) {
-      ratesQuery += ' AND item_id = ?';
-      queryParams.push(itemId);
+      if (targetItemObj) {
+        ratesQuery += ' AND (item_id = ? OR item_id = ?)';
+        queryParams.push(targetItemObj.id, targetItemObj.sub_indent_no);
+      } else {
+        ratesQuery += ' AND item_id = ?';
+        queryParams.push(itemId);
+      }
     }
     ratesQuery += ' ORDER BY rate_per_mt ASC';
 
