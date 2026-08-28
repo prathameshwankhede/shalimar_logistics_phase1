@@ -1107,8 +1107,8 @@ export const AdminDashboard = () => {
 
   const handleBulkBroadcastRequirements = async (e) => {
     if (e && e.preventDefault) e.preventDefault();
-    if (!bulkReqRows || !bulkReqRows.length) {
-      alert('No rate request rows found.');
+    if (bulkReqRows.length > 50) {
+      alert('🛑 MAXIMUM BATCH LIMIT EXCEEDED: A single batch broadcast can contain up to 50 cargo items.');
       return;
     }
 
