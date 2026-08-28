@@ -31,39 +31,40 @@ router.post('/login', async (req, res) => {
   try {
     let foundUser = null;
 
+    // 1. Search transporters table first for vendor code / username / id
     try {
-      const [rows] = await pool.query(
-        'SELECT id, username, password_hash, password, name, role, transporter_id, status FROM users WHERE LOWER(username) = ?',
-        [cleanUser]
+      const [transRows] = await pool.query(
+        'SELECT id, company_name, code, username, password_hash, status FROM transporters WHERE LOWER(username) = ? OR LOWER(code) = ? OR id = ?',
+        [cleanUser, cleanUser, cleanUser]
       );
-      if (rows.length > 0) {
-        foundUser = rows[0];
+      if (transRows.length > 0) {
+        const t = transRows[0];
+        foundUser = {
+          id: t.id,
+          username: t.username || t.code,
+          password_hash: t.password_hash,
+          name: t.company_name,
+          role: 'transporter',
+          transporter_id: t.id,
+          status: t.status || 'Active'
+        };
       }
     } catch (dbErr) {
-      console.warn('MySQL users query fallback during login:', dbErr.message);
+      console.warn('MySQL transporters query fallback during login:', dbErr.message);
     }
 
-    // Fallback: If not found in users table, search transporters table by username OR vendor code
+    // 2. If not found in transporters table, search users table (e.g. for admin)
     if (!foundUser) {
       try {
-        const [transRows] = await pool.query(
-          'SELECT id, company_name, code, username, password_hash, status FROM transporters WHERE LOWER(username) = ? OR LOWER(code) = ?',
-          [cleanUser, cleanUser]
+        const [userRows] = await pool.query(
+          'SELECT id, username, password_hash, password, name, role, transporter_id, status FROM users WHERE LOWER(username) = ?',
+          [cleanUser]
         );
-        if (transRows.length > 0) {
-          const t = transRows[0];
-          foundUser = {
-            id: t.id,
-            username: t.username || t.code,
-            password_hash: t.password_hash,
-            name: t.company_name,
-            role: 'transporter',
-            transporter_id: t.id,
-            status: t.status || 'Active'
-          };
+        if (userRows.length > 0) {
+          foundUser = userRows[0];
         }
       } catch (dbErr) {
-        console.warn('MySQL transporters query fallback during login:', dbErr.message);
+        console.warn('MySQL users query fallback during login:', dbErr.message);
       }
     }
 
