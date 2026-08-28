@@ -7,9 +7,9 @@ import { pool } from '../config/db.js';
 const MIGRATION_VERSION_ID = 'v1_master_relational_rebuild';
 
 export async function executeFullDatabaseResetAndRebuild(forceRun = false) {
-  console.log('==================================================');
-  console.log('💥 HOSTINGER PRODUCTION DATABASE RESET & REBUILD SERVICE');
-  console.log('==================================================');
+  console.log('🛡️ executeFullDatabaseResetAndRebuild is permanently disabled.');
+  throw new Error('Database reset migration service is permanently disabled in production.');
+}
 
   // 1. Initialize Migration Tracking Table
   try {

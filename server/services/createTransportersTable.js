@@ -4,9 +4,9 @@
 import { pool } from '../config/db.js';
 
 export async function executeCreateTransportersTable() {
-  console.log('==================================================');
-  console.log('🏗️ EXECUTING APPROVED ISOLATED DDL: transporters TABLE');
-  console.log('==================================================');
+  console.log('🛡️ executeCreateTransportersTable is permanently disabled.');
+  throw new Error('Transporters table creation service is permanently disabled.');
+}
 
   const [dbNameRow] = await pool.query('SELECT DATABASE() AS current_db');
   const activeDb = dbNameRow[0].current_db;

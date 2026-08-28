@@ -7,9 +7,9 @@ import { INITIAL_SEED_DATA } from '../src/store/dbStore.js';
 const CLOUD_ROW_ID = 'transflow-live-prod-v3';
 
 async function executeControlledMigration() {
-  console.log('==================================================');
-  console.log('🚀 CONTROLLED RELATIONAL DATABASE MIGRATION ENGINE');
-  console.log('==================================================');
+  console.log('🛡️ Controlled relational migration script is permanently disabled.');
+  process.exit(1);
+}
 
   // PHASE 1 — BACKUP VERIFICATION
   const backupTimestamp = new Date().toISOString();

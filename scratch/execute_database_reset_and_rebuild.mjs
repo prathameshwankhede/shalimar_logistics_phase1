@@ -4,9 +4,9 @@
 import { executeFullDatabaseResetAndRebuild } from '../server/services/migrationRunner.js';
 
 async function runStandaloneMigration() {
-  try {
-    console.log('🚀 Running Standalone Production Database Reset & Rebuild Engine...');
-    const report = await executeFullDatabaseResetAndRebuild(true);
+  console.log('🛡️ Standalone database reset script is permanently disabled.');
+  process.exit(1);
+}
     console.log('\n==================================================');
     console.log('🎉 STANDALONE MIGRATION EXECUTION COMPLETED:');
     console.log('==================================================');

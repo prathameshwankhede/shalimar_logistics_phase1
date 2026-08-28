@@ -453,40 +453,24 @@ router.post('/dispatches', authenticateToken, async (req, res) => {
 });
 
 // -------------------------------------------------------------
-// POST /api/admin/execute-database-reset — Automated Hostinger Reset Route
+// POST /api/admin/execute-database-reset — Disabled DDL Route
 // -------------------------------------------------------------
 router.post('/admin/execute-database-reset', authenticateToken, requireRole('admin'), async (req, res) => {
-  try {
-    const report = await executeFullDatabaseResetAndRebuild();
-    return res.json({ success: true, report });
-  } catch (err) {
-    return res.status(500).json({ success: false, error: { code: 'DATABASE_RESET_ERROR', message: err.message } });
-  }
+  return res.status(403).json({ success: false, error: { code: 'ROUTE_DISABLED', message: 'Database reset DDL route is permanently disabled' } });
 });
 
 // -------------------------------------------------------------
-// POST /api/admin/execute-database-drop — Approved Hostinger Drop Route
+// POST /api/admin/execute-database-drop — Disabled DDL Route
 // -------------------------------------------------------------
 router.post('/admin/execute-database-drop', authenticateToken, requireRole('admin'), async (req, res) => {
-  try {
-    IN_MEMORY_CACHE = null;
-    const report = await runApprovedProductionDrop();
-    return res.json({ success: true, report });
-  } catch (err) {
-    return res.status(500).json({ success: false, error: { code: 'DATABASE_DROP_ERROR', message: err.message } });
-  }
+  return res.status(403).json({ success: false, error: { code: 'ROUTE_DISABLED', message: 'Database drop DDL route is permanently disabled' } });
 });
 
 // -------------------------------------------------------------
-// POST /api/admin/create-transporters-table — Approved Isolated DDL Route
+// POST /api/admin/create-transporters-table — Disabled DDL Route
 // -------------------------------------------------------------
 router.post('/admin/create-transporters-table', authenticateToken, requireRole('admin'), async (req, res) => {
-  try {
-    const report = await executeCreateTransportersTable();
-    return res.json({ success: true, report });
-  } catch (err) {
-    return res.status(500).json({ success: false, error: { code: 'TABLE_CREATE_ERROR', message: err.message } });
-  }
+  return res.status(403).json({ success: false, error: { code: 'ROUTE_DISABLED', message: 'Transporters DDL route is permanently disabled' } });
 });
 
 // -------------------------------------------------------------
