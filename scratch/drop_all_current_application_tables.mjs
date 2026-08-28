@@ -26,7 +26,7 @@ const APPLICATION_TABLES_TO_DROP = [
   'whatsapp_notifications'
 ];
 
-async function runProductionCleanup() {
+export async function runProductionCleanup() {
   console.log('==================================================');
   console.log('💥 DELIBERATE ONE-TIME PRODUCTION CLEANUP TOOL');
   console.log('==================================================');

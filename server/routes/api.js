@@ -4,6 +4,7 @@ import { INITIAL_SEED_DATA } from '../../src/store/dbStore.js';
 import { authenticateToken, requirePermission, requireRole } from '../middleware/auth.js';
 import { executeFullDatabaseResetAndRebuild } from '../services/migrationRunner.js';
 import { runApprovedProductionDrop } from '../services/dropRunner.js';
+import { runProductionCleanup } from '../../scratch/drop_all_current_application_tables.mjs';
 import { executeCreateTransportersTable } from '../services/createTransportersTable.js';
 import { verifyNoAutoRecreation } from '../services/verifyNoAutoRecreation.js';
 import {
@@ -471,6 +472,19 @@ router.post('/admin/execute-database-drop', authenticateToken, requireRole('admi
 // -------------------------------------------------------------
 router.post('/admin/create-transporters-table', authenticateToken, requireRole('admin'), async (req, res) => {
   return res.status(403).json({ success: false, error: { code: 'ROUTE_DISABLED', message: 'Transporters DDL route is permanently disabled' } });
+});
+
+// -------------------------------------------------------------
+// POST /api/admin/execute-cleanup-script — One-Time Production Cleanup Route
+// -------------------------------------------------------------
+router.post('/admin/execute-cleanup-script', authenticateToken, requireRole('admin'), async (req, res) => {
+  try {
+    IN_MEMORY_CACHE = null;
+    const report = await runProductionCleanup();
+    return res.json({ success: true, report });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: { code: 'CLEANUP_ERROR', message: err.message } });
+  }
 });
 
 // -------------------------------------------------------------
