@@ -1,4 +1,4 @@
-// Hostinger Passenger Process Reload Signal v1.0.3 - rate_submissions cleanup & transporter validation
+// Hostinger Passenger Process Reload Signal v1.0.4 - Transporter Portal Sub-Indent Bidding
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
