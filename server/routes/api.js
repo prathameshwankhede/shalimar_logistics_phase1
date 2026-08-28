@@ -41,7 +41,8 @@ function sanitizeStateForClient(rawState) {
 // Layered Controller Routes (Targeted Minimal DTO Endpoints)
 // -------------------------------------------------------------
 router.get('/dashboard', authenticateToken, handleGetDashboard);
-router.get('/rate-requests', authenticateToken, handleGetRateRequests);
+router.get('/requirements', authenticateToken, handleGetRequirements);
+router.get('/rate-requests', authenticateToken, handleGetRequirements);
 router.get('/rate-submissions', authenticateToken, handleGetRateSubmissions);
 router.get('/transporters', authenticateToken, handleGetTransporters);
 router.get('/master-data', authenticateToken, handleGetMasterData);
