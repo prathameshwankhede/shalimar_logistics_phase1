@@ -1237,6 +1237,49 @@ router.post('/transporters/reset-password', authenticateToken, requireRole('admi
 });
 
 // -------------------------------------------------------------
+// DELETE /api/transporters/:id — Delete Transporter Record (Admin Only)
+// -------------------------------------------------------------
+router.delete('/transporters/:id', authenticateToken, requireRole('admin'), async (req, res) => {
+  const { id } = req.params;
+  if (!id) {
+    return res.status(400).json({ success: false, error: 'Transporter id is required.' });
+  }
+
+  try {
+    const [contractCheck] = await pool.query(
+      'SELECT id FROM contracts WHERE transporter_id = ? LIMIT 1',
+      [id]
+    );
+    if (contractCheck && contractCheck.length > 0) {
+      return res.status(409).json({ success: false, error: 'Cannot delete transporter with active contract allocations.' });
+    }
+
+    const [result] = await pool.query(
+      'DELETE FROM transporters WHERE id = ? OR code = ? OR username = ?',
+      [id, id, id]
+    );
+
+    await pool.query(
+      'DELETE FROM users WHERE transporter_id = ? OR username = ?',
+      [id, id]
+    ).catch(() => {});
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ success: false, error: 'Transporter record not found.' });
+    }
+
+    return res.json({
+      success: true,
+      affectedRows: result.affectedRows,
+      message: `Transporter deleted successfully from MySQL.`
+    });
+  } catch (err) {
+    console.error('❌ MySQL Transporter Delete Error:', err.message);
+    return res.status(500).json({ success: false, error: { code: 'DATABASE_ERROR', message: err.message } });
+  }
+});
+
+// -------------------------------------------------------------
 // POST /api/contracts — Dedicated Contract Allocation Endpoint (Admin Only)
 // -------------------------------------------------------------
 router.post('/contracts', authenticateToken, requireRole('admin'), async (req, res) => {

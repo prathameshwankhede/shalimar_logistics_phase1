@@ -1,11 +1,11 @@
 // src/components/TransporterManagerModal.jsx
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { createTransporter } from '../api/transporterApi';
-import { UserPlus, X, Shield, Building, Phone, Mail, FileText, CheckCircle } from 'lucide-react';
+import { UserPlus, X, Shield, Building, Phone, Mail, FileText, CheckCircle, Edit } from 'lucide-react';
 import { validateMobile, validateEmail, validateName } from '../utils/validationRules';
 
-export const TransporterManagerModal = ({ isOpen, onClose }) => {
+export const TransporterManagerModal = ({ isOpen, onClose, editingTransporter = null }) => {
   const { db, updateDB } = useAuth();
 
   const [formData, setFormData] = useState({
@@ -24,6 +24,40 @@ export const TransporterManagerModal = ({ isOpen, onClose }) => {
   const [fieldErrors, setFieldErrors] = useState({});
   const [errorMsg, setErrorMsg] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
+
+  useEffect(() => {
+    if (editingTransporter) {
+      setFormData({
+        id: editingTransporter.id,
+        company_name: editingTransporter.company_name || '',
+        code: editingTransporter.code || '',
+        contact_person: editingTransporter.contact_person || '',
+        mobile: editingTransporter.mobile || '',
+        email: editingTransporter.email || '',
+        address: editingTransporter.address || '',
+        gst_pan: editingTransporter.gstin || editingTransporter.pan || editingTransporter.gst_pan || '',
+        username: editingTransporter.username || '',
+        password: '',
+        status: editingTransporter.status || 'Active'
+      });
+    } else {
+      setFormData({
+        company_name: '',
+        code: '',
+        contact_person: '',
+        mobile: '',
+        email: '',
+        address: '',
+        gst_pan: '',
+        username: '',
+        password: '',
+        status: 'Active'
+      });
+    }
+    setFieldErrors({});
+    setErrorMsg('');
+    setSuccessMessage('');
+  }, [editingTransporter, isOpen]);
 
   if (!isOpen) return null;
 
@@ -71,13 +105,14 @@ export const TransporterManagerModal = ({ isOpen, onClose }) => {
       return;
     }
 
-    const transId = `trans_${Date.now()}`;
+    const isEdit = Boolean(formData.id);
+    const transId = formData.id || `trans_${Date.now()}`;
     const userId = `usr_${Date.now()}`;
 
-    const newTransporter = {
+    const transporterPayload = {
       id: transId,
       company_name: formData.company_name,
-      code: formData.code || formData.username.toUpperCase(),
+      code: formData.code || (formData.username ? formData.username.toUpperCase() : 'TR'),
       contact_person: nameVal.clean,
       mobile: mobileVal.clean,
       email: emailVal.clean,
@@ -85,14 +120,13 @@ export const TransporterManagerModal = ({ isOpen, onClose }) => {
       gstin: formData.gst_pan && formData.gst_pan.length === 15 ? formData.gst_pan : null,
       pan: formData.gst_pan && formData.gst_pan.length === 10 ? formData.gst_pan : null,
       username: formData.username,
-      password: formData.password,
-      status: formData.status,
-      created_at: new Date().toISOString()
+      password: formData.password || undefined,
+      status: formData.status
     };
 
     // 1. Call POST /api/transporters Dedicated API Route
     try {
-      const apiRes = await createTransporter(newTransporter);
+      const apiRes = await createTransporter(transporterPayload);
       if (apiRes && apiRes.error) {
         setErrorMsg(`❌ Save Error: ${typeof apiRes.error === 'string' ? apiRes.error : apiRes.error.message || 'Failed to save transporter'}`);
         return;
@@ -101,25 +135,35 @@ export const TransporterManagerModal = ({ isOpen, onClose }) => {
       console.warn('POST /api/transporters notice (continuing state sync):', err.message);
     }
 
-    const newUser = {
-      id: userId,
-      username: formData.username,
-      password: formData.password,
-      name: `${formData.company_name} Admin`,
-      role: 'transporter',
-      transporter_id: transId,
-      created_at: new Date().toISOString()
-    };
+    let updatedTransporters = [...(db.transporters || [])];
+    if (isEdit) {
+      updatedTransporters = updatedTransporters.map((t) => (t.id === transId || t.code === formData.code ? { ...t, ...transporterPayload } : t));
+    } else {
+      updatedTransporters.push({ ...transporterPayload, created_at: new Date().toISOString() });
+    }
+
+    let updatedUsers = [...(db.users || [])];
+    if (!isEdit && formData.username) {
+      updatedUsers.push({
+        id: userId,
+        username: formData.username,
+        password: formData.password,
+        name: `${formData.company_name} Admin`,
+        role: 'transporter',
+        transporter_id: transId,
+        created_at: new Date().toISOString()
+      });
+    }
 
     const updatedDb = {
       ...db,
-      transporters: [...(db.transporters || []), newTransporter],
-      users: [...(db.users || []), newUser]
+      transporters: updatedTransporters,
+      users: updatedUsers
     };
 
     updateDB(updatedDb);
 
-    setSuccessMessage(`Transporter Account '${formData.company_name}' (${formData.username}) created successfully!`);
+    setSuccessMessage(`Transporter Account '${formData.company_name}' (${formData.username}) ${isEdit ? 'updated' : 'created'} successfully!`);
     
     // Reset form
     setFormData({

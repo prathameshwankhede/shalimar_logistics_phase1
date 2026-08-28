@@ -4,7 +4,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { createRateRequest, createRequirement, updateRequirement, deleteRequirement } from '../api/rateRequestApi';
-import { createTransporter, updateTransporterStatus, resetTransporterPassword } from '../api/transporterApi';
+import { createTransporter, updateTransporterStatus, resetTransporterPassword, deleteTransporter } from '../api/transporterApi';
 import { createProduct, updateProduct, deleteProduct, createCompanyUnit, updateCompanyUnit, deleteCompanyUnit } from '../api/masterDataApi';
 import { CreateRequirementModal } from './CreateRequirementModal';
 import { TransporterManagerModal } from './TransporterManagerModal';
@@ -1480,6 +1480,38 @@ export const AdminDashboard = () => {
     }
   };
 
+  // 🗑️ DELETE TRANSPORTER HANDLER
+  const handleDeleteTransporter = async (trans) => {
+    if (!trans || !trans.id) return;
+    const transName = trans.company_name || trans.code || trans.username || 'this transporter';
+    if (!window.confirm(`⚠️ DELETE TRANSPORTER WARNING:\n\nAre you sure you want to delete Transporter '${transName}' (${trans.code || trans.username})?\n\nThis will remove it from the MySQL database.`)) {
+      return;
+    }
+
+    try {
+      const res = await deleteTransporter(trans.id);
+      if (res && res.error) {
+        alert(`❌ Cannot delete transporter: ${typeof res.error === 'string' ? res.error : res.error.message || 'Server error'}`);
+        return;
+      }
+
+      const updatedTransporters = (db.transporters || []).filter((t) => t.id !== trans.id && t.code !== trans.code);
+      const updatedUsers = (db.users || []).filter((u) => u.transporter_id !== trans.id && u.username !== trans.username);
+
+      updateDB({
+        ...db,
+        transporters: updatedTransporters,
+        users: updatedUsers
+      });
+
+      setArchiveNotice(`🗑️ Transporter '${transName}' deleted successfully from MySQL!`);
+      setTimeout(() => setArchiveNotice(''), 4000);
+    } catch (err) {
+      console.error('Delete transporter error:', err);
+      alert(`❌ Error deleting transporter: ${err.message}`);
+    }
+  };
+
 
 
   // 🗑️ DELETE MISTAKEN / WRONG REQUIREMENT HANDLER
@@ -2915,7 +2947,16 @@ export const AdminDashboard = () => {
                                 </span>
                               </td>
                               <td style={{ textAlign: 'right' }}>
-                                <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end' }}>
+                                <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+                                  <button
+                                    type="button"
+                                    onClick={() => setEditingTransporterMaster(t)}
+                                    className="btn btn-secondary"
+                                    style={{ padding: '4px 10px', fontSize: '0.76rem', border: '1px solid #38bdf8', color: '#38bdf8', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                                    title="Edit Transporter Details"
+                                  >
+                                    <Edit size={13} /> Edit
+                                  </button>
                                   <button
                                     type="button"
                                     onClick={() => handleToggleTransporterStatus(t)}
@@ -2941,6 +2982,15 @@ export const AdminDashboard = () => {
                                     title="Reset Login Password"
                                   >
                                     <Key size={13} /> Reset Pass
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteTransporter(t)}
+                                    className="btn btn-danger"
+                                    style={{ padding: '4px 10px', fontSize: '0.76rem', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                                    title="Delete Transporter Account"
+                                  >
+                                    <Trash2 size={13} /> Delete
                                   </button>
                                 </div>
                               </td>
@@ -4298,7 +4348,14 @@ export const AdminDashboard = () => {
 
       {/* Modals */}
       <CreateRequirementModal isOpen={isReqModalOpen} onClose={() => setIsReqModalOpen(false)} />
-      <TransporterManagerModal isOpen={isTransporterModalOpen} onClose={() => setIsTransporterModalOpen(false)} />
+      <TransporterManagerModal
+        isOpen={isTransporterModalOpen || Boolean(editingTransporterMaster)}
+        onClose={() => {
+          setIsTransporterModalOpen(false);
+          setEditingTransporterMaster(null);
+        }}
+        editingTransporter={editingTransporterMaster}
+      />
       <ContractModal contract={selectedContractForModal} onClose={() => setSelectedContractForModal(null)} />
       <ERPPaymentModal contract={selectedContractForERP} onClose={() => setSelectedContractForERP(null)} />
       {selectedRequestForParticularReport && (

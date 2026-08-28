@@ -25,3 +25,16 @@ export async function resetTransporterPassword(id, password = null) {
     body: JSON.stringify({ id, password })
   });
 }
+
+export async function updateTransporter(payload) {
+  return apiClient('/api/transporters', {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function deleteTransporter(id) {
+  return apiClient(`/api/transporters/${id}`, {
+    method: 'DELETE'
+  });
+}
