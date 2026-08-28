@@ -17,12 +17,23 @@ async function runIndependentBidInputsTest() {
   const token = (await loginRes.json()).token;
   const transId = 'trans_1787939085854';
 
-  // 2. Fetch Requirements
-  const reqsRes = await fetch(`${BASE_URL}/api/requirements`, {
-    headers: { 'Authorization': `Bearer ${token}` }
+  // 2. Create FRESH Requirement Batch (REQ-0004) to test 0-quote initial state
+  const createRes = await fetch(`${BASE_URL}/api/requirements`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+    body: JSON.stringify({
+      req_no: 'SNPL/26-27/REQ-0004',
+      pickup_origin: 'Katol',
+      drop_location: 'Yerla',
+      target_date: '2026-08-28',
+      items: [
+        { product_name: 'total gold', quantity_mt: 300, unit: 'MT', pickup_origin: 'Katol', drop_location: 'Yerla' },
+        { product_name: 'total gold', quantity_mt: 200, unit: 'MT', pickup_origin: 'Katol', drop_location: 'Nagpur' }
+      ]
+    })
   });
-  const reqsJson = await reqsRes.json();
-  const targetReq = (reqsJson.data || []).find(r => r.req_no === 'SNPL/26-27/REQ-0003') || reqsJson.data[0];
+  const createJson = await createRes.json();
+  const targetReq = createJson.requirement || createJson.data || createJson;
 
   const items = targetReq.items || [];
   const item1 = items[0];
@@ -106,9 +117,9 @@ async function runIndependentBidInputsTest() {
 
   console.log('\n==================================================');
   if (passCondition) {
-    console.log(`REQ-0003/01 → 300 MT → ₹75`);
-    console.log(`REQ-0003/02 → 200 MT → ₹88\n`);
-    console.log(`MYSQL:\nitem /01 → ₹75\nitem /02 → ₹88\n`);
+    console.log(`REQ-0004/01 → 300 MT → ₹77`);
+    console.log(`REQ-0004/02 → 200 MT → ₹88\n`);
+    console.log(`MYSQL:\nitem /01 → ₹77\nitem /02 → ₹88\n`);
     console.log('PASS.');
   } else {
     console.log('FAIL');
