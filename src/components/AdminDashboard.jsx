@@ -570,7 +570,7 @@ export const AdminDashboard = () => {
       const now = new Date();
       const dateStr = now.toISOString().slice(0, 10);
       const timeStr = now.toTimeString().slice(0, 8).replace(/:/g, '-');
-      const filename = `shalimar_mysql_backup_${dateStr}_${timeStr}.sql`;
+      const filename = `shalimar_mysql_full_backup_${dateStr}_${timeStr}.sql`;
 
       const blob = new Blob([sqlText], { type: 'application/sql' });
       const url = URL.createObjectURL(blob);

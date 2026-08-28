@@ -1332,13 +1332,12 @@ router.get('/backup/full', authenticateToken, requireRole('admin'), async (req, 
   try {
     const [dbNameResult] = await pool.query('SELECT DATABASE() AS current_db');
     const activeDb = dbNameResult[0]?.current_db || 'u704836459_shalimar_logi';
-    console.log(`📡 GET /api/backup/full connected to MySQL Database: ${activeDb}`);
+    console.log(`📡 GET /api/backup/full connected directly to MySQL Database: ${activeDb}`);
 
-    const [tablesRows] = await pool.query(
-      "SELECT table_name FROM information_schema.tables WHERE table_schema = DATABASE() AND table_type = 'BASE TABLE'"
-    );
+    const [tablesRows] = await pool.query("SHOW FULL TABLES WHERE Table_type = 'BASE TABLE'");
+    const tableNames = tablesRows.map(r => Object.values(r)[0]);
 
-    const tableNames = tablesRows.map(r => r.table_name || r.TABLE_NAME);
+    console.log(`🔍 SHOW FULL TABLES Discovered ${tableNames.length} Base Tables in MySQL (${activeDb}):`, tableNames);
 
     const parentFirstOrder = [
       'users',
@@ -1350,7 +1349,8 @@ router.get('/backup/full', authenticateToken, requireRole('admin'), async (req, 
       'contracts',
       'rate_submissions',
       'allocations',
-      'truck_dispatches'
+      'truck_dispatches',
+      'security_audit_logs'
     ];
 
     tableNames.forEach(t => {
@@ -1370,7 +1370,7 @@ router.get('/backup/full', authenticateToken, requireRole('admin'), async (req, 
     dumpLines.push(`-- Hostinger Native MySQL Full Database Snapshot (.sql)`);
     dumpLines.push(`-- Database: ${activeDb}`);
     dumpLines.push(`-- Export Date: ${formattedTimestamp} UTC`);
-    dumpLines.push(`-- Base Tables Discovered: ${tableNames.length}`);
+    dumpLines.push(`-- Total Discovered Tables: ${tableNames.length}`);
     dumpLines.push(`-- ==================================================`);
     dumpLines.push(``);
     dumpLines.push(`SET FOREIGN_KEY_CHECKS = 0;`);
@@ -1455,7 +1455,7 @@ router.get('/backup/full', authenticateToken, requireRole('admin'), async (req, 
     const sqlContent = dumpLines.join('\n');
     const dateStr = now.toISOString().slice(0, 10);
     const timeStr = now.toTimeString().slice(0, 8).replace(/:/g, '-');
-    const filename = `shalimar_mysql_backup_${dateStr}_${timeStr}.sql`;
+    const filename = `shalimar_mysql_full_backup_${dateStr}_${timeStr}.sql`;
 
     res.setHeader('Content-Type', 'application/sql');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
