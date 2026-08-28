@@ -1,4 +1,4 @@
-// Hostinger Passenger Process Reload Signal v1.0.7 - Transporter Portal Sub-Indent Rate Input Keyboard Typing Fix
+// Hostinger Passenger Process Reload Signal v1.0.8 - Transporter Sub-Indent Bid Visibility in Admin API & Dashboard
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
