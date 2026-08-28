@@ -4,7 +4,7 @@ import { LogOut } from 'lucide-react';
 import { SHALIMAR_LOGO_BASE64 } from '../assets/logoBase64';
 
 export const Navbar = () => {
-  const { currentUser, currentTransporter, logout, quickSwitchUser } = useAuth();
+  const { currentUser, currentTransporter, logout } = useAuth();
   const isAdmin = currentUser?.role === 'admin';
 
   useEffect(() => {
