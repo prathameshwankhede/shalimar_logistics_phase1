@@ -567,11 +567,16 @@ export const AdminDashboard = () => {
         return;
       }
 
+      const now = new Date();
+      const dateStr = now.toISOString().slice(0, 10);
+      const timeStr = now.toTimeString().slice(0, 8).replace(/:/g, '-');
+      const filename = `shalimar_mysql_backup_${dateStr}_${timeStr}.sql`;
+
       const blob = new Blob([sqlText], { type: 'application/sql' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `shalimar_mysql_backup_${new Date().toISOString().slice(0, 10)}.sql`;
+      link.download = filename;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);

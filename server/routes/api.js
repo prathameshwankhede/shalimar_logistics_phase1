@@ -1330,6 +1330,10 @@ router.delete('/transporters/:id', authenticateToken, requireRole('admin'), asyn
 // -------------------------------------------------------------
 router.get('/backup/full', authenticateToken, requireRole('admin'), async (req, res) => {
   try {
+    const [dbNameResult] = await pool.query('SELECT DATABASE() AS current_db');
+    const activeDb = dbNameResult[0]?.current_db || 'u704836459_shalimar_logi';
+    console.log(`📡 GET /api/backup/full connected to MySQL Database: ${activeDb}`);
+
     const [tablesRows] = await pool.query(
       "SELECT table_name FROM information_schema.tables WHERE table_schema = DATABASE() AND table_type = 'BASE TABLE'"
     );
@@ -1364,7 +1368,7 @@ router.get('/backup/full', authenticateToken, requireRole('admin'), async (req, 
     dumpLines.push(`-- ==================================================`);
     dumpLines.push(`-- SHALIMAR LOGISTICS / TRANSFLOW PHASE 1`);
     dumpLines.push(`-- Hostinger Native MySQL Full Database Snapshot (.sql)`);
-    dumpLines.push(`-- Database: u704836459_shalimar_logi`);
+    dumpLines.push(`-- Database: ${activeDb}`);
     dumpLines.push(`-- Export Date: ${formattedTimestamp} UTC`);
     dumpLines.push(`-- Base Tables Discovered: ${tableNames.length}`);
     dumpLines.push(`-- ==================================================`);
