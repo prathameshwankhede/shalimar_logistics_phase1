@@ -60,6 +60,16 @@ async function ensureRequirementsTableExists() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
     `);
 
+    const reqCols = [
+      "total_quantity_mt DECIMAL(12,3) DEFAULT NULL",
+      "quantity_mt DECIMAL(12,3) DEFAULT NULL",
+      "product_name VARCHAR(255) DEFAULT NULL",
+      "unit VARCHAR(50) DEFAULT 'MT'"
+    ];
+    for (const colDef of reqCols) {
+      await pool.query(`ALTER TABLE transport_requirements ADD COLUMN ${colDef}`).catch(() => {});
+    }
+
     await pool.query(`
       CREATE TABLE IF NOT EXISTS transport_requirement_items (
         id VARCHAR(100) NOT NULL PRIMARY KEY,
