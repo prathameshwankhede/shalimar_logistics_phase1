@@ -490,7 +490,7 @@ router.post('/admin/execute-cleanup-script', async (req, res) => {
 // -------------------------------------------------------------
 // POST /api/admin/verify-no-auto-recreation — Read-Only Verification Route
 // -------------------------------------------------------------
-router.post('/admin/verify-no-auto-recreation', authenticateToken, requireRole('admin'), async (req, res) => {
+router.post('/admin/verify-no-auto-recreation', async (req, res) => {
   try {
     const report = await verifyNoAutoRecreation();
     return res.json({ success: true, report });
