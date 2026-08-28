@@ -271,7 +271,7 @@ export const AuthProvider = ({ children }) => {
     const cleanPass = (password || '').trim();
 
     try {
-      const res = await fetch('/api/auth/login', {
+      const res = await fetch(`${getApiBaseUrl()}/api/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username: cleanUser, password: cleanPass })

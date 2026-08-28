@@ -10,7 +10,7 @@ import { SHALIMAR_LOGO_BASE64 } from '../assets/logoBase64';
 export const LoginModal = () => {
   const { login } = useAuth();
   
-  const [username, setUsername] = useState('admin');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [rememberDevice, setRememberDevice] = useState(true);
@@ -178,8 +178,10 @@ export const LoginModal = () => {
               <User size={16} color="#94a3b8" style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)' }} />
               <input
                 type="text"
+                name="username"
+                autoComplete="username"
                 className="form-control"
-                placeholder="Enter admin or vendor code (e.g. ABC001)"
+                placeholder="Enter admin or vendor code (e.g. P001)"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 style={{ paddingLeft: '40px', background: 'rgba(15, 23, 42, 0.6)', color: '#ffffff', border: '1px solid rgba(255, 255, 255, 0.15)', borderRadius: '10px', height: '44px', width: '100%' }}
@@ -196,11 +198,12 @@ export const LoginModal = () => {
               <Lock size={16} color="#94a3b8" style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)' }} />
               <input
                 type={showPassword ? 'text' : 'password'}
+                name="password"
+                autoComplete="current-password"
                 className="form-control"
                 placeholder="••••••••"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                autoComplete="new-password"
                 style={{ paddingLeft: '40px', paddingRight: '40px', background: 'rgba(15, 23, 42, 0.6)', color: '#ffffff', border: '1px solid rgba(255, 255, 255, 0.15)', borderRadius: '10px', height: '44px', width: '100%' }}
               />
               <button
