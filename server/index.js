@@ -1,4 +1,4 @@
-// Hostinger Passenger Process Reload Signal v1.0.4 - Transporter Portal Sub-Indent Bidding
+// Hostinger Passenger Process Reload Signal v1.0.5 - Independent sub-indent bid input state & item_id quote submission
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
