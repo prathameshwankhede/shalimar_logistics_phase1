@@ -74,17 +74,29 @@ async function ensureRequirementsTableExists() {
       CREATE TABLE IF NOT EXISTS transport_requirement_items (
         id VARCHAR(100) NOT NULL PRIMARY KEY,
         requirement_id VARCHAR(100) NOT NULL,
+        sub_indent_no VARCHAR(100) DEFAULT NULL,
         product_name VARCHAR(255) NOT NULL,
         quantity_mt DECIMAL(12,3) NOT NULL,
         unit VARCHAR(50) DEFAULT 'MT',
         pickup_origin VARCHAR(255),
         drop_location VARCHAR(255),
         hsn_code VARCHAR(50),
+        target_date DATE DEFAULT NULL,
         created_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        INDEX idx_req_id (requirement_id)
+        INDEX idx_req_id (requirement_id),
+        INDEX idx_sub_indent_no (sub_indent_no)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
     `);
+
+    const childCols = [
+      "sub_indent_no VARCHAR(100) DEFAULT NULL",
+      "target_date DATE DEFAULT NULL"
+    ];
+    for (const colDef of childCols) {
+      await pool.query(`ALTER TABLE transport_requirement_items ADD COLUMN ${colDef}`).catch(() => {});
+    }
+    await pool.query('ALTER TABLE transport_requirement_items ADD INDEX idx_sub_indent_no (sub_indent_no)').catch(() => {});
   } catch (err) {
     console.warn('transport_requirements table creation notice:', err.message);
   }
@@ -116,18 +128,30 @@ async function generateNextReqNo(clientOrPool) {
 
 function formatParentRequirementDto(parentRow, childItems = [], bidsCount = 0) {
   if (!parentRow) return null;
-  const itemsFormatted = childItems.map((item, idx) => ({
-    id: item.id || `item_${idx}`,
-    requirement_id: parentRow.id,
-    product_name: item.product_name || item.material_type || '',
-    material_type: item.product_name || item.material_type || '',
-    quantity_mt: Number(item.quantity_mt || item.required_qty || 0),
-    required_qty: Number(item.quantity_mt || item.required_qty || 0),
-    unit: item.unit || 'MT',
-    pickup_origin: item.pickup_origin || parentRow.pickup_origin || '',
-    drop_location: item.drop_location || parentRow.drop_location || '',
-    hsn_code: item.hsn_code || ''
-  }));
+  const parentReqNo = parentRow.req_no || parentRow.id || '';
+
+  const itemsFormatted = childItems.map((item, idx) => {
+    const subIdxStr = (idx + 1).toString().padStart(2, '0');
+    const autoSubIndentNo = item.sub_indent_no || `${parentReqNo}/${subIdxStr}`;
+    const itemTargetDate = item.target_date
+      ? (item.target_date instanceof Date ? item.target_date.toISOString().split('T')[0] : String(item.target_date).split('T')[0])
+      : (parentRow.target_date ? (parentRow.target_date instanceof Date ? parentRow.target_date.toISOString().split('T')[0] : String(parentRow.target_date).split('T')[0]) : new Date().toISOString().split('T')[0]);
+
+    return {
+      id: item.id || `item_${idx}`,
+      requirement_id: parentRow.id,
+      sub_indent_no: autoSubIndentNo,
+      product_name: item.product_name || item.material_type || '',
+      material_type: item.product_name || item.material_type || '',
+      quantity_mt: Number(item.quantity_mt || item.required_qty || 0),
+      required_qty: Number(item.quantity_mt || item.required_qty || 0),
+      unit: item.unit || 'MT',
+      pickup_origin: item.pickup_origin || parentRow.pickup_origin || '',
+      drop_location: item.drop_location || parentRow.drop_location || '',
+      hsn_code: item.hsn_code || '',
+      target_date: itemTargetDate
+    };
+  });
 
   const totalQty = itemsFormatted.reduce((acc, curr) => acc + curr.quantity_mt, 0);
 
@@ -1097,15 +1121,19 @@ async function handleCreateRequirements(req, res) {
       [parentId, nextReqNo, titleStr, pickupOrigin, dropLocation, targetDate, 'Active', 'Pending', createdByVal]
     );
 
-    // 3. Insert THREE (or N) child requirement items
+    // 3. Insert N child requirement items with sub_indent_no (SNPL/26-27/REQ-0001/01, etc.)
     for (let idx = 0; idx < validChildItems.length; idx++) {
       const child = validChildItems[idx];
       const itemId = `req_item_${Date.now()}_${idx}_${Math.random().toString(36).substring(2, 5)}`;
+      const subIdxStr = (idx + 1).toString().padStart(2, '0');
+      const subIndentNo = child.sub_indent_no || `${nextReqNo}/${subIdxStr}`;
+      const childTargetDate = child.target_date || targetDate;
+
       await conn.query(
         `INSERT INTO transport_requirement_items
-         (id, requirement_id, product_name, quantity_mt, unit, pickup_origin, drop_location, hsn_code)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        [itemId, parentId, child.product_name, child.quantity_mt, child.unit, child.pickup_origin, child.drop_location, child.hsn_code]
+         (id, requirement_id, sub_indent_no, product_name, quantity_mt, unit, pickup_origin, drop_location, hsn_code, target_date)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [itemId, parentId, subIndentNo, child.product_name, child.quantity_mt, child.unit, child.pickup_origin, child.drop_location, child.hsn_code || '', childTargetDate]
       );
     }
 
