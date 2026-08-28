@@ -272,29 +272,21 @@ async function handleGetRequirementRates(req, res) {
     });
 
     const [rates] = await pool.query(
-      `SELECT
-        rs.id,
-        rs.requirement_id,
-        rs.transporter_id,
-        t.company_name,
-        t.code AS vendor_code,
-        t.contact_person,
-        t.mobile,
-        rs.rate_per_mt,
-        rs.quoted_quantity_mt,
-        rs.total_amount,
-        rs.remarks,
-        rs.status,
-        rs.submitted_at,
-        rs.updated_at
-       FROM rate_submissions rs
-       JOIN transporters t ON t.id COLLATE utf8mb4_unicode_ci = rs.transporter_id COLLATE utf8mb4_unicode_ci
-       WHERE rs.requirement_id COLLATE utf8mb4_unicode_ci = ? COLLATE utf8mb4_unicode_ci
-       ORDER BY rs.rate_per_mt ASC`,
+      'SELECT id, requirement_id, transporter_id, rate_per_mt, quoted_quantity_mt, total_amount, remarks, status, submitted_at, updated_at FROM rate_submissions WHERE requirement_id = ? ORDER BY rate_per_mt ASC',
       [actualReqId]
     );
 
+    const transporterIds = Array.from(new Set(rates.map(r => r.transporter_id).filter(Boolean)));
+    let transportersMap = {};
+    if (transporterIds.length > 0) {
+      const [transRows] = await pool.query('SELECT * FROM transporters WHERE id IN (?)', [transporterIds]);
+      (transRows || []).forEach(t => {
+        transportersMap[t.id] = t;
+      });
+    }
+
     const formattedRates = rates.map(r => {
+      const t = transportersMap[r.transporter_id] || {};
       const rateVal = parseFloat(r.rate_per_mt || 0);
       const qtyVal = parseFloat(r.quoted_quantity_mt || 0) || totalCargoQty;
       const calcTotal = r.total_amount ? parseFloat(r.total_amount) : parseFloat((rateVal * qtyVal).toFixed(2));
@@ -303,11 +295,11 @@ async function handleGetRequirementRates(req, res) {
         requirement_id: r.requirement_id,
         rate_request_id: r.requirement_id,
         transporter_id: r.transporter_id,
-        company_name: r.company_name,
-        transporter_name: r.company_name,
-        vendor_code: r.vendor_code || '',
-        contact_person: r.contact_person || '',
-        mobile: r.mobile || '',
+        company_name: t.company_name || r.transporter_id,
+        transporter_name: t.company_name || r.transporter_id,
+        vendor_code: t.code || '',
+        contact_person: t.contact_person || '',
+        mobile: t.mobile || '',
         rate_per_mt: rateVal,
         rate_per_unit: rateVal,
         quoted_quantity_mt: qtyVal,
