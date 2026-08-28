@@ -683,7 +683,7 @@ export const AdminDashboard = () => {
 
   const handleToggleTransporterStatus = async (transporter) => {
     const isCurrentlyActive = transporter.status !== 'Suspended' && transporter.status !== 'Deactivated' && transporter.status !== 'Inactive';
-    const nextStatus = isCurrentlyActive ? 'Deactivated' : 'Active';
+    const nextStatus = isCurrentlyActive ? 'Inactive' : 'Active';
 
     const confirmed = window.confirm(
       `Are you sure you want to ${isCurrentlyActive ? 'deactivate' : 'activate'} transporter '${transporter.company_name}'?`
@@ -711,7 +711,7 @@ export const AdminDashboard = () => {
 
       updateDB(updatedDb);
       setArchiveNotice(`🛡️ Transporter '${transporter.company_name}' status set to ${nextStatus}!`);
-      setTimeout(() => setArchiveNotice(''), 4000);
+      setTimeout(() => setArchiveNotice(''), 5000);
     } catch (err) {
       console.error('Transporter status API error:', err.message);
       alert(`❌ Failed to update transporter status: ${err.message}`);
@@ -1281,7 +1281,8 @@ export const AdminDashboard = () => {
   // 🔑 Open Reset Password Modal
   const openResetPasswordModal = (transporter) => {
     setResetPassTransporter(transporter);
-    setNewTransporterPassword(''); // Starts blank so admin can type or auto-generate
+    const randomPin = Math.floor(1000 + Math.random() * 9000);
+    setNewTransporterPassword(`Shalimar#${randomPin}`);
   };
 
   // Auto-Generate Strong Password
@@ -2964,8 +2965,8 @@ export const AdminDashboard = () => {
                                 <div style={{ fontSize: '0.8rem', color: '#38bdf8', fontWeight: '800' }}>👤 {t.username}</div>
                               </td>
                               <td>
-                                <span className={`badge ${t.status === 'Suspended' ? 'badge-suspended' : 'badge-awarded'}`}>
-                                  {t.status || 'Active'}
+                                <span className={`badge ${t.status === 'Suspended' || t.status === 'Deactivated' || t.status === 'Inactive' ? 'badge-suspended' : 'badge-awarded'}`}>
+                                  {t.status === 'Suspended' || t.status === 'Deactivated' || t.status === 'Inactive' ? 'Inactive' : (t.status || 'Active')}
                                 </span>
                               </td>
                               <td style={{ textAlign: 'right' }}>
@@ -2973,23 +2974,23 @@ export const AdminDashboard = () => {
                                   <button
                                     type="button"
                                     onClick={() => handleToggleTransporterStatus(t)}
-                                    className={`btn ${t.status === 'Suspended' || t.status === 'Deactivated' ? 'btn-success' : 'btn-secondary'}`}
+                                    className={`btn ${t.status === 'Suspended' || t.status === 'Deactivated' || t.status === 'Inactive' ? 'btn-success' : 'btn-secondary'}`}
                                     style={{
                                       padding: '4px 10px',
                                       fontSize: '0.76rem',
                                       display: 'inline-flex',
                                       alignItems: 'center',
                                       gap: '4px',
-                                      border: t.status === 'Suspended' || t.status === 'Deactivated' ? '1px solid #10b981' : '1px solid #ef4444',
-                                      color: t.status === 'Suspended' || t.status === 'Deactivated' ? '#34d399' : '#f87171'
+                                      border: t.status === 'Suspended' || t.status === 'Deactivated' || t.status === 'Inactive' ? '1px solid #10b981' : '1px solid #ef4444',
+                                      color: t.status === 'Suspended' || t.status === 'Deactivated' || t.status === 'Inactive' ? '#34d399' : '#f87171'
                                     }}
-                                    title={t.status === 'Suspended' || t.status === 'Deactivated' ? 'Activate Transporter Account' : 'Deactivate Transporter Account'}
+                                    title={t.status === 'Suspended' || t.status === 'Deactivated' || t.status === 'Inactive' ? 'Activate Transporter Account' : 'Deactivate Transporter Account'}
                                   >
-                                    {t.status === 'Suspended' || t.status === 'Deactivated' ? '🟢 Activate' : '🔴 Deactivate'}
+                                    {t.status === 'Suspended' || t.status === 'Deactivated' || t.status === 'Inactive' ? '🟢 Activate' : '🔴 Deactivate'}
                                   </button>
                                   <button
                                     type="button"
-                                    onClick={() => setResetPassTransporter(t)}
+                                    onClick={() => openResetPasswordModal(t)}
                                     className="btn btn-secondary"
                                     style={{ padding: '4px 10px', fontSize: '0.76rem', border: '1px solid #38bdf8', color: '#38bdf8', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
                                     title="Reset Login Password"
