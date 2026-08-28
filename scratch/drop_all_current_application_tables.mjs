@@ -131,7 +131,7 @@ export async function runProductionCleanup() {
     console.log('\n==================================================');
     console.log('🎉 CLEANUP COMPLETED: ZERO APPLICATION TABLES REMAIN');
     console.log('==================================================');
-    console.log(JSON.stringify({
+    const report = {
       database: activeDb,
       backupFile: backupFilePath,
       backupSizeBytes: stat.size,
@@ -139,14 +139,12 @@ export async function runProductionCleanup() {
       remainingAppTablesCount: remainingAppTables.length,
       remainingTables: remainingList,
       zeroAppTablesRemain: true
-    }, null, 2));
+    };
+    console.log(JSON.stringify(report, null, 2));
+    return report;
 
   } catch (err) {
     console.error('\n❌ PRODUCTION CLEANUP FAILED:', err.message);
-    process.exit(1);
-  } finally {
-    process.exit(0);
+    throw err;
   }
 }
-
-runProductionCleanup();
