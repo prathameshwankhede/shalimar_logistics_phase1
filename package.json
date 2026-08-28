@@ -5,6 +5,8 @@
   "type": "module",
   "main": "server.js",
   "scripts": {
+    "postinstall": "npm run build",
+    "prestart": "npm run build",
     "start": "node server.js",
     "server": "node server.js",
     "dev": "vite",

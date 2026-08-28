@@ -2941,7 +2941,7 @@ export const AdminDashboard = () => {
                                 <div style={{ fontSize: '0.76rem', color: '#475569' }}>✉️ {t.email || 'N/A'}</div>
                               </td>
                               <td>
-                                <div style={{ fontFamily: 'monospace', color: '#34d399', fontSize: '0.82rem', fontWeight: '800' }}>GST: {t.gst_pan || 'N/A'}</div>
+                                <div style={{ fontFamily: 'monospace', color: '#34d399', fontSize: '0.82rem', fontWeight: '800' }}>GST: {t.gstin || t.gst_pan || 'N/A'}</div>
                               </td>
                               <td>
                                 <div style={{ fontSize: '0.8rem', color: '#38bdf8', fontWeight: '800' }}>👤 {t.username}</div>

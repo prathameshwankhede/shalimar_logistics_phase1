@@ -211,6 +211,33 @@ export function resetDB() {
   return cleanData;
 }
 
-export function loadDBFromSupabase() {
-  return loadDB();
+export async function loadDBFromSupabase() {
+  try {
+    const res = await fetch(`${getApiBaseUrl()}/api/state`, {
+      headers: getAuthHeaders()
+    });
+    let data = null;
+    if (res.ok) {
+      const json = await res.json();
+      data = json && json.data ? json.data : null;
+    }
+
+    // Always fetch live transporters list from MySQL database
+    try {
+      const liveTransporters = await fetchTransportersList();
+      if (Array.isArray(liveTransporters) && liveTransporters.length > 0) {
+        data = {
+          ...(data || EMPTY_STATE),
+          transporters: liveTransporters
+        };
+      }
+    } catch (err) {
+      console.warn('Live transporters fetch notice:', err.message);
+    }
+
+    return data;
+  } catch (e) {
+    console.error('API loadDBFromSupabase error:', e.message);
+  }
+  return null;
 }
