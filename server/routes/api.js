@@ -284,8 +284,8 @@ async function handleGetRequirementRates(req, res) {
         rs.submitted_at,
         rs.updated_at
        FROM rate_submissions rs
-       JOIN transporters t ON t.id = rs.transporter_id
-       WHERE rs.requirement_id = ?
+       JOIN transporters t ON CONVERT(t.id USING utf8mb4) = CONVERT(rs.transporter_id USING utf8mb4)
+       WHERE CONVERT(rs.requirement_id USING utf8mb4) = CONVERT(? USING utf8mb4)
        ORDER BY rs.rate_per_mt ASC`,
       [actualReqId]
     );
