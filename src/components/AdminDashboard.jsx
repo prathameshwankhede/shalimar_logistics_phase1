@@ -2497,11 +2497,14 @@ export const AdminDashboard = () => {
                                         </thead>
                                         <tbody>
                                           {childItems.map((item, subIdx) => {
-                                            const subCode = `${reqNoStr}/${(subIdx + 1).toString().padStart(2, '0')}`;
-                                            const bids = (db.rate_submissions || []).filter((s) => String(s.requirement_id) === String(req.id) || String(s.requirement_id) === String(reqNoStr) || String(s.rate_request_id) === String(req.id) || String(s.rate_request_id) === String(reqNoStr));
+                                            const subCode = item.sub_indent_no || `${reqNoStr}/${(subIdx + 1).toString().padStart(2, '0')}`;
+                                            const bids = (db.rate_submissions || []).filter((s) => 
+                                              (String(s.requirement_id) === String(req.id) || String(s.requirement_id) === String(reqNoStr) || String(s.rate_request_id) === String(req.id) || String(s.rate_request_id) === String(reqNoStr)) &&
+                                              (String(s.item_id) === String(item.id) || String(s.item_id) === String(item.sub_indent_no) || String(s.item_id) === String(subCode))
+                                            );
                                             const validRates = bids.map(b => parseFloat(b.rate_per_mt || b.rate_per_unit || 0)).filter(r => r > 0);
                                             const lowestRate = validRates.length > 0 ? Math.min(...validRates) : null;
-                                            const bidsCount = Math.max(displayBidCount, bids.length);
+                                            const bidsCount = bids.length;
                                             const alloc = (db.allocations || []).find((a) => String(a.requirement_id) === String(req.id) || String(a.req_no) === String(reqNoStr));
                                             const awardedTransporter = alloc ? (alloc.transporter_name || alloc.transporter_id) : req.awarded_transporter;
 
