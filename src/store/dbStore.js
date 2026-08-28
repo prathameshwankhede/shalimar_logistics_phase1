@@ -141,6 +141,17 @@ export async function fetchCompanyUnitsList() {
   }
 }
 
+export async function fetchProductsList() {
+  try {
+    const res = await fetch(`${getApiBaseUrl()}/api/products`, { headers: getAuthHeaders() });
+    if (!res.ok) return [];
+    const json = await res.json();
+    return json.data || json.products || json.product_masters || [];
+  } catch (e) {
+    return [];
+  }
+}
+
 export async function fetchMasterData() {
   try {
     const res = await fetch(`${getApiBaseUrl()}/api/master-data`, { headers: getAuthHeaders() });
@@ -258,6 +269,20 @@ export async function loadDBFromSupabase() {
       }
     } catch (err) {
       console.warn('Live company units fetch notice:', err.message);
+    }
+
+    // Always fetch live products list from MySQL database
+    try {
+      const liveProducts = await fetchProductsList();
+      if (Array.isArray(liveProducts)) {
+        data = {
+          ...(data || EMPTY_STATE),
+          products: liveProducts,
+          product_masters: liveProducts
+        };
+      }
+    } catch (err) {
+      console.warn('Live products fetch notice:', err.message);
     }
 
     return data;

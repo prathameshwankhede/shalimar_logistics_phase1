@@ -16,6 +16,19 @@ export async function createProduct(productPayload) {
   });
 }
 
+export async function updateProduct(id, productPayload) {
+  return apiClient(`/api/products/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(productPayload)
+  });
+}
+
+export async function deleteProduct(id) {
+  return apiClient(`/api/products/${id}`, {
+    method: 'DELETE'
+  });
+}
+
 export async function getCompanyUnits() {
   return apiClient('/api/company-units', { method: 'GET' });
 }

@@ -5,7 +5,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { createRateRequest } from '../api/rateRequestApi';
 import { createTransporter, updateTransporterStatus, resetTransporterPassword } from '../api/transporterApi';
-import { createProduct, createCompanyUnit, updateCompanyUnit, deleteCompanyUnit } from '../api/masterDataApi';
+import { createProduct, updateProduct, deleteProduct, createCompanyUnit, updateCompanyUnit, deleteCompanyUnit } from '../api/masterDataApi';
 import { CreateRequirementModal } from './CreateRequirementModal';
 import { TransporterManagerModal } from './TransporterManagerModal';
 import { RateComparisonView } from './RateComparisonView';
@@ -799,57 +799,91 @@ export const AdminDashboard = () => {
       setTimeout(() => setArchiveNotice(''), 5000);
     } catch (err) {
       console.error('Transporter status API error:', err.message);
-      alert(`❌ Failed to update transporter status: ${err.message}`);
+        console.error('Transporter status API error:', err.message);
+        alert(`❌ Failed to update transporter status: ${err.message}`);
+      }
+    };
+
+  const handleDeleteProductMaster = async (prod) => {
+    if (!prod || !prod.id) return;
+    const prodName = prod.name || 'this product';
+    if (!window.confirm(`Delete product master '${prodName}'?`)) return;
+
+    try {
+      const res = await deleteProduct(prod.id);
+      if (res && res.error) {
+        alert(`❌ Failed to delete product: ${typeof res.error === 'string' ? res.error : res.error.message || 'Server error'}`);
+        return;
+      }
+
+      const updatedProducts = (db.product_masters || []).filter((p) => p.id !== prod.id);
+
+      const updatedDb = addSecurityLog(
+        {
+          ...db,
+          product_masters: updatedProducts,
+          products: updatedProducts
+        },
+        `DELETE_PRODUCT_MASTER (${prodName})`,
+        currentUser?.username || 'admin',
+        'admin',
+        'PRODUCT_MASTER_DELETED 🗑️'
+      );
+
+      updateDB(updatedDb);
+      if (editingProductMaster && editingProductMaster.id === prod.id) {
+        setEditingProductMaster(null);
+      }
+      setArchiveNotice(`🗑️ Product Master '${prodName}' deleted from MySQL!`);
+      setTimeout(() => setArchiveNotice(''), 4000);
+    } catch (err) {
+      console.error('Product master delete error:', err);
+      alert(`❌ Error deleting product: ${err.message}`);
     }
-  };
-
-  const handleDeleteProductMaster = (prod) => {
-    if (!window.confirm(`⚠️ CASCADE DELETE WARNING:\n\nAre you sure you want to delete Product Master '${prod.name}'?\n\nThis will remove it from Master Directories and product dropdowns!`)) {
-      return;
-    }
-
-    const updatedProducts = (db.product_masters || []).filter((p) => p.id !== prod.id);
-
-    const updatedDb = addSecurityLog(
-      {
-        ...db,
-        product_masters: updatedProducts
-      },
-      `DELETE_PRODUCT_MASTER (${prod.name})`,
-      currentUser?.username || 'admin',
-      'admin',
-      'PRODUCT_MASTER_DELETED 🗑️'
-    );
-
-    updateDB(updatedDb);
-    setEditingProductMaster(null);
-    setArchiveNotice(`🗑️ Product Master '${prod.name}' deleted from system!`);
-    setTimeout(() => setArchiveNotice(''), 4000);
   };
 
   const handleEditProductMaster = (prod) => {
     setEditingProductMaster({ ...prod });
   };
 
-  const handleSaveEditProductMaster = (e) => {
+  const handleSaveEditProductMaster = async (e) => {
     e.preventDefault();
     if (!editingProductMaster || !editingProductMaster.name.trim()) return;
 
-    const updatedProducts = (db.product_masters || []).map((item) =>
-      item.id === editingProductMaster.id ? editingProductMaster : item
-    );
+    const payload = {
+      name: editingProductMaster.name.trim(),
+      category: (editingProductMaster.category || '').trim(),
+      hsn_code: (editingProductMaster.hsn_code || '').trim(),
+      unit: editingProductMaster.unit || editingProductMaster.default_unit || 'MT'
+    };
 
-    const updatedDb = addSecurityLog(
-      { ...db, product_masters: updatedProducts },
-      `EDIT_PRODUCT_MASTER (${editingProductMaster.name})`,
-      currentUser?.username || 'admin',
-      'admin',
-      'PRODUCT_EDITED ✏️'
-    );
-    updateDB(updatedDb);
-    setEditingProductMaster(null);
-    setArchiveNotice(`✏️ Product Master '${editingProductMaster.name}' updated successfully!`);
-    setTimeout(() => setArchiveNotice(''), 4000);
+    try {
+      const res = await updateProduct(editingProductMaster.id, payload);
+      if (res && res.error) {
+        alert(`❌ Failed to update product: ${typeof res.error === 'string' ? res.error : res.error.message || 'Server error'}`);
+        return;
+      }
+
+      const updatedItem = res.data || { ...editingProductMaster, ...payload };
+      const updatedProducts = (db.product_masters || []).map((item) =>
+        item.id === editingProductMaster.id ? updatedItem : item
+      );
+
+      const updatedDb = addSecurityLog(
+        { ...db, product_masters: updatedProducts, products: updatedProducts },
+        `EDIT_PRODUCT_MASTER (${payload.name})`,
+        currentUser?.username || 'admin',
+        'admin',
+        'PRODUCT_EDITED ✏️'
+      );
+      updateDB(updatedDb);
+      setEditingProductMaster(null);
+      setArchiveNotice(`✏️ Product Master '${payload.name}' updated successfully in MySQL!`);
+      setTimeout(() => setArchiveNotice(''), 4000);
+    } catch (err) {
+      console.error('Product master update error:', err);
+      alert(`❌ Error updating product: ${err.message}`);
+    }
   };
 
   // 📦 PRODUCT MASTER FORM STATE & HANDLERS
@@ -860,40 +894,59 @@ export const AdminDashboard = () => {
     unit: 'MT'
   });
 
-  const handleAddProductMaster = (e) => {
+  const handleAddProductMaster = async (e) => {
     e.preventDefault();
-    if (!newProductMaster.name.trim()) return;
-    const newProdObj = {
-      id: `prod_${Date.now()}`,
-      name: newProductMaster.name.trim(),
-      category: newProductMaster.category.trim(),
-      hsn_code: newProductMaster.hsn_code.trim(),
+    const prodName = (newProductMaster.name || '').trim();
+    if (!prodName) {
+      alert('📦 Please enter Product / Commodity Name.');
+      return;
+    }
+
+    const payload = {
+      name: prodName,
+      category: (newProductMaster.category || '').trim(),
+      hsn_code: (newProductMaster.hsn_code || '').trim(),
       unit: newProductMaster.unit || 'MT'
     };
 
-    const updatedDb = addSecurityLog(
-      {
-        ...db,
-        product_masters: [newProdObj, ...(db.product_masters || [])]
-      },
-      'ADD_PRODUCT_MASTER',
-      currentUser?.username || 'admin',
-      'admin',
-      'PRODUCT_ADDED 📦'
-    );
-    createProduct(newProdObj).catch((err) => console.error('Product master API error:', err.message));
+    try {
+      const res = await createProduct(payload);
+      if (res && res.error) {
+        alert(`❌ Failed to save product: ${typeof res.error === 'string' ? res.error : res.error.message || 'Server error'}`);
+        return;
+      }
 
-    updateDB(updatedDb);
-    setNewProductMaster({
-      name: '',
-      category: '',
-      hsn_code: '',
-      unit: 'MT'
-    });
-    setIsAddProductModalOpen(false);
-    setArchiveNotice(`📦 New Product Master '${newProdObj.name}' added successfully!`);
-    setTimeout(() => setArchiveNotice(''), 4000);
+      const savedItem = res.data || { id: `prod_${Date.now()}`, ...payload };
+      const updatedList = [savedItem, ...(db.product_masters || []).filter(p => p.id !== savedItem.id)];
+
+      const updatedDb = addSecurityLog(
+        {
+          ...db,
+          product_masters: updatedList,
+          products: updatedList
+        },
+        'ADD_PRODUCT_MASTER',
+        currentUser?.username || 'admin',
+        'admin',
+        'PRODUCT_ADDED 📦'
+      );
+
+      updateDB(updatedDb);
+      setNewProductMaster({
+        name: '',
+        category: '',
+        hsn_code: '',
+        unit: 'MT'
+      });
+      setIsAddProductModalOpen(false);
+      setArchiveNotice(`📦 New Product Master '${prodName}' saved to MySQL!`);
+      setTimeout(() => setArchiveNotice(''), 4000);
+    } catch (err) {
+      console.error('Product master creation error:', err);
+      alert(`❌ Error creating product: ${err.message}`);
+    }
   };
+
 
   // 🚛 3. CARGO & VEHICLE MASTER FORM STATE & HANDLERS
   const [newCargoMaster, setNewCargoMaster] = useState({ vehicle_type: '', capacity_mt: 25, cargo_category: 'Dry Bagged Cargo' });

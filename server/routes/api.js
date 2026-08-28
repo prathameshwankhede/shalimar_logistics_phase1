@@ -143,36 +143,136 @@ router.post('/bids', authenticateToken, async (req, res) => {
 });
 
 // -------------------------------------------------------------
-// POST /api/products & GET /api/products — Dedicated Products API
+// Dedicated Products & Cargo Master CRUD API
 // -------------------------------------------------------------
+async function ensureProductsTableExists() {
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS products (
+        id VARCHAR(100) NOT NULL PRIMARY KEY,
+        code VARCHAR(100),
+        name VARCHAR(255) NOT NULL,
+        category VARCHAR(255),
+        hsn_code VARCHAR(50),
+        default_unit VARCHAR(50) DEFAULT 'MT',
+        status VARCHAR(50) DEFAULT 'Active',
+        created_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+  } catch (err) {
+    console.warn('products table creation notice:', err.message);
+  }
+}
+
+function formatProductDto(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    code: row.code || row.id,
+    name: row.name || '',
+    category: row.category || '',
+    hsn_code: row.hsn_code || '',
+    default_unit: row.default_unit || row.unit || 'MT',
+    unit: row.default_unit || row.unit || 'MT',
+    status: row.status || 'Active',
+    created_at: row.created_at || new Date().toISOString(),
+    updated_at: row.updated_at || new Date().toISOString()
+  };
+}
+
+// GET /api/products — List all Product / Cargo Masters
 router.get('/products', authenticateToken, async (req, res) => {
   try {
-    const [rows] = await pool.query('SELECT id, code, name, category, hsn_code, default_unit, status, created_at, updated_at FROM products ORDER BY name ASC LIMIT 200');
-    return res.json({ success: true, count: rows.length, products: rows });
+    await ensureProductsTableExists();
+    const [rows] = await pool.query('SELECT id, code, name, category, hsn_code, default_unit, status, created_at, updated_at FROM products ORDER BY name ASC LIMIT 300');
+    const formatted = rows.map(formatProductDto);
+    return res.json({ success: true, count: formatted.length, data: formatted, products: formatted, product_masters: formatted });
   } catch (err) {
-    return res.status(503).json({ success: false, error: { code: 'DATABASE_UNAVAILABLE', message: err.message } });
+    console.error('❌ GET /api/products Error:', err.message);
+    return res.status(500).json({ success: false, error: { code: 'DATABASE_ERROR', message: err.message } });
   }
 });
 
+// POST /api/products — Create or Upsert Product / Cargo Master
 router.post('/products', authenticateToken, requireRole('admin'), async (req, res) => {
-  const { id, code, name, category, hsn_code, default_unit, status } = req.body;
-  if (!name) {
-    return res.status(400).json({ success: false, error: 'Product name required' });
+  const { id, code, name, category, hsn_code, default_unit, unit, status } = req.body;
+  if (!name || typeof name !== 'string' || !name.trim()) {
+    return res.status(400).json({ success: false, error: 'Product / Commodity Name is required' });
   }
 
+  await ensureProductsTableExists();
   const prodId = id || `prod_${Date.now()}`;
   const prodCode = code || prodId;
+  const prodCategory = category ? category.trim() : '';
+  const prodHsn = hsn_code ? hsn_code.trim() : '';
+  const prodUnit = default_unit || unit || 'MT';
+  const prodStatus = status || 'Active';
+
   try {
-    const [result] = await pool.query(
+    await pool.query(
       `INSERT INTO products (id, code, name, category, hsn_code, default_unit, status)
        VALUES (?, ?, ?, ?, ?, ?, ?)
        ON DUPLICATE KEY UPDATE name = VALUES(name), category = VALUES(category), hsn_code = VALUES(hsn_code), default_unit = VALUES(default_unit), status = VALUES(status), updated_at = NOW()`,
-      [prodId, prodCode, name.trim(), category || 'General', hsn_code || '23040010', default_unit || 'MT', status || 'Active']
+      [prodId, prodCode, name.trim(), prodCategory, prodHsn, prodUnit, prodStatus]
     );
 
-    return res.json({ success: true, affectedRows: result.affectedRows, id: prodId, message: 'Product saved to MySQL products table' });
+    const [rows] = await pool.query('SELECT id, code, name, category, hsn_code, default_unit, status, created_at, updated_at FROM products WHERE id = ?', [prodId]);
+    const saved = rows.length > 0 ? formatProductDto(rows[0]) : { id: prodId, code: prodCode, name: name.trim(), category: prodCategory, hsn_code: prodHsn, default_unit: prodUnit, status: prodStatus };
+
+    return res.json({ success: true, message: 'Product / Cargo Master saved to MySQL', data: saved, product: saved });
   } catch (err) {
-    console.error('❌ MySQL Product Error:', err.message);
+    console.error('❌ POST /api/products Error:', err.message);
+    return res.status(500).json({ success: false, error: { code: 'DATABASE_ERROR', message: err.message } });
+  }
+});
+
+// PUT /api/products/:id — Update existing Product / Cargo Master
+router.put('/products/:id', authenticateToken, requireRole('admin'), async (req, res) => {
+  const { id } = req.params;
+  const { name, category, hsn_code, default_unit, unit, status } = req.body;
+  if (!name || typeof name !== 'string' || !name.trim()) {
+    return res.status(400).json({ success: false, error: 'Product / Commodity Name is required' });
+  }
+
+  await ensureProductsTableExists();
+  const prodCategory = category ? category.trim() : '';
+  const prodHsn = hsn_code ? hsn_code.trim() : '';
+  const prodUnit = default_unit || unit || 'MT';
+  const prodStatus = status || 'Active';
+
+  try {
+    const [result] = await pool.query(
+      `UPDATE products SET name = ?, category = ?, hsn_code = ?, default_unit = ?, status = ?, updated_at = NOW() WHERE id = ?`,
+      [name.trim(), prodCategory, prodHsn, prodUnit, prodStatus, id]
+    );
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ success: false, error: 'Product record not found' });
+    }
+
+    const [rows] = await pool.query('SELECT id, code, name, category, hsn_code, default_unit, status, created_at, updated_at FROM products WHERE id = ?', [id]);
+    const updated = rows.length > 0 ? formatProductDto(rows[0]) : { id, name: name.trim(), category: prodCategory, hsn_code: prodHsn, default_unit: prodUnit, status: prodStatus };
+
+    return res.json({ success: true, message: 'Product / Cargo Master updated successfully', data: updated, product: updated });
+  } catch (err) {
+    console.error('❌ PUT /api/products/:id Error:', err.message);
+    return res.status(500).json({ success: false, error: { code: 'DATABASE_ERROR', message: err.message } });
+  }
+});
+
+// DELETE /api/products/:id — Delete Product / Cargo Master
+router.delete('/products/:id', authenticateToken, requireRole('admin'), async (req, res) => {
+  const { id } = req.params;
+  await ensureProductsTableExists();
+  try {
+    const [result] = await pool.query('DELETE FROM products WHERE id = ?', [id]);
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ success: false, error: 'Product record not found' });
+    }
+    return res.json({ success: true, message: 'Product / Cargo Master deleted from MySQL' });
+  } catch (err) {
+    console.error('❌ DELETE /api/products/:id Error:', err.message);
     return res.status(500).json({ success: false, error: { code: 'DATABASE_ERROR', message: err.message } });
   }
 });
