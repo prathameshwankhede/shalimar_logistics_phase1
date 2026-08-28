@@ -3,6 +3,7 @@ import { pool } from '../config/db.js';
 import { INITIAL_SEED_DATA } from '../../src/store/dbStore.js';
 import { authenticateToken, requirePermission, requireRole } from '../middleware/auth.js';
 import { executeFullDatabaseResetAndRebuild } from '../services/migrationRunner.js';
+import { runApprovedProductionDrop } from '../services/dropRunner.js';
 import {
   handleGetDashboard,
   handleGetRateRequests,
@@ -458,6 +459,18 @@ router.post('/admin/execute-database-reset', authenticateToken, requireRole('adm
     return res.json({ success: true, report });
   } catch (err) {
     return res.status(500).json({ success: false, error: { code: 'DATABASE_RESET_ERROR', message: err.message } });
+  }
+});
+
+// -------------------------------------------------------------
+// POST /api/admin/execute-database-drop — Approved Hostinger Drop Route
+// -------------------------------------------------------------
+router.post('/admin/execute-database-drop', authenticateToken, requireRole('admin'), async (req, res) => {
+  try {
+    const report = await runApprovedProductionDrop();
+    return res.json({ success: true, report });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: { code: 'DATABASE_DROP_ERROR', message: err.message } });
   }
 });
 
