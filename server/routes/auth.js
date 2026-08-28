@@ -33,14 +33,38 @@ router.post('/login', async (req, res) => {
 
     try {
       const [rows] = await pool.query(
-        'SELECT id, username, password_hash, password, name, role, transporter_id FROM users WHERE LOWER(username) = ?',
+        'SELECT id, username, password_hash, password, name, role, transporter_id, status FROM users WHERE LOWER(username) = ?',
         [cleanUser]
       );
       if (rows.length > 0) {
         foundUser = rows[0];
       }
     } catch (dbErr) {
-      console.warn('MySQL query fallback during login:', dbErr.message);
+      console.warn('MySQL users query fallback during login:', dbErr.message);
+    }
+
+    // Fallback: If not found in users table, search transporters table by username OR vendor code
+    if (!foundUser) {
+      try {
+        const [transRows] = await pool.query(
+          'SELECT id, company_name, code, username, password_hash, status FROM transporters WHERE LOWER(username) = ? OR LOWER(code) = ?',
+          [cleanUser, cleanUser]
+        );
+        if (transRows.length > 0) {
+          const t = transRows[0];
+          foundUser = {
+            id: t.id,
+            username: t.username || t.code,
+            password_hash: t.password_hash,
+            name: t.company_name,
+            role: 'transporter',
+            transporter_id: t.id,
+            status: t.status || 'Active'
+          };
+        }
+      } catch (dbErr) {
+        console.warn('MySQL transporters query fallback during login:', dbErr.message);
+      }
     }
 
     if (!foundUser) {
@@ -49,6 +73,11 @@ router.post('/login', async (req, res) => {
 
     if (!foundUser) {
       return res.status(401).json({ error: 'Invalid Username or Password' });
+    }
+
+    // Check account status
+    if (foundUser.status === 'Inactive' || foundUser.status === 'Deactivated' || foundUser.status === 'Suspended') {
+      return res.status(403).json({ error: 'Transporter Account is Inactive. Please contact Admin.' });
     }
 
     let isPasswordValid = false;
