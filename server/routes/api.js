@@ -475,17 +475,28 @@ async function handleCreateRateSubmission(req, res) {
     const actualTransId = transRows[0]?.id || targetTransporterId;
     const transName = transRows[0]?.company_name || targetTransporterId;
 
+    const targetItemId = (req.body.item_id || req.body.sub_indent_id || req.body.requirement_item_id || 'MAIN').trim();
+
     let totalCargoQty = 0;
-    const [childItems] = await pool.query(
-      'SELECT quantity_mt FROM transport_requirement_items WHERE requirement_id = ?',
-      [actualReqId]
-    );
-    (childItems || []).forEach((i) => { totalCargoQty += parseFloat(i.quantity_mt || 0); });
+    if (targetItemId && targetItemId !== 'MAIN') {
+      const [itemRows] = await pool.query(
+        'SELECT quantity_mt FROM transport_requirement_items WHERE id = ? OR sub_indent_no = ? LIMIT 1',
+        [targetItemId, targetItemId]
+      );
+      if (itemRows.length > 0) {
+        totalCargoQty = parseFloat(itemRows[0].quantity_mt || 0);
+      }
+    }
+    if (totalCargoQty === 0) {
+      const [childItems] = await pool.query(
+        'SELECT quantity_mt FROM transport_requirement_items WHERE requirement_id = ?',
+        [actualReqId]
+      );
+      (childItems || []).forEach((i) => { totalCargoQty += parseFloat(i.quantity_mt || 0); });
+    }
 
     const qtyVal = parseFloat(quoted_quantity_mt || required_qty) || totalCargoQty || null;
     const totalAmount = qtyVal ? parseFloat((rateVal * qtyVal).toFixed(2)) : null;
-
-    const targetItemId = (req.body.item_id || req.body.sub_indent_id || req.body.requirement_item_id || 'MAIN').trim();
 
     // Check if an existing quote exists for (requirement_id, item_id, transporter_id) to maintain ID
     const [existingQuotes] = await pool.query(

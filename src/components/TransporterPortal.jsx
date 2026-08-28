@@ -219,7 +219,7 @@ export const TransporterPortal = () => {
   });
 
   // Available open rate requests (ONLY ACTIVE UNACCEPTED & UNAWARDED REQUIREMENTS)
-  const openRateRequests = (db.rate_requests || []).filter((r) => {
+  const rawOpenRateRequests = (db.rate_requests || []).filter((r) => {
     if (!r || !r.id) return false;
 
     // 1. Exclude if requirement is marked Awarded or Closed
@@ -236,6 +236,52 @@ export const TransporterPortal = () => {
     if (isAcceptedByAnyone) return false;
 
     return true;
+  });
+
+  // Flatten parent requirements with child sub-indents into individual sub-indent items for transporter bidding
+  const openRateRequests = [];
+  rawOpenRateRequests.forEach((parentReq) => {
+    const childItems = parentReq.items || [];
+    if (childItems.length > 0) {
+      childItems.forEach((item, idx) => {
+        const subIdxStr = (idx + 1).toString().padStart(2, '0');
+        const parentReqNo = parentReq.req_no || parentReq.request_no || parentReq.id;
+        const subIndentNo = item.sub_indent_no || `${parentReqNo}/${subIdxStr}`;
+
+        openRateRequests.push({
+          ...parentReq,
+          id: parentReq.id,
+          requirement_id: parentReq.id,
+          item_id: item.id,
+          sub_indent_id: item.id,
+          sub_indent_no: subIndentNo,
+          request_no: subIndentNo,
+          req_no: parentReqNo,
+          batch_no: parentReqNo,
+          title: subIndentNo,
+          origin_city: item.pickup_origin || parentReq.pickup_origin,
+          dest_city: item.drop_location || parentReq.drop_location,
+          pickup_origin: item.pickup_origin || parentReq.pickup_origin,
+          drop_location: item.drop_location || parentReq.drop_location,
+          material_type: item.product_name || item.material_type || parentReq.product_name,
+          product_name: item.product_name || item.material_type || parentReq.product_name,
+          required_qty: Number(item.quantity_mt || item.required_qty || 0),
+          quantity_mt: Number(item.quantity_mt || item.required_qty || 0),
+          unit: item.unit || 'MT',
+          target_date: item.target_date || parentReq.target_date,
+          parent_total_qty: parentReq.total_quantity_mt || parentReq.quantity_mt,
+          parent_req_no: parentReqNo
+        });
+      });
+    } else {
+      openRateRequests.push({
+        ...parentReq,
+        item_id: parentReq.id,
+        sub_indent_id: parentReq.id,
+        sub_indent_no: parentReq.req_no || parentReq.request_no || parentReq.id,
+        parent_req_no: parentReq.req_no || parentReq.request_no || parentReq.id
+      });
+    }
   });
 
   // Count pending counter offers for badge notification
@@ -1126,7 +1172,10 @@ export const TransporterPortal = () => {
                                            </thead>
                                            <tbody>
                                              {(group.items || []).map((req, rIdx) => {
-                                               const myExistingBid = (mySubmissions || []).find((s) => String(s.rate_request_id) === String(req.id) || String(s.rate_request_id) === String(req.request_no));
+                                               const myExistingBid = (mySubmissions || []).find((s) => 
+                                                  (String(s.rate_request_id) === String(req.id) || String(s.rate_request_id) === String(req.parent_req_no) || String(s.requirement_id) === String(req.id)) &&
+                                                  (String(s.item_id) === String(req.item_id) || String(s.item_id) === String(req.sub_indent_no) || String(s.item_id) === String(req.request_no) || !req.item_id)
+                                                );
                                                const isAwarded = req.status === 'Awarded';
                                                const currentInputRate = quickRates[req.id] || '';
                                                const displayCode = req.request_no || req.title || 'REQ';
