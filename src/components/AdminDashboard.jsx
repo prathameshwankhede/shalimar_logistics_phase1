@@ -2262,154 +2262,309 @@ export const AdminDashboard = () => {
                         const bids = (db.rate_submissions || []).filter((s) => String(s.rate_request_id) === String(req.id) || String(s.rate_request_id) === String(reqNoStr));
                         const validRates = bids.map((b) => parseFloat(b.rate_per_unit)).filter((r) => !isNaN(r));
                         const lowestRate = validRates.length > 0 ? Math.min(...validRates) : null;
+                        const isExpanded = expandedBatches[reqNoStr] || expandedBatches[req.id] || false;
 
                         return (
-                          <tr key={req.id} style={{ borderBottom: '1px solid rgba(255, 255, 255, 0.08)' }}>
-                            {/* 1. REQ NO. */}
-                            <td>
-                              <span style={{
-                                fontFamily: 'monospace',
-                                fontSize: '0.85rem',
-                                fontWeight: '900',
-                                color: '#ffffff',
-                                background: 'linear-gradient(135deg, #0284c7 0%, #38bdf8 100%)',
-                                padding: '5px 12px',
-                                borderRadius: '8px',
-                                boxShadow: '0 0 12px rgba(56, 189, 248, 0.4)',
-                                letterSpacing: '0.04em',
-                                display: 'inline-block'
-                              }}>
-                                {reqNoStr}
-                              </span>
-                            </td>
+                          <React.Fragment key={req.id}>
+                            {/* 1. MASTER BATCH ROW */}
+                            <tr style={{ borderBottom: isExpanded ? 'none' : '1px solid rgba(255, 255, 255, 0.08)', background: isExpanded ? 'rgba(2, 132, 199, 0.15)' : 'transparent' }}>
+                              {/* 1. REQ NO. */}
+                              <td>
+                                <span style={{
+                                  fontFamily: 'monospace',
+                                  fontSize: '0.85rem',
+                                  fontWeight: '900',
+                                  color: '#ffffff',
+                                  background: 'linear-gradient(135deg, #0284c7 0%, #38bdf8 100%)',
+                                  padding: '5px 12px',
+                                  borderRadius: '8px',
+                                  boxShadow: '0 0 12px rgba(56, 189, 248, 0.4)',
+                                  letterSpacing: '0.04em',
+                                  display: 'inline-block'
+                                }}>
+                                  {reqNoStr}
+                                </span>
+                              </td>
 
-                            {/* 2. TITLE & ROUTE */}
-                            <td>
-                              <div style={{ fontWeight: '900', color: 'var(--text-main)', fontSize: '0.95rem' }}>
-                                {reqNoStr}
-                              </div>
-                              <div style={{ fontSize: '0.82rem', color: 'var(--text-sub)', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}>
-                                <MapPin size={13} color="#0284c7" /> 📍 {pickupStr} ➔ 🎯 <strong style={{ color: '#d97706', fontWeight: '900', fontSize: '0.95rem' }}>{dropStr}</strong>
-                              </div>
-                            </td>
+                              {/* 2. TITLE & ROUTE */}
+                              <td>
+                                <div style={{ fontWeight: '900', color: 'var(--text-main)', fontSize: '0.95rem' }}>
+                                  {reqNoStr}
+                                </div>
+                                <div style={{ fontSize: '0.82rem', color: 'var(--text-sub)', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}>
+                                  <MapPin size={13} color="#0284c7" /> 📍 {pickupStr} ➔ 🎯 <strong style={{ color: '#d97706', fontWeight: '900', fontSize: '0.95rem' }}>{dropStr}</strong>
+                                </div>
+                              </td>
 
-                            {/* 3. CARGO & QTY */}
-                            <td>
-                              {childItems.length > 0 ? (
+                              {/* 3. CARGO & QTY */}
+                              <td>
                                 <div>
-                                  {childItems.map((item, idx) => (
-                                    <div key={item.id || idx} style={{ fontSize: '0.82rem', color: '#ffffff', fontWeight: '700', marginBottom: '2px' }}>
-                                      • {item.product_name || item.material_type} — <strong style={{ color: '#38bdf8' }}>{Number(item.quantity_mt || item.required_qty || 0).toLocaleString()} MT</strong>
+                                  <div style={{ fontWeight: '900', color: '#38bdf8', fontSize: '0.95rem' }}>
+                                    {Number(totalQty).toLocaleString()} MT Total
+                                  </div>
+                                  <div style={{ fontSize: '0.78rem', color: '#34d399', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}>
+                                    📦 Batch ({childItems.length > 0 ? childItems.length : 1} Cargo {childItems.length === 1 ? 'Item' : 'Items'})
+                                  </div>
+                                </div>
+                              </td>
+
+                              {/* 4. TARGET DATE */}
+                              <td>
+                                <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>{req.target_date}</div>
+                              </td>
+
+                              {/* 5. SUBMITTED BIDS */}
+                              <td>
+                                <div>
+                                  <span style={{ fontWeight: '800', color: 'var(--text-main)' }}>{bids.length} Bids</span>
+                                  {lowestRate && (
+                                    <div style={{ fontSize: '0.78rem', color: '#34d399', fontWeight: '700' }}>
+                                      Lowest: ₹{lowestRate}/MT
                                     </div>
-                                  ))}
-                                  <div style={{ fontSize: '0.85rem', fontWeight: '900', color: '#34d399', marginTop: '5px', paddingTop: '4px', borderTop: '1px dashed rgba(255,255,255,0.15)' }}>
-                                    Total: {Number(totalQty).toLocaleString()} MT
-                                  </div>
+                                  )}
                                 </div>
-                              ) : (
-                                <div>
-                                  <div style={{ fontWeight: '800', color: '#38bdf8', fontSize: '0.9rem' }}>
-                                    {Number(totalQty).toLocaleString()} {req.unit || 'MT'}
-                                  </div>
-                                  <div style={{ fontSize: '0.78rem', color: 'var(--text-sub)' }}>
-                                    {req.material_type || req.product_name || 'General Cargo'}
-                                  </div>
+                              </td>
+
+                              {/* 6. BIDDING & APPROVAL REPORT */}
+                              <td>
+                                {(() => {
+                                  const alloc = (db.allocations || []).find((a) => String(a.rate_request_id) === String(req.id) || String(a.rate_request_id) === String(reqNoStr));
+                                  const transporter = alloc ? (db.transporters || []).find((t) => t.id === alloc.transporter_id) : null;
+
+                                  return (
+                                    <div>
+                                      {alloc ? (
+                                        <div style={{ fontSize: '0.78rem', color: '#34d399', fontWeight: '900' }}>
+                                          🏆 Approved: {transporter?.company_name || 'Transporter'}
+                                        </div>
+                                      ) : bids.length > 0 ? (
+                                        <div style={{ fontSize: '0.78rem', color: '#38bdf8', fontWeight: '800' }}>
+                                          📥 {bids.length} Transporter Quote(s)
+                                        </div>
+                                      ) : (
+                                        <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                                          ⏳ Awaiting Quotes
+                                        </div>
+                                      )}
+                                      <button
+                                        type="button"
+                                        onClick={() => setSelectedAuditReportModal(req)}
+                                        className="btn btn-secondary"
+                                        style={{ padding: '3px 8px', fontSize: '0.72rem', marginTop: '4px', border: '1px solid #38bdf8', color: '#38bdf8', borderRadius: '6px' }}
+                                      >
+                                        📋 Audit Log
+                                      </button>
+                                    </div>
+                                  );
+                                })()}
+                              </td>
+
+                              {/* 7. STATUS */}
+                              <td>
+                                <span className={`badge ${req.status === 'Awarded' ? 'badge-awarded' : 'badge-open'}`}>
+                                  {req.status === 'Awarded' ? '✓ Awarded' : 'Open for Bids'}
+                                </span>
+                              </td>
+
+                              {/* 8. ACTIONS */}
+                              <td style={{ textAlign: 'right' }}>
+                                <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleBatchExpand(reqNoStr)}
+                                    className="btn btn-primary"
+                                    style={{
+                                      background: isExpanded ? 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)' : 'linear-gradient(135deg, #0284c7 0%, #38bdf8 100%)',
+                                      border: '1.5px solid #7dd3fc',
+                                      padding: '6px 14px',
+                                      fontSize: '0.8rem',
+                                      fontWeight: '900',
+                                      borderRadius: '8px',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '6px',
+                                      cursor: 'pointer',
+                                      boxShadow: '0 0 12px rgba(2, 132, 199, 0.4)'
+                                    }}
+                                  >
+                                    {isExpanded ? `📂 Close Batch 🔼` : `📂 Open Batch (${childItems.length > 0 ? childItems.length : 1} Items) 🔽`}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setSelectedRequestForParticularReport(req)}
+                                    className="btn"
+                                    style={{
+                                      padding: '6px 12px',
+                                      fontSize: '0.78rem',
+                                      fontWeight: '800',
+                                      borderRadius: '8px',
+                                      border: '1px solid #059669',
+                                      color: '#059669',
+                                      background: 'rgba(5, 150, 105, 0.1)',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '4px'
+                                    }}
+                                    title="Print Particular Bid Audit Report & PDF"
+                                  >
+                                    <FileText size={14} /> Particular Report
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setSelectedRequestForComparison(req)}
+                                    className="btn btn-primary"
+                                    style={{ padding: '6px 12px', fontSize: '0.78rem', fontWeight: '800', borderRadius: '8px' }}
+                                  >
+                                    <TrendingDown size={14} /> Compare Rates ({bids.length})
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenEditModal(req)}
+                                    className="btn btn-secondary"
+                                    style={{ padding: '6px 10px', fontSize: '0.78rem', border: '1px solid #38bdf8', color: '#38bdf8', borderRadius: '8px' }}
+                                    title="Edit requirement details"
+                                  >
+                                    <Edit size={14} />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteRequirement(req)}
+                                    className="btn btn-danger"
+                                    style={{ padding: '6px 10px', fontSize: '0.78rem', borderRadius: '8px' }}
+                                    title="Delete requirement"
+                                  >
+                                    <Trash2 size={14} />
+                                  </button>
                                 </div>
-                              )}
-                            </td>
+                              </td>
+                            </tr>
 
-                            {/* 4. TARGET DATE */}
-                            <td>
-                              <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>{req.target_date}</div>
-                            </td>
+                            {/* 2. EXPANDED SUB-ITEMS ACCORDION DRAWER CONTAINER */}
+                            {isExpanded && (
+                              <tr key={`expanded_${req.id}`}>
+                                <td colSpan="8" style={{ padding: '16px 20px 24px 20px', background: '#0f172a', borderBottom: '2px solid #0284c7' }}>
+                                  <div style={{
+                                    border: '1.5px solid #0284c7',
+                                    borderRadius: '16px',
+                                    padding: '20px 22px',
+                                    background: '#1e293b',
+                                    boxShadow: '0 10px 30px rgba(2, 132, 199, 0.25)'
+                                  }}>
+                                    {/* Drawer Header Toolbar */}
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px', borderBottom: '1.5px solid rgba(255,255,255,0.1)', paddingBottom: '14px', flexWrap: 'wrap', gap: '14px' }}>
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                        <div style={{ background: '#0284c7', color: '#ffffff', padding: '8px 12px', borderRadius: '10px' }}>
+                                          <FolderOpen size={22} color="#ffffff" />
+                                        </div>
+                                        <div>
+                                          <div style={{ fontSize: '1.05rem', fontWeight: '900', color: '#ffffff', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                            <span>📂 BATCH FOLDER CONTENTS:</span>
+                                            <span style={{ fontFamily: 'monospace', color: '#38bdf8', background: 'rgba(56, 189, 248, 0.15)', border: '1.5px solid #38bdf8', padding: '2px 10px', borderRadius: '8px', fontSize: '0.92rem', fontWeight: '900' }}>
+                                              {reqNoStr}
+                                            </span>
+                                          </div>
+                                          <div style={{ fontSize: '0.8rem', color: '#94a3b8', fontWeight: '700', marginTop: '2px' }}>
+                                            Showing all {childItems.length > 0 ? childItems.length : 1} sub-indents ({reqNoStr}/01 to {reqNoStr}/{(childItems.length > 0 ? childItems.length : 1).toString().padStart(2, '0')})
+                                          </div>
+                                        </div>
+                                      </div>
 
-                            {/* 5. SUBMITTED BIDS */}
-                            <td>
-                              <div>
-                                <span style={{ fontWeight: '800', color: 'var(--text-main)' }}>{bids.length} Bids</span>
-                                {lowestRate && (
-                                  <div style={{ fontSize: '0.78rem', color: '#34d399', fontWeight: '700' }}>
-                                    Lowest: ₹{lowestRate}/MT
+                                      <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+                                        <span style={{ fontSize: '0.82rem', background: 'rgba(56, 189, 248, 0.15)', color: '#38bdf8', border: '1px solid rgba(56, 189, 248, 0.4)', padding: '5px 12px', borderRadius: '20px', fontWeight: '900' }}>
+                                          📍 {pickupStr} ➔ 🎯 <strong style={{ color: '#fbbf24', fontWeight: '900' }}>{dropStr}</strong>
+                                        </span>
+                                        <span style={{ fontSize: '0.82rem', background: 'rgba(52, 211, 153, 0.15)', color: '#34d399', border: '1px solid rgba(52, 211, 153, 0.4)', padding: '5px 12px', borderRadius: '20px', fontWeight: '900' }}>
+                                          ⚖️ {Number(totalQty).toLocaleString()} MT Total
+                                        </span>
+                                        <button
+                                          type="button"
+                                          onClick={() => toggleBatchExpand(reqNoStr)}
+                                          className="btn btn-primary"
+                                          style={{
+                                            background: '#0284c7',
+                                            border: 'none',
+                                            padding: '6px 14px',
+                                            fontSize: '0.8rem',
+                                            borderRadius: '10px',
+                                            fontWeight: '900',
+                                            color: '#ffffff',
+                                            cursor: 'pointer'
+                                          }}
+                                        >
+                                          📂 Close Batch 🔼
+                                        </button>
+                                      </div>
+                                    </div>
+
+                                    {/* Sub-Items Table */}
+                                    <div style={{ maxHeight: '80vh', overflowY: 'auto', borderRadius: '12px', border: '1px solid rgba(255, 255, 255, 0.1)' }}>
+                                      <table className="custom-table" style={{ width: '100%', margin: 0, background: '#0f172a' }}>
+                                        <thead>
+                                          <tr style={{ background: '#1e293b' }}>
+                                            <th style={{ color: '#f8fafc', padding: '12px 16px', fontSize: '0.78rem', fontWeight: '900', borderBottom: '2px solid #334155' }}>REQUISITION CODE</th>
+                                            <th style={{ color: '#f8fafc', padding: '12px 16px', fontSize: '0.78rem', fontWeight: '900', borderBottom: '2px solid #334155' }}>ROUTE / LOCATION</th>
+                                            <th style={{ color: '#f8fafc', padding: '12px 16px', fontSize: '0.78rem', fontWeight: '900', borderBottom: '2px solid #334155' }}>PRODUCT & CARGO</th>
+                                            <th style={{ color: '#f8fafc', padding: '12px 16px', fontSize: '0.78rem', fontWeight: '900', borderBottom: '2px solid #334155' }}>QUANTITY (MT)</th>
+                                            <th style={{ color: '#f8fafc', padding: '12px 16px', fontSize: '0.78rem', fontWeight: '900', borderBottom: '2px solid #334155' }}>TARGET DATE</th>
+                                            <th style={{ color: '#f8fafc', padding: '12px 16px', fontSize: '0.78rem', fontWeight: '900', borderBottom: '2px solid #334155' }}>STATUS</th>
+                                          </tr>
+                                        </thead>
+                                        <tbody>
+                                          {(childItems.length > 0 ? childItems : [req]).map((item, subIdx) => {
+                                            const subCode = (childItems.length > 1) ? `${reqNoStr}/${(subIdx + 1).toString().padStart(2, '0')}` : reqNoStr;
+                                            return (
+                                              <tr key={item.id || subIdx} style={{ background: subIdx % 2 === 0 ? '#0f172a' : '#1e293b', borderBottom: '1px solid rgba(255, 255, 255, 0.05)' }}>
+                                                <td style={{ padding: '12px 16px' }}>
+                                                  <span style={{
+                                                    fontFamily: 'monospace',
+                                                    fontSize: '0.82rem',
+                                                    fontWeight: '900',
+                                                    color: '#38bdf8',
+                                                    background: 'rgba(56, 189, 248, 0.15)',
+                                                    border: '1px solid rgba(56, 189, 248, 0.35)',
+                                                    padding: '4px 10px',
+                                                    borderRadius: '6px'
+                                                  }}>
+                                                    {subCode}
+                                                  </span>
+                                                </td>
+
+                                                <td style={{ padding: '12px 16px' }}>
+                                                  <div style={{ fontSize: '0.82rem', color: '#cbd5e1', fontWeight: '700' }}>
+                                                    📍 {item.pickup_origin || pickupStr} ➔ 🎯 <strong style={{ color: '#fbbf24' }}>{item.drop_location || dropStr}</strong>
+                                                  </div>
+                                                </td>
+
+                                                <td style={{ padding: '12px 16px' }}>
+                                                  <div style={{ fontSize: '0.88rem', fontWeight: '900', color: '#ffffff' }}>
+                                                    {item.product_name || item.material_type || 'General Cargo'}
+                                                  </div>
+                                                </td>
+
+                                                <td style={{ padding: '12px 16px' }}>
+                                                  <div style={{ fontSize: '0.9rem', fontWeight: '900', color: '#38bdf8' }}>
+                                                    {Number(item.quantity_mt || item.required_qty || 0).toLocaleString()} {item.unit || 'MT'}
+                                                  </div>
+                                                </td>
+
+                                                <td style={{ padding: '12px 16px' }}>
+                                                  <div style={{ fontSize: '0.85rem', color: '#94a3b8', fontWeight: '700' }}>{req.target_date || '-'}</div>
+                                                </td>
+
+                                                <td style={{ padding: '12px 16px' }}>
+                                                  <span className="badge badge-open" style={{ fontSize: '0.75rem' }}>Active</span>
+                                                </td>
+                                              </tr>
+                                            );
+                                          })}
+                                        </tbody>
+                                      </table>
+                                    </div>
                                   </div>
-                                )}
-                              </div>
-                            </td>
-
-                            {/* 6. BIDDING & APPROVAL REPORT */}
-                            <td>
-                              {(() => {
-                                const alloc = (db.allocations || []).find((a) => String(a.rate_request_id) === String(req.id) || String(a.rate_request_id) === String(reqNoStr));
-                                const transporter = alloc ? (db.transporters || []).find((t) => t.id === alloc.transporter_id) : null;
-
-                                return (
-                                  <div>
-                                    {alloc ? (
-                                      <div style={{ fontSize: '0.78rem', color: '#34d399', fontWeight: '900' }}>
-                                        🏆 Approved: {transporter?.company_name || 'Transporter'}
-                                      </div>
-                                    ) : bids.length > 0 ? (
-                                      <div style={{ fontSize: '0.78rem', color: '#38bdf8', fontWeight: '800' }}>
-                                        📥 {bids.length} Transporter Quote(s)
-                                      </div>
-                                    ) : (
-                                      <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                                        ⏳ Awaiting Quotes
-                                      </div>
-                                    )}
-                                    <button
-                                      type="button"
-                                      onClick={() => setSelectedAuditReportModal(req)}
-                                      className="btn btn-secondary"
-                                      style={{ padding: '3px 8px', fontSize: '0.72rem', marginTop: '4px', border: '1px solid #38bdf8', color: '#38bdf8', borderRadius: '6px' }}
-                                    >
-                                      📋 Audit Log
-                                    </button>
-                                  </div>
-                                );
-                              })()}
-                            </td>
-
-                            {/* 7. STATUS */}
-                            <td>
-                              <span className={`badge ${req.status === 'Awarded' ? 'badge-awarded' : 'badge-open'}`}>
-                                {req.status === 'Awarded' ? '✓ Awarded' : 'Open for Bids'}
-                              </span>
-                            </td>
-
-                            {/* 8. ACTIONS */}
-                            <td style={{ textAlign: 'right' }}>
-                              <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
-                                <button
-                                  type="button"
-                                  onClick={() => setSelectedRequestForParticularReport(req)}
-                                  className="btn"
-                                  style={{
-                                    padding: '6px 12px',
-                                    fontSize: '0.78rem',
-                                    fontWeight: '800',
-                                    borderRadius: '8px',
-                                    border: '1px solid #059669',
-                                    color: '#059669',
-                                    background: 'rgba(5, 150, 105, 0.1)',
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    gap: '4px'
-                                  }}
-                                  title="Print Particular Bid Audit Report & PDF"
-                                >
-                                  <FileText size={14} /> Particular Report
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => setSelectedRequestForComparison(req)}
-                                  className="btn btn-primary"
-                                  style={{ padding: '6px 12px', fontSize: '0.78rem', fontWeight: '800', borderRadius: '8px' }}
-                                >
-                                  <TrendingDown size={14} /> Compare Rates ({bids.length})
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
+                                </td>
+                              </tr>
+                            )}
+                          </React.Fragment>
                         );
                       });
                     })()}
