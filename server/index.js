@@ -1,4 +1,4 @@
-// Hostinger Passenger Process Reload Signal v1.1.4 - Sub-Indent Item Route Ordering Fix
+// Hostinger Passenger Process Reload Signal v1.1.5 - Unblocked Batch Deletion CASCADE Fix
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
