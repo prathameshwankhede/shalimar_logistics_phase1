@@ -1368,7 +1368,7 @@ router.get('/backup/full', authenticateToken, requireRole('admin'), async (req, 
         const [createRows] = await pool.query(`SHOW CREATE TABLE \`${tbl}\``);
         const rawCreateSql = createRows[0]['Create Table'] || createRows[0]['CREATE TABLE'];
         if (rawCreateSql) {
-          const createSql = rawCreateSql.replace(/^CREATE TABLE/i, 'CREATE TABLE IF NOT EXISTS');
+          const createSql = rawCreateSql.replace(/^CREATE TABLE\s*/i, 'CREATE TABLE IF NOT EXISTS ');
           dumpLines.push(`-- Table structure for \`${tbl}\``);
           dumpLines.push(`${createSql};`);
           dumpLines.push(``);
