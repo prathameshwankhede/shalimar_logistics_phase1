@@ -1557,7 +1557,7 @@ router.post('/backup/restore', authenticateToken, requireRole('admin'), async (r
 });
 
 // -------------------------------------------------------------
-// GET /api/backup/report — Export Operational Report Data (Admin Only)
+// GET /api/backup/report — Export Operational Report Data & Verification Table (Admin Only)
 // -------------------------------------------------------------
 router.get('/backup/report', authenticateToken, requireRole('admin'), async (req, res) => {
   try {
@@ -1579,11 +1579,31 @@ router.get('/backup/report', authenticateToken, requireRole('admin'), async (req
       });
     }
 
+    const [transporters] = await pool.query('SELECT id, company_name, code, contact_person, mobile, email, status FROM transporters').catch(() => [[]]);
+    const [companyUnits] = await pool.query('SELECT id, company_name, name, city, state, pickup_origin, drop_location FROM company_units_plants').catch(() => [[]]);
+    const [products] = await pool.query('SELECT id, name, category, hsn_code, default_unit FROM products').catch(() => [[]]);
+    const [reqs] = await pool.query('SELECT id, req_no, title, pickup_origin, drop_location, target_date, status, created_at FROM transport_requirements').catch(() => [[]]);
+    const [items] = await pool.query('SELECT id, requirement_id, product_name, quantity_mt, unit FROM transport_requirement_items').catch(() => [[]]);
+
     return res.json({
       success: true,
       report_generated_at: new Date().toISOString(),
       database: 'u704836459_shalimar_logi',
-      tables: tableReports
+      tables: tableReports,
+      summary: {
+        total_transporters: transporters.length,
+        total_company_units: companyUnits.length,
+        total_products: products.length,
+        total_transport_requirements: reqs.length,
+        total_requirement_items: items.length
+      },
+      data: {
+        transporters,
+        company_units_plants: companyUnits,
+        products,
+        transport_requirements: reqs,
+        transport_requirement_items: items
+      }
     });
   } catch (err) {
     console.error('❌ GET /api/backup/report error:', err.message);
