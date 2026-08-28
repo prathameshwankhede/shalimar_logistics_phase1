@@ -481,6 +481,93 @@ router.post('/transporters', authenticateToken, requireRole('admin'), async (req
 });
 
 // -------------------------------------------------------------
+// POST /api/transporters/status — Deactivate / Activate Transporter (Admin Only)
+// -------------------------------------------------------------
+router.post('/transporters/status', authenticateToken, requireRole('admin'), async (req, res) => {
+  const { id, status } = req.body;
+  if (!id || !status) {
+    return res.status(400).json({ success: false, error: 'Transporter id and status are required.' });
+  }
+
+  const validStatuses = ['Active', 'Inactive', 'Suspended', 'Deactivated'];
+  const formattedStatus = status.charAt(0).toUpperCase() + status.slice(1).toLowerCase();
+  const nextStatus = validStatuses.includes(formattedStatus) ? formattedStatus : (status === 'inactive' ? 'Inactive' : 'Active');
+
+  try {
+    const [result] = await pool.query(
+      `UPDATE transporters SET status = ?, updated_at = NOW() WHERE id = ? OR code = ? OR username = ?`,
+      [nextStatus, id, id, id]
+    );
+
+    await pool.query(
+      `UPDATE users SET status = ? WHERE transporter_id = ? OR username = ?`,
+      [nextStatus, id, id]
+    ).catch(() => {});
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ success: false, error: 'Transporter record not found.' });
+    }
+
+    return res.json({
+      success: true,
+      affectedRows: result.affectedRows,
+      status: nextStatus,
+      message: `Transporter status updated to ${nextStatus} successfully.`
+    });
+  } catch (err) {
+    console.error('❌ MySQL Transporter Status Error:', err.message);
+    return res.status(500).json({ success: false, error: { code: 'DATABASE_ERROR', message: err.message } });
+  }
+});
+
+// -------------------------------------------------------------
+// POST /api/transporters/reset-password — Reset Transporter Password (Admin Only)
+// -------------------------------------------------------------
+router.post('/transporters/reset-password', authenticateToken, requireRole('admin'), async (req, res) => {
+  const { id, password } = req.body;
+  if (!id) {
+    return res.status(400).json({ success: false, error: 'Transporter id is required.' });
+  }
+
+  let tempPassword = password;
+  if (!tempPassword || tempPassword.trim().length === 0) {
+    const randomPin = Math.floor(1000 + Math.random() * 9000);
+    tempPassword = `Shalimar#${randomPin}`;
+  } else {
+    tempPassword = tempPassword.trim();
+  }
+
+  try {
+    const salt = await bcrypt.genSalt(10);
+    const passwordHash = await bcrypt.hash(tempPassword, salt);
+
+    const [result] = await pool.query(
+      `UPDATE transporters SET password_hash = ?, updated_at = NOW() WHERE id = ? OR code = ? OR username = ?`,
+      [passwordHash, id, id, id]
+    );
+
+    await pool.query(
+      `UPDATE users SET password_hash = ? WHERE transporter_id = ? OR username = ?`,
+      [passwordHash, id, id]
+    ).catch(() => {});
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ success: false, error: 'Transporter record not found.' });
+    }
+
+    return res.json({
+      success: true,
+      affectedRows: result.affectedRows,
+      tempPassword,
+      message: `Password reset successfully.`
+    });
+  } catch (err) {
+    console.error('❌ MySQL Transporter Password Reset Error:', err.message);
+    return res.status(500).json({ success: false, error: { code: 'DATABASE_ERROR', message: err.message } });
+  }
+});
+
+// -------------------------------------------------------------
 // POST /api/contracts — Dedicated Contract Allocation Endpoint (Admin Only)
 // -------------------------------------------------------------
 router.post('/contracts', authenticateToken, requireRole('admin'), async (req, res) => {

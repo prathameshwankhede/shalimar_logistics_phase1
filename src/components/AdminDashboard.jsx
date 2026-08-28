@@ -4,7 +4,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { createRateRequest } from '../api/rateRequestApi';
-import { createTransporter } from '../api/transporterApi';
+import { createTransporter, updateTransporterStatus, resetTransporterPassword } from '../api/transporterApi';
 import { createProduct } from '../api/masterDataApi';
 import { CreateRequirementModal } from './CreateRequirementModal';
 import { TransporterManagerModal } from './TransporterManagerModal';
@@ -681,32 +681,41 @@ export const AdminDashboard = () => {
     });
   };
 
-  const handleToggleTransporterStatus = (transporter) => {
-    const isCurrentlyActive = transporter.status !== 'Suspended' && transporter.status !== 'Deactivated';
-    const newStatus = isCurrentlyActive ? 'Suspended' : 'Active';
+  const handleToggleTransporterStatus = async (transporter) => {
+    const isCurrentlyActive = transporter.status !== 'Suspended' && transporter.status !== 'Deactivated' && transporter.status !== 'Inactive';
+    const nextStatus = isCurrentlyActive ? 'Deactivated' : 'Active';
 
-    const updatedTransporters = (db.transporters || []).map((t) =>
-      t.id === transporter.id ? { ...t, status: newStatus } : t
+    const confirmed = window.confirm(
+      `Are you sure you want to ${isCurrentlyActive ? 'deactivate' : 'activate'} transporter '${transporter.company_name}'?`
     );
+    if (!confirmed) return;
 
-    const updatedDb = addSecurityLog(
-      { ...db, transporters: updatedTransporters },
-      `TOGGLE_TRANSPORTER_STATUS (${transporter.company_name} -> ${newStatus})`,
-      currentUser?.username || 'admin',
-      'admin',
-      `TRANSPORTER_${(newStatus || "").toUpperCase()} 🛡️`
-    );
+    try {
+      const res = await updateTransporterStatus(transporter.id, nextStatus);
+      if (res && res.error) {
+        alert(`❌ Failed to update status: ${typeof res.error === 'string' ? res.error : res.error.message || 'Server error'}`);
+        return;
+      }
 
-    createTransporter({
-      id: transporter.id,
-      company_name: transporter.company_name,
-      code: transporter.code || transporter.id,
-      status: newStatus
-    }).catch((err) => console.error('Transporter status API error:', err.message));
+      const updatedTransporters = (db.transporters || []).map((t) =>
+        t.id === transporter.id ? { ...t, status: nextStatus } : t
+      );
 
-    updateDB(updatedDb);
-    setArchiveNotice(`🛡️ Transporter '${transporter.company_name}' status set to ${newStatus}!`);
-    setTimeout(() => setArchiveNotice(''), 4000);
+      const updatedDb = addSecurityLog(
+        { ...db, transporters: updatedTransporters },
+        `TOGGLE_TRANSPORTER_STATUS (${transporter.company_name} -> ${nextStatus})`,
+        currentUser?.username || 'admin',
+        'admin',
+        `TRANSPORTER_${(nextStatus || "").toUpperCase()} 🛡️`
+      );
+
+      updateDB(updatedDb);
+      setArchiveNotice(`🛡️ Transporter '${transporter.company_name}' status set to ${nextStatus}!`);
+      setTimeout(() => setArchiveNotice(''), 4000);
+    } catch (err) {
+      console.error('Transporter status API error:', err.message);
+      alert(`❌ Failed to update transporter status: ${err.message}`);
+    }
   };
 
   const handleDeleteProductMaster = (prod) => {
@@ -1282,33 +1291,41 @@ export const AdminDashboard = () => {
   };
 
   // 🔑 Submit Reset Password
-  const handleSaveResetPassword = (e) => {
+  const handleSaveResetPassword = async (e) => {
     e.preventDefault();
     if (!resetPassTransporter) return;
 
-    const userAcc = (db?.users || []).find((u) => u.transporter_id === resetPassTransporter.id || u.username === resetPassTransporter.username);
-    if (!userAcc) {
-      alert(`User account not found for transporter ${resetPassTransporter.company_name}`);
-      return;
+    try {
+      const res = await resetTransporterPassword(resetPassTransporter.id, newTransporterPassword);
+      if (res && res.error) {
+        alert(`❌ Password Reset Failed: ${typeof res.error === 'string' ? res.error : res.error.message || 'Server error'}`);
+        return;
+      }
+
+      const tempPassUsed = res.tempPassword || newTransporterPassword;
+
+      const userAcc = (db?.users || []).find((u) => u.transporter_id === resetPassTransporter.id || u.username === resetPassTransporter.username);
+      const updatedUsers = (db?.users || []).map((u) =>
+        userAcc && u.id === userAcc.id ? { ...u, password: tempPassUsed } : u
+      );
+
+      const updatedDb = addSecurityLog(
+        { ...db, users: updatedUsers },
+        `ADMIN_RESET_TRANSPORTER_PASSWORD (${resetPassTransporter.username || resetPassTransporter.code})`,
+        currentUser?.username || 'admin',
+        'admin',
+        'PASSWORD_CHANGED 🔑'
+      );
+
+      updateDB(updatedDb);
+      setArchiveNotice(`🔑 Success! Password for ${resetPassTransporter.company_name} updated to: "${tempPassUsed}"`);
+      setResetPassTransporter(null);
+
+      setTimeout(() => setArchiveNotice(''), 8000);
+    } catch (err) {
+      console.error('Password reset API error:', err.message);
+      alert(`❌ Failed to reset transporter password: ${err.message}`);
     }
-
-    const updatedUsers = (db?.users || []).map((u) =>
-      u.id === userAcc.id ? { ...u, password: newTransporterPassword } : u
-    );
-
-    const updatedDb = addSecurityLog(
-      { ...db, users: updatedUsers },
-      `ADMIN_RESET_TRANSPORTER_PASSWORD (${userAcc.username})`,
-      currentUser?.username || 'admin',
-      'admin',
-      'PASSWORD_CHANGED 🔑'
-    );
-
-    updateDB(updatedDb);
-    setArchiveNotice(`🔑 Success! Password for ${resetPassTransporter.company_name} (${userAcc.username}) updated to: "${newTransporterPassword}"`);
-    setResetPassTransporter(null);
-
-    setTimeout(() => setArchiveNotice(''), 6000);
   };
 
 
