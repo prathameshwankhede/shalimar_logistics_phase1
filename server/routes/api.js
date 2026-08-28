@@ -1270,9 +1270,7 @@ router.delete('/transporters/:id', authenticateToken, requireRole('admin'), asyn
         [exactId, matchedTransporter.company_name]
       );
     } catch (bidErr) {
-      if (bidErr.code !== 'ER_NO_SUCH_TABLE') {
-        console.warn('Notice: rate_submissions check skipped:', bidErr.message);
-      }
+      console.warn('Notice: rate_submissions check skipped:', bidErr.message);
     }
     if (bidCheck && bidCheck.length > 0) {
       return res.status(409).json({
@@ -1289,9 +1287,7 @@ router.delete('/transporters/:id', authenticateToken, requireRole('admin'), asyn
         [exactId]
       );
     } catch (contractErr) {
-      if (contractErr.code !== 'ER_NO_SUCH_TABLE') {
-        console.warn('Notice: contracts check skipped:', contractErr.message);
-      }
+      console.warn('Notice: contracts check skipped:', contractErr.message);
     }
     if (contractCheck && contractCheck.length > 0) {
       return res.status(409).json({

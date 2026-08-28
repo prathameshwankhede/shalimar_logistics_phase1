@@ -59,9 +59,10 @@ async function runEndToEndVerification() {
     throw new Error('❌ Test Transporter TEST001 was not found after creation.');
   }
 
-  // 4. DELETE /api/transporters/<exactId>
-  console.log(`\n🗑️ Step 3: Executing DELETE /api/transporters/${testId}...`);
-  const delRes = await fetch(`${BASE_URL}/api/transporters/${testId}`, {
+  // 4. DELETE /api/transporters/<foundTest1.id>
+  const targetDeleteId = foundTest1.id;
+  console.log(`\n🗑️ Step 3: Executing DELETE /api/transporters/${targetDeleteId}...`);
+  const delRes = await fetch(`${BASE_URL}/api/transporters/${targetDeleteId}`, {
     method: 'DELETE',
     headers: {
       'Content-Type': 'application/json',
