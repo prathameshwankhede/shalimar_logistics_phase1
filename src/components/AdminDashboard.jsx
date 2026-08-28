@@ -1879,15 +1879,12 @@ export const AdminDashboard = () => {
 
                           const optionsList = Array.from(
                             new Set([
-                              ...companyUnits.flatMap((c) => [c.pickup_origin, c.pickup_location_name, c.company_name, c.name, c.city]).filter(Boolean),
-                              ...reqs.flatMap((r) => [r.pickup_origin, r.origin_city]).filter(Boolean),
-                              ...reqItems.map((i) => i.pickup_origin).filter(Boolean),
-                              ...cities.map((c) => c.city || c.name).filter(Boolean)
+                              ...companyUnits.flatMap((c) => [c.pickup_origin, c.pickup_location_name, c.company_name, c.name, c.city]).filter(Boolean)
                             ].map((val) => String(val).trim()).filter((val) => val.length > 0))
                           );
 
                           if (optionsList.length === 0) {
-                            return <option value="">-- No Pickup Origin in Master (Add in Master Directory) --</option>;
+                            return <option value="">-- No Pickup Origin in Master Directory (Add in Master Directory) --</option>;
                           }
                           return [
                             <option key="master_orig_default" value="">-- Select Pickup Origin (From Master) --</option>,
@@ -1990,16 +1987,10 @@ export const AdminDashboard = () => {
                           >
                             {(() => {
                               const companyUnits = db.company_units_plants || db.company_units || db.company_masters || [];
-                              const reqs = db.transport_requirements || db.rate_requests || [];
-                              const reqItems = db.transport_requirement_items || [];
-                              const cities = db.city_masters || db.cities || [];
 
                               const dropList = Array.from(
                                 new Set([
-                                  ...companyUnits.flatMap((c) => [c.drop_location, c.drop_location_name, c.city, c.district]).filter(Boolean),
-                                  ...reqs.flatMap((r) => [r.drop_location, r.dest_city]).filter(Boolean),
-                                  ...reqItems.map((i) => i.drop_location).filter(Boolean),
-                                  ...cities.map((c) => c.city || c.name).filter(Boolean)
+                                  ...companyUnits.flatMap((c) => [c.drop_location, c.drop_location_name, c.company_name, c.name, c.city, c.registered_address]).filter(Boolean)
                                 ].map((val) => String(val).trim()).filter((val) => val.length > 0))
                               );
 
@@ -2031,9 +2022,7 @@ export const AdminDashboard = () => {
                               const prods = Array.from(
                                 new Set([
                                   ...(db.products || []).map((p) => p.name).filter(Boolean),
-                                  ...(db.product_masters || []).map((p) => p.name).filter(Boolean),
-                                  ...(db.transport_requirement_items || []).map((i) => i.product_name).filter(Boolean),
-                                  ...(db.transport_requirements || db.rate_requests || []).flatMap((r) => [r.product_name, r.material_type]).filter(Boolean)
+                                  ...(db.product_masters || []).map((p) => p.name).filter(Boolean)
                                 ].map((val) => String(val).trim()).filter((val) => val.length > 0))
                               );
 
