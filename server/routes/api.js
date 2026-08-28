@@ -1475,7 +1475,7 @@ router.post('/backup/restore', authenticateToken, requireRole('admin'), async (r
 
     for (const tbl of childFirstClearSequence) {
       if (existingTableNames.includes(tbl)) {
-        await conn.query(`DROP TABLE IF EXISTS \`${tbl}\``).catch(() => {});
+        await conn.query(`DELETE FROM \`${tbl}\``).catch(() => {});
       }
     }
 
@@ -1497,6 +1497,9 @@ router.post('/backup/restore', authenticateToken, requireRole('admin'), async (r
         .trim();
 
       if (cleanStmt.length > 0) {
+        if (/^DROP TABLE/i.test(cleanStmt)) {
+          continue;
+        }
         await conn.query(cleanStmt);
         executedCount++;
       }

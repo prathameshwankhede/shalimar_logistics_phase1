@@ -91,7 +91,10 @@ async function runTrueSnapshotVerification() {
   // Fetch Table Counts BEFORE restore
   const prodsBefore = ((await (await fetch(`${BASE_URL}/api/products`, { headers: { 'Authorization': `Bearer ${token}` } })).json()).products || []).length;
   const transBefore = ((await (await fetch(`${BASE_URL}/api/transporters`, { headers: { 'Authorization': `Bearer ${token}` } })).json()).transporters || []).length;
-  const reqsBefore = ((await (await fetch(`${BASE_URL}/api/rate-requests`, { headers: { 'Authorization': `Bearer ${token}` } })).json()).requests || []).length;
+  const reqsJsonBefore = await (await fetch(`${BASE_URL}/api/rate-requests`, { headers: { 'Authorization': `Bearer ${token}` } })).json();
+  const reqsBefore = (reqsJsonBefore.rate_requests || reqsJsonBefore.requests || []).length;
+
+  console.log('  • Backup .sql Header Lines:\n', sqlDumpText.split('\n').slice(0, 25).join('\n'));
 
   // STEP 3: Create Extra Post-Backup Records
   console.log('\n🚀 STEP 3: Creating Post-Backup Extra Records in MySQL (Products C & D, Requirement B, Transporter B, Unit B)...');
@@ -191,9 +194,9 @@ async function runTrueSnapshotVerification() {
   // Company Units Verification
   const unitsRes = await fetch(`${BASE_URL}/api/company-units`, { headers: { 'Authorization': `Bearer ${token}` } });
   const unitsJson = await unitsRes.json();
-  const units = unitsJson.units || unitsJson.company_units_plants || [];
-  const hasUnitA = units.some(u => u.id === unitAId || u.company_name === 'COMPANY UNIT SNAP A');
-  const hasUnitB = units.some(u => u.id === unitBId || u.company_name === 'COMPANY UNIT SNAP B');
+  const units = unitsJson.units || unitsJson.company_units_plants || unitsJson.data || [];
+  const hasUnitA = units.some(u => u.id === unitAId || u.name === 'COMPANY UNIT SNAP A' || u.company_name === 'COMPANY UNIT SNAP A');
+  const hasUnitB = units.some(u => u.id === unitBId || u.name === 'COMPANY UNIT SNAP B' || u.company_name === 'COMPANY UNIT SNAP B');
 
   console.log(`  • Company Unit A (Initial): ${hasUnitA ? 'EXISTS ✅' : 'MISSING ❌'}`);
   console.log(`  • Company Unit B (Extra): ${!hasUnitB ? 'DOES NOT EXIST ✅' : 'EXISTS ❌'}`);
