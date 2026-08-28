@@ -1326,7 +1326,7 @@ router.delete('/transporters/:id', authenticateToken, requireRole('admin'), asyn
 });
 
 // -------------------------------------------------------------
-// GET /api/backup/full — Full Native MySQL Database Backup (.sql) (Admin Only)
+// GET /api/backup/full — Full Native MySQL Database Snapshot (.sql) (Admin Only)
 // -------------------------------------------------------------
 router.get('/backup/full', authenticateToken, requireRole('admin'), async (req, res) => {
   try {
@@ -1353,7 +1353,7 @@ router.get('/backup/full', authenticateToken, requireRole('admin'), async (req, 
     const dumpLines = [];
     dumpLines.push(`-- ==================================================`);
     dumpLines.push(`-- SHALIMAR LOGISTICS / TRANSFLOW PHASE 1`);
-    dumpLines.push(`-- Hostinger Native MySQL Database Backup (.sql)`);
+    dumpLines.push(`-- Hostinger Native MySQL Full Database Snapshot (.sql)`);
     dumpLines.push(`-- Database: u704836459_shalimar_logi`);
     dumpLines.push(`-- Export Date: ${new Date().toISOString()}`);
     dumpLines.push(`-- ==================================================`);
@@ -1368,9 +1368,9 @@ router.get('/backup/full', authenticateToken, requireRole('admin'), async (req, 
         const [createRows] = await pool.query(`SHOW CREATE TABLE \`${tbl}\``);
         const rawCreateSql = createRows[0]['Create Table'] || createRows[0]['CREATE TABLE'];
         if (rawCreateSql) {
-          const createSql = rawCreateSql.replace(/^CREATE TABLE\s*/i, 'CREATE TABLE IF NOT EXISTS ');
           dumpLines.push(`-- Table structure for \`${tbl}\``);
-          dumpLines.push(`${createSql};`);
+          dumpLines.push(`DROP TABLE IF EXISTS \`${tbl}\`;`);
+          dumpLines.push(`${rawCreateSql};`);
           dumpLines.push(``);
         }
       } catch (ddlErr) {
@@ -1379,7 +1379,7 @@ router.get('/backup/full', authenticateToken, requireRole('admin'), async (req, 
 
       const [rows] = await pool.query(`SELECT * FROM \`${tbl}\``);
       if (rows && rows.length > 0) {
-        dumpLines.push(`-- Data insert for \`${tbl}\``);
+        dumpLines.push(`-- Data inserts for \`${tbl}\``);
         for (const rowObj of rows) {
           const keys = Object.keys(rowObj);
           const colsStr = keys.map(k => `\`${k}\``).join(', ');
@@ -1393,14 +1393,14 @@ router.get('/backup/full', authenticateToken, requireRole('admin'), async (req, 
             return pool.escape(String(val));
           }).join(', ');
 
-          dumpLines.push(`INSERT INTO \`${tbl}\` (${colsStr}) VALUES (${valsStr}) ON DUPLICATE KEY UPDATE ${keys.map(k => `\`${k}\`=VALUES(\`${k}\`)`).join(', ')};`);
+          dumpLines.push(`INSERT INTO \`${tbl}\` (${colsStr}) VALUES (${valsStr});`);
         }
         dumpLines.push(``);
       }
     }
 
     dumpLines.push(`SET FOREIGN_KEY_CHECKS = 1;`);
-    dumpLines.push(`-- Dump complete`);
+    dumpLines.push(`-- Snapshot Dump Complete`);
 
     const sqlContent = dumpLines.join('\n');
     const filename = `shalimar_mysql_backup_${new Date().toISOString().slice(0, 10)}.sql`;
@@ -1410,12 +1410,12 @@ router.get('/backup/full', authenticateToken, requireRole('admin'), async (req, 
     return res.send(sqlContent);
   } catch (err) {
     console.error('❌ GET /api/backup/full (.sql) error:', err.message);
-    return res.status(500).json({ success: false, message: `MySQL SQL backup failed: ${err.message}` });
+    return res.status(500).json({ success: false, message: `MySQL SQL snapshot failed: ${err.message}` });
   }
 });
 
 // -------------------------------------------------------------
-// POST /api/backup/restore — Restore .sql Backup to MySQL (Admin Only)
+// POST /api/backup/restore — True Full Database Snapshot Restore (.sql) (Admin Only)
 // -------------------------------------------------------------
 router.post('/backup/restore', authenticateToken, requireRole('admin'), async (req, res) => {
   let sqlText = '';
@@ -1434,16 +1434,44 @@ router.post('/backup/restore', authenticateToken, requireRole('admin'), async (r
   const conn = await pool.getConnection();
 
   try {
-    await conn.beginTransaction();
     await conn.query('SET FOREIGN_KEY_CHECKS = 0');
 
-    const rawStatements = sqlText
+    // 1. Discover current database tables & clear operational data before snapshot execution
+    const [existingTablesRows] = await conn.query(
+      "SELECT table_name FROM information_schema.tables WHERE table_schema = DATABASE() AND table_type = 'BASE TABLE'"
+    );
+    const existingTableNames = existingTablesRows.map(r => r.table_name || r.TABLE_NAME);
+
+    const childFirstClearSequence = [
+      'transport_requirement_items',
+      'transport_requirements',
+      'contracts',
+      'rate_submissions',
+      'products',
+      'company_units_plants',
+      'transporters'
+    ];
+
+    for (const tbl of childFirstClearSequence) {
+      if (existingTableNames.includes(tbl)) {
+        await conn.query(`DELETE FROM \`${tbl}\``).catch(err => {
+          console.warn(`Notice clearing ${tbl} before restore:`, err.message);
+        });
+      }
+    }
+
+    if (existingTableNames.includes('users')) {
+      await conn.query("DELETE FROM users WHERE role != 'admin' AND username != 'admin'").catch(() => {});
+    }
+
+    // 2. Parse and execute .sql backup statements
+    const statements = sqlText
       .split(/;(?=\s*(?:--|$|\r?\n))/)
       .map(s => s.trim())
       .filter(s => s.length > 0);
 
     let executedCount = 0;
-    for (const rawStmt of rawStatements) {
+    for (const rawStmt of statements) {
       const cleanStmt = rawStmt
         .split('\n')
         .filter(line => !line.trim().startsWith('--'))
@@ -1451,27 +1479,21 @@ router.post('/backup/restore', authenticateToken, requireRole('admin'), async (r
         .trim();
 
       if (cleanStmt.length > 0) {
-        let finalStmt = cleanStmt;
-        if (/^CREATE TABLE\s+/i.test(finalStmt) && !/CREATE TABLE IF NOT EXISTS/i.test(finalStmt)) {
-          finalStmt = finalStmt.replace(/^CREATE TABLE\s+/i, 'CREATE TABLE IF NOT EXISTS ');
-        }
-        await conn.query(finalStmt);
+        await conn.query(cleanStmt);
         executedCount++;
       }
     }
 
     await conn.query('SET FOREIGN_KEY_CHECKS = 1');
-    await conn.commit();
     conn.release();
 
     return res.json({
       success: true,
       executedStatements: executedCount,
-      message: `MySQL database successfully restored from .sql backup (${executedCount} statements executed).`
+      message: `MySQL database successfully restored to exact .sql snapshot state (${executedCount} statements executed).`
     });
   } catch (err) {
     await conn.query('SET FOREIGN_KEY_CHECKS = 1').catch(() => {});
-    await conn.rollback().catch(() => {});
     conn.release();
     console.error('❌ POST /api/backup/restore (.sql) error:', err.message);
     return res.status(500).json({ success: false, message: `Restore transaction failed: ${err.message}` });
