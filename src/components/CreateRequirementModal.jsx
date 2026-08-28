@@ -9,7 +9,12 @@ export const CreateRequirementModal = ({ isOpen, onClose }) => {
   const { db, updateDB, currentUser, addSecurityLog } = useAuth();
 
   const titleMasters = db.title_masters || [];
-  const cityMasters = db.city_masters || [];
+  const companyUnits = db.company_units_plants || db.company_units || db.company_masters || [];
+  const cityMasters = companyUnits.map((c) => ({
+    id: c.id,
+    city: c.drop_location || c.drop_location_name || c.city || c.company_name || c.name,
+    pin: c.pin_code || c.pincode || c.pin || '440028'
+  }));
 
   // Title Master State
   const [selectedMasterId, setSelectedMasterId] = useState(titleMasters[0]?.id || '');

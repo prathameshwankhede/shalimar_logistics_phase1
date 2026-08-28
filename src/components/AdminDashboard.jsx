@@ -1865,12 +1865,14 @@ export const AdminDashboard = () => {
                         }}
                       >
                         {(() => {
+                          const companyUnits = db.company_units_plants || db.company_units || db.company_masters || [];
                           const optionsList = Array.from(
-                            new Set([
-                              ...(db.company_masters || []).map((c) => c.pickup_location_name || c.name || c.city).filter(Boolean),
-                              ...(db.title_masters || []).map((tm) => tm.origin_city || tm.title).filter(Boolean),
-                              ...(db.city_masters || []).map((c) => c.city).filter(Boolean)
-                            ])
+                            new Set(
+                              companyUnits
+                                .flatMap((c) => [c.pickup_origin, c.pickup_location_name, c.company_name, c.name, c.city])
+                                .filter((val) => val && typeof val === 'string' && val.trim().length > 0)
+                                .map((val) => val.trim())
+                            )
                           );
                           if (optionsList.length === 0) {
                             return <option value="">-- No Pickup Origin in Master (Add in Master Directory) --</option>;
@@ -1975,14 +1977,20 @@ export const AdminDashboard = () => {
                             style={{ fontSize: '0.85rem', height: '42px', border: '1.5px solid rgba(245, 158, 11, 0.8)', color: 'var(--text-main)', borderRadius: '8px', fontWeight: '700', width: '100%', background: 'var(--bg-card)' }}
                           >
                             {(() => {
+                              const companyUnits = db.company_units_plants || db.company_units || db.company_masters || [];
                               const dropList = Array.from(
-                                new Set([
-                                  ...(db.city_masters || []).map((c) => c.city || c.name).filter(Boolean),
-                                  ...(db.cities || []).map((c) => c.name || c.city).filter(Boolean),
-                                  ...(db.company_units || []).map((c) => c.city ? `${c.city} (${c.name})` : c.name).filter(Boolean),
-                                  ...(db.company_masters || []).map((c) => c.drop_location_name || (c.city && c.city !== 'Nagpur' ? c.city : null) || c.name).filter(Boolean),
-                                  ...(db.rate_requests || []).map((r) => r.dest_city).filter(Boolean)
-                                ])
+                                new Set(
+                                  companyUnits
+                                    .flatMap((c) => [
+                                      c.drop_location,
+                                      c.drop_location_name,
+                                      c.city,
+                                      c.company_name,
+                                      c.name
+                                    ])
+                                    .filter((val) => val && typeof val === 'string' && val.trim().length > 0)
+                                    .map((val) => val.trim())
+                                )
                               );
                               if (dropList.length === 0) {
                                 return <option value="">-- No Location in Master Directory (Add in Master Directory) --</option>;
@@ -3423,12 +3431,16 @@ export const AdminDashboard = () => {
                   value={editingReq.origin_city}
                   onChange={(e) => setEditingReq({ ...editingReq, origin_city: e.target.value })}
                 >
-                  {editingReq.origin_city && !(db.city_masters || []).some(c => c.city === editingReq.origin_city) && (
-                    <option value={editingReq.origin_city}>{editingReq.origin_city}</option>
-                  )}
-                  {(db.city_masters || []).map((c) => (
-                    <option key={`edit_orig_${c.id}`} value={`${c.city}`}>{c.city}</option>
-                  ))}
+                  {(() => {
+                    const companyUnits = db.company_units_plants || db.company_units || db.company_masters || [];
+                    const opts = Array.from(new Set(companyUnits.flatMap(c => [c.pickup_origin, c.pickup_location_name, c.company_name, c.name, c.city]).filter(Boolean)));
+                    if (editingReq.origin_city && !opts.includes(editingReq.origin_city)) {
+                      opts.unshift(editingReq.origin_city);
+                    }
+                    return opts.map((opt, idx) => (
+                      <option key={`edit_orig_${idx}`} value={opt}>{opt}</option>
+                    ));
+                  })()}
                 </select>
               </div>
 
@@ -3439,12 +3451,16 @@ export const AdminDashboard = () => {
                   value={editingReq.dest_city}
                   onChange={(e) => setEditingReq({ ...editingReq, dest_city: e.target.value })}
                 >
-                  {editingReq.dest_city && !(db.city_masters || []).some(c => c.city === editingReq.dest_city) && (
-                    <option value={editingReq.dest_city}>{editingReq.dest_city}</option>
-                  )}
-                  {(db.city_masters || []).map((c) => (
-                    <option key={`edit_dest_${c.id}`} value={`${c.city}`}>{c.city}</option>
-                  ))}
+                  {(() => {
+                    const companyUnits = db.company_units_plants || db.company_units || db.company_masters || [];
+                    const opts = Array.from(new Set(companyUnits.flatMap(c => [c.drop_location, c.drop_location_name, c.city, c.company_name, c.name]).filter(Boolean)));
+                    if (editingReq.dest_city && !opts.includes(editingReq.dest_city)) {
+                      opts.unshift(editingReq.dest_city);
+                    }
+                    return opts.map((opt, idx) => (
+                      <option key={`edit_dest_${idx}`} value={opt}>{opt}</option>
+                    ));
+                  })()}
                 </select>
               </div>
 
