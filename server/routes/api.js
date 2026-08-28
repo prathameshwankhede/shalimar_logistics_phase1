@@ -552,15 +552,10 @@ router.post('/admin/execute-database-drop', authenticateToken, requireRole('admi
 });
 
 // -------------------------------------------------------------
-// POST /api/admin/create-transporters-table — One-Time Transporters Table Creation Route
+// POST /api/admin/create-transporters-table — Disabled DDL Route
 // -------------------------------------------------------------
-router.post('/admin/create-transporters-table', async (req, res) => {
-  try {
-    const report = await executeCreateTransportersTable();
-    return res.json({ success: true, report });
-  } catch (err) {
-    return res.status(500).json({ success: false, error: { code: 'TRANSPORTERS_CREATION_ERROR', message: err.message } });
-  }
+router.post('/admin/create-transporters-table', authenticateToken, requireRole('admin'), async (req, res) => {
+  return res.status(403).json({ success: false, error: { code: 'ROUTE_DISABLED', message: 'Transporters DDL route is permanently disabled' } });
 });
 
 // -------------------------------------------------------------
