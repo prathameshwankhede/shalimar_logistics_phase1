@@ -182,12 +182,29 @@ export const TransporterManagerModal = ({ isOpen, onClose, editingTransporter = 
     }, 1200);
   };
 
-  const handleDeleteInsideModal = async () => {
-    if (!editingTransporter || !editingTransporter.id) return;
-    const transName = editingTransporter.company_name || editingTransporter.code || 'this transporter';
-    if (!window.confirm(`⚠️ DELETE TRANSPORTER WARNING:\n\nAre you sure you want to delete Transporter '${transName}' (${editingTransporter.code || editingTransporter.username})?\n\nThis will remove it from the MySQL database.`)) {
+  const handleDeleteInsideModal = async (e) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    console.log('[DELETE BUTTON CLICKED]', editingTransporter);
+    console.log('[DELETE TARGET]', {
+      id: editingTransporter?.id,
+      code: editingTransporter?.code,
+      username: editingTransporter?.username
+    });
+
+    if (!editingTransporter || !editingTransporter.id) {
+      console.warn('[DELETE ERROR] editingTransporter or editingTransporter.id is missing!', editingTransporter);
+      setErrorMsg('Error deleting transporter: Invalid transporter record selected.');
       return;
     }
+
+    const transName = editingTransporter.company_name || editingTransporter.code || 'this transporter';
+    if (!window.confirm(`Are you sure you want to delete Transporter '${transName}' (${editingTransporter.code || editingTransporter.username})?\n\nThis will remove it from the MySQL database.`)) {
+      return;
+    }
+    console.log('[DELETE CONFIRMED]');
 
     try {
       const res = await deleteTransporter(editingTransporter.id);
@@ -225,8 +242,8 @@ export const TransporterManagerModal = ({ isOpen, onClose, editingTransporter = 
   };
 
   return (
-    <div className="modal-overlay">
-      <div className="modal-content glass-panel" style={{ maxWidth: '680px', padding: '28px', boxSizing: 'border-box' }}>
+    <div className="modal-overlay" style={{ zIndex: 9999 }}>
+      <div className="modal-content glass-panel" style={{ maxWidth: '680px', padding: '28px', boxSizing: 'border-box', position: 'relative', zIndex: 10000 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <div style={{ background: 'rgba(16, 185, 129, 0.15)', padding: '10px', borderRadius: '10px' }}>
@@ -421,9 +438,9 @@ export const TransporterManagerModal = ({ isOpen, onClose, editingTransporter = 
             {editingTransporter ? (
               <button
                 type="button"
-                onClick={handleDeleteInsideModal}
+                onClick={(e) => handleDeleteInsideModal(e)}
                 className="btn btn-danger"
-                style={{ padding: '8px 16px', fontSize: '0.85rem', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '6px' }}
+                style={{ padding: '8px 16px', fontSize: '0.85rem', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', zIndex: 10 }}
               >
                 <Trash2 size={16} /> 🗑️ Delete Transporter Account
               </button>
