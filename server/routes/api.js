@@ -585,15 +585,22 @@ async function handleCreateRateSubmission(req, res) {
       status
     } = req.body;
 
-    const authenticatedTransporterId = req.user.transporter_id || req.user.id;
-    let targetTransporterId = transporter_id || authenticatedTransporterId;
+    // 🛡️ Resolve authenticated transporter identity from token and transporters table
+    const candidateTransIds = [
+      transporter_id,
+      req.user.transporter_id,
+      req.user.username,
+      req.user.id,
+      req.body.transporter_code,
+      req.body.transporter_name
+    ].filter(Boolean);
 
-    if (req.user.role === 'transporter') {
-      if (transporter_id && transporter_id !== authenticatedTransporterId && transporter_id !== req.user.username) {
-        return res.status(403).json({ success: false, error: 'Access denied. You can only submit bids under your own transporter account.' });
+    candidateTransIds.forEach(idStr => {
+      const clean = String(idStr).replace(/^(usr_|trans_)/i, '');
+      if (clean && !candidateTransIds.includes(clean)) {
+        candidateTransIds.push(clean);
       }
-      targetTransporterId = authenticatedTransporterId;
-    }
+    });
 
     const targetReqId = (requirement_id || rate_request_id || request_id || '').trim();
     if (!targetReqId) {
@@ -624,12 +631,13 @@ async function handleCreateRateSubmission(req, res) {
 
     // Verify transporter exists
     const [transRows] = await pool.query(
-      'SELECT id, company_name, code FROM transporters WHERE id = ? OR code = ? OR username = ? LIMIT 1',
-      [targetTransporterId, targetTransporterId, targetTransporterId]
+      `SELECT id, company_name, code, username FROM transporters 
+       WHERE id IN (?) OR code IN (?) OR username IN (?) OR company_name IN (?) LIMIT 1`,
+      [candidateTransIds, candidateTransIds, candidateTransIds, candidateTransIds]
     );
 
-    const actualTransId = transRows[0]?.id || targetTransporterId;
-    const transName = transRows[0]?.company_name || targetTransporterId;
+    const actualTransId = transRows[0]?.id || req.user.transporter_id || req.user.username || req.user.id;
+    const transName = transRows[0]?.company_name || req.user.name || actualTransId;
 
     const rawItemId = (req.body.item_id || req.body.sub_indent_id || req.body.requirement_item_id || '').trim();
     let actualItemId = rawItemId;

@@ -1,4 +1,4 @@
-// Hostinger Passenger Process Reload Signal v1.7.0 - Single Source of Truth MySQL Zero Mock Fallback
+// Hostinger Passenger Process Reload Signal v1.7.1 - Multi-Tenant Transporter Identity Normalization
 import express from 'express';
 import cors from 'cors';
 import path from 'path';

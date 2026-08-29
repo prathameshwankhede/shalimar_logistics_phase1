@@ -224,24 +224,33 @@ export const TransporterPortal = () => {
   }
 
   // DATA ISOLATION: Fetch data associated with this Transporter ID, Code, Username, or Company Name (Case-Insensitive 🛡️)
-  const mySubmissions = (db.rate_submissions || []).filter((s) => {
+  const myIdentities = new Set([
+    String(currentTransporter?.id || '').trim().toLowerCase(),
+    String(currentTransporter?.code || '').trim().toLowerCase(),
+    String(currentTransporter?.username || '').trim().toLowerCase(),
+    String(currentTransporter?.company_name || '').trim().toLowerCase(),
+    String(currentUser?.id || '').trim().toLowerCase(),
+    String(currentUser?.username || '').trim().toLowerCase(),
+    String(currentUser?.transporter_id || '').trim().toLowerCase(),
+    String(currentUser?.username || '').replace(/^(usr_|trans_)/i, '').trim().toLowerCase(),
+    String(currentUser?.id || '').replace(/^(usr_|trans_)/i, '').trim().toLowerCase(),
+    String(currentTransporter?.id || '').replace(/^(usr_|trans_)/i, '').trim().toLowerCase()
+  ].filter(Boolean));
+
+  const isTransporterMatch = (s) => {
     const sId = String(s.transporter_id || '').trim().toLowerCase();
     const sCode = String(s.transporter_code || '').trim().toLowerCase();
     const sName = String(s.transporter_name || '').trim().toLowerCase();
-    const cId = String(currentTransporter?.id || '').trim().toLowerCase();
-    const cCode = String(currentTransporter?.code || '').trim().toLowerCase();
-    const cUser = String(currentTransporter?.username || '').trim().toLowerCase();
-    const cName = String(currentTransporter?.company_name || '').trim().toLowerCase();
+    const sCleanId = sId.replace(/^(usr_|trans_)/i, '');
 
-    return (cId && sId === cId) || 
-           (cCode && sId === cCode) || 
-           (cUser && sId === cUser) || 
-           (cName && sId === cName) ||
-           (cCode && sCode && sCode === cCode) ||
-           (cUser && sCode && sCode === cUser) ||
-           (cName && sName && (sName === cName || sName.includes(cName) || cName.includes(sName))) ||
-           (cUser && sName && (sName === cUser || sName.includes(cUser) || cUser.includes(sName)));
-  });
+    return myIdentities.has(sId) || 
+           myIdentities.has(sCode) || 
+           myIdentities.has(sName) || 
+           myIdentities.has(sCleanId) ||
+           Array.from(myIdentities).some(id => sName.includes(id) || id.includes(sName));
+  };
+
+  const mySubmissions = (db.rate_submissions || []).filter(isTransporterMatch);
 
   // 🎯 ROBUST UNIVERSAL BID MATCHER: Guarantees 100% accurate match across batch sub-indents & standalone requirements
   const findMyBid = (req) => {
@@ -251,27 +260,9 @@ export const TransporterPortal = () => {
     const reqItemId = String(req.item_id || req.sub_indent_id || '').trim().toLowerCase();
     const reqSubNo = String(req.sub_indent_no || req.request_no || req.title || '').trim().toLowerCase();
 
-    const cId = String(currentTransporter?.id || '').trim().toLowerCase();
-    const cCode = String(currentTransporter?.code || '').trim().toLowerCase();
-    const cUser = String(currentTransporter?.username || '').trim().toLowerCase();
-    const cName = String(currentTransporter?.company_name || '').trim().toLowerCase();
-
     return (db.rate_submissions || []).find((s) => {
-      const sId = String(s.transporter_id || '').trim().toLowerCase();
-      const sCode = String(s.transporter_code || '').trim().toLowerCase();
-      const sName = String(s.transporter_name || '').trim().toLowerCase();
-
       // 1. Transporter Identity Check
-      const matchesTrans = (cId && sId === cId) || 
-                           (cCode && sId === cCode) || 
-                           (cUser && sId === cUser) || 
-                           (cName && sId === cName) ||
-                           (cCode && sCode && sCode === cCode) ||
-                           (cUser && sCode && sCode === cUser) ||
-                           (cName && sName && (sName === cName || sName.includes(cName) || cName.includes(sName))) ||
-                           (cUser && sName && (sName === cUser || sName.includes(cUser) || cUser.includes(sName)));
-
-      if (!matchesTrans) return false;
+      if (!isTransporterMatch(s)) return false;
 
       const sReqId = String(s.requirement_id || s.rate_request_id || s.request_id || '').trim().toLowerCase();
       const sReqNo = String(s.request_no || '').trim().toLowerCase();
