@@ -32,28 +32,28 @@ export async function awardRequirementRate(requirementId, awardPayload) {
 }
 
 export async function sendAdminCounter(submissionId, counterPayload) {
-  return apiClient(`/api/rate-submissions/${submissionId}/admin-counter`, {
+  return apiClient(`/api/rate-submissions/${submissionId}/counter-offer?_t=${Date.now()}`, {
     method: 'POST',
     body: JSON.stringify(counterPayload)
   });
 }
 
 export async function submitTransporterResponse(submissionId, responsePayload) {
-  return apiClient(`/api/rate-submissions/${submissionId}/transporter-response`, {
+  return apiClient(`/api/rate-submissions/${submissionId}/respond-counter?_t=${Date.now()}`, {
     method: 'POST',
     body: JSON.stringify(responsePayload)
   });
 }
 
 export async function finalizeBid(submissionId, finalizePayload = {}) {
-  return apiClient(`/api/rate-submissions/${submissionId}/finalize`, {
+  return apiClient(`/api/rate-submissions/${submissionId}/finalize?_t=${Date.now()}`, {
     method: 'POST',
     body: JSON.stringify(finalizePayload)
   });
 }
 
 export async function getSubmissionHistory(submissionId) {
-  return apiClient(`/api/rate-submissions/${submissionId}/history`, {
+  return apiClient(`/api/rate-submissions/${submissionId}/negotiation-history?_t=${Date.now()}`, {
     method: 'GET'
   });
 }
