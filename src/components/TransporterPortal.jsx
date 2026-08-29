@@ -225,20 +225,22 @@ export const TransporterPortal = () => {
 
   // DATA ISOLATION: Fetch data associated with this Transporter ID, Code, Username, or Company Name (Case-Insensitive 🛡️)
   const mySubmissions = (db.rate_submissions || []).filter((s) => {
-    const sId = String(s.transporter_id || '').toLowerCase();
-    const sCode = String(s.transporter_code || '').toLowerCase();
-    const sName = String(s.transporter_name || '').toLowerCase();
-    const cId = String(currentTransporter?.id || '').toLowerCase();
-    const cCode = String(currentTransporter?.code || '').toLowerCase();
-    const cUser = String(currentTransporter?.username || '').toLowerCase();
-    const cName = String(currentTransporter?.company_name || '').toLowerCase();
+    const sId = String(s.transporter_id || '').trim().toLowerCase();
+    const sCode = String(s.transporter_code || '').trim().toLowerCase();
+    const sName = String(s.transporter_name || '').trim().toLowerCase();
+    const cId = String(currentTransporter?.id || '').trim().toLowerCase();
+    const cCode = String(currentTransporter?.code || '').trim().toLowerCase();
+    const cUser = String(currentTransporter?.username || '').trim().toLowerCase();
+    const cName = String(currentTransporter?.company_name || '').trim().toLowerCase();
 
     return (cId && sId === cId) || 
            (cCode && sId === cCode) || 
            (cUser && sId === cUser) || 
            (cName && sId === cName) ||
            (cCode && sCode && sCode === cCode) ||
-           (cName && sName && (sName === cName || sName.includes(cName) || cName.includes(sName)));
+           (cUser && sCode && sCode === cUser) ||
+           (cName && sName && (sName === cName || sName.includes(cName) || cName.includes(sName))) ||
+           (cUser && sName && (sName === cUser || sName.includes(cUser) || cUser.includes(sName)));
   });
 
   // 🎯 ROBUST UNIVERSAL BID MATCHER: Guarantees 100% accurate match across batch sub-indents & standalone requirements
@@ -249,23 +251,44 @@ export const TransporterPortal = () => {
     const reqItemId = String(req.item_id || req.sub_indent_id || '').trim().toLowerCase();
     const reqSubNo = String(req.sub_indent_no || req.request_no || req.title || '').trim().toLowerCase();
 
-    return (mySubmissions || []).find((s) => {
+    const cId = String(currentTransporter?.id || '').trim().toLowerCase();
+    const cCode = String(currentTransporter?.code || '').trim().toLowerCase();
+    const cUser = String(currentTransporter?.username || '').trim().toLowerCase();
+    const cName = String(currentTransporter?.company_name || '').trim().toLowerCase();
+
+    return (db.rate_submissions || []).find((s) => {
+      const sId = String(s.transporter_id || '').trim().toLowerCase();
+      const sCode = String(s.transporter_code || '').trim().toLowerCase();
+      const sName = String(s.transporter_name || '').trim().toLowerCase();
+
+      // 1. Transporter Identity Check
+      const matchesTrans = (cId && sId === cId) || 
+                           (cCode && sId === cCode) || 
+                           (cUser && sId === cUser) || 
+                           (cName && sId === cName) ||
+                           (cCode && sCode && sCode === cCode) ||
+                           (cUser && sCode && sCode === cUser) ||
+                           (cName && sName && (sName === cName || sName.includes(cName) || cName.includes(sName))) ||
+                           (cUser && sName && (sName === cUser || sName.includes(cUser) || cUser.includes(sName)));
+
+      if (!matchesTrans) return false;
+
       const sReqId = String(s.requirement_id || s.rate_request_id || s.request_id || '').trim().toLowerCase();
       const sReqNo = String(s.request_no || '').trim().toLowerCase();
       const sItemId = String(s.item_id || '').trim().toLowerCase();
       const sSubNo = String(s.sub_indent_no || '').trim().toLowerCase();
 
-      // 1. Direct sub-indent code match (e.g. SNPL/26-27/REQ-0001/01)
+      // 2. Direct Sub-Indent Code match (e.g. SNPL/26-27/REQ-0001/01)
       if (reqSubNo && (sSubNo === reqSubNo || sReqNo === reqSubNo || sItemId === reqSubNo)) {
         return true;
       }
 
-      // 2. Direct item ID match
+      // 3. Direct Item ID match
       if (reqItemId && (sItemId === reqItemId || sSubNo === reqItemId)) {
         return true;
       }
 
-      // 3. Parent requirement ID / No match
+      // 4. Parent Requirement ID / No match
       const matchesReq = (reqParentId && (sReqId === reqParentId || sReqNo === reqParentId)) ||
                          (reqParentNo && (sReqId === reqParentNo || sReqNo === reqParentNo)) ||
                          (reqSubNo && (sSubNo === reqSubNo || sReqNo === reqSubNo));

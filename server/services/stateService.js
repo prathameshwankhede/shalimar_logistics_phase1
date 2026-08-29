@@ -45,10 +45,7 @@ export async function getRateRequests(page = 1, limit = 20) {
 }
 
 export async function getRateSubmissions(user) {
-  const isTransporter = user && user.role === 'transporter';
-  const transporterId = isTransporter ? (user.transporter_id || user.username || user.code || user.id) : null;
-
-  const rows = await stateRepo.fetchSubmissions(transporterId);
+  const rows = await stateRepo.fetchSubmissions(null);
   return rows.map(b => ({
     id: b.id,
     requirement_id: b.requirement_id || b.rate_request_id || b.request_id,
