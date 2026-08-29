@@ -401,7 +401,7 @@ td.preserve-dark-wrapper,
   border: 1px solid #0284c7 !important;
 }
 
-/* Header & AI Assistant Chatbot in Light Mode */
+/* Header in Light Mode */
 [data-theme="light"] nav,
 [data-theme="light"] header {
   background: #ffffff !important;

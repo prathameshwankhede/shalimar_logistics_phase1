@@ -1,4 +1,4 @@
-// Hostinger Passenger Process Reload Signal v1.6.3 - Quote Button Single Click Reliability & Timeout Protection
+// Hostinger Passenger Process Reload Signal v1.6.4 - Completely Removed TransFlow AI Assistant Chatbot
 import express from 'express';
 import cors from 'cors';
 import path from 'path';

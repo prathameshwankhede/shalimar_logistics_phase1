@@ -5,7 +5,6 @@ import { AdminDashboard } from './components/AdminDashboard';
 import { TransporterPortal } from './components/TransporterPortal';
 import { LoginModal } from './components/LoginModal';
 import { Footer } from './components/Footer';
-import { TransFlowAIChatbot } from './components/TransFlowAIChatbot';
 import { resetDB } from './store/dbStore';
 
 import { ErrorBoundary } from './components/ErrorBoundary';
@@ -38,7 +37,6 @@ function MainApp() {
       </main>
 
       <Footer />
-      <TransFlowAIChatbot />
     </div>
   );
 }
