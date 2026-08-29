@@ -2455,6 +2455,7 @@ export const AdminDashboard = () => {
                             const pickupStr = req.pickup_origin || req.origin_city || 'Origin';
                             const dropStr = req.drop_location || req.dest_city || 'Destination';
                             const childItems = req.items && Array.isArray(req.items) ? req.items : [];
+                            const isBatch = childItems.length > 0;
                             const isMultiItemBatch = childItems.length > 1;
                             const totalQty = req.total_quantity_mt || req.required_qty || req.quantity_mt || 0;
                             const bidsCount = Number(req.submitted_bids_count || 0);
@@ -2488,9 +2489,18 @@ export const AdminDashboard = () => {
                                   <div style={{ fontWeight: '900', color: 'var(--text-main)', fontSize: '0.95rem' }}>
                                     {reqNoStr}
                                   </div>
-                                  <div style={{ fontSize: '0.82rem', color: 'var(--text-sub)', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}>
-                                    <MapPin size={13} color="#0284c7" /> 📍 {pickupStr} ➔ 🎯 <strong style={{ color: '#d97706', fontWeight: '900', fontSize: '0.95rem' }}>{dropStr}</strong>
-                                  </div>
+                                  {isBatch ? (
+                                    <div style={{ fontSize: '0.82rem', color: '#38bdf8', fontWeight: '800', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                      <span>📦 Batch Requirement</span>
+                                      <span style={{ background: 'rgba(56, 189, 248, 0.15)', color: '#38bdf8', border: '1px solid rgba(56, 189, 248, 0.3)', padding: '1px 8px', borderRadius: '12px', fontSize: '0.75rem' }}>
+                                        {childItems.length} Cargo Items
+                                      </span>
+                                    </div>
+                                  ) : (
+                                    <div style={{ fontSize: '0.82rem', color: 'var(--text-sub)', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}>
+                                      <MapPin size={13} color="#0284c7" /> 📍 {pickupStr} ➔ 🎯 <strong style={{ color: '#d97706', fontWeight: '900', fontSize: '0.95rem' }}>{dropStr}</strong>
+                                    </div>
+                                  )}
                                 </td>
 
                                 {/* 3. CARGO & QTY */}
