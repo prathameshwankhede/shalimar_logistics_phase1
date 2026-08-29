@@ -255,24 +255,30 @@ export const TransporterPortal = () => {
       const sItemId = String(s.item_id || '').trim().toLowerCase();
       const sSubNo = String(s.sub_indent_no || '').trim().toLowerCase();
 
-      // 1. Check parent requirement match
+      // 1. Direct sub-indent code match (e.g. SNPL/26-27/REQ-0001/01)
+      if (reqSubNo && (sSubNo === reqSubNo || sReqNo === reqSubNo || sItemId === reqSubNo)) {
+        return true;
+      }
+
+      // 2. Direct item ID match
+      if (reqItemId && (sItemId === reqItemId || sSubNo === reqItemId)) {
+        return true;
+      }
+
+      // 3. Parent requirement ID / No match
       const matchesReq = (reqParentId && (sReqId === reqParentId || sReqNo === reqParentId)) ||
                          (reqParentNo && (sReqId === reqParentNo || sReqNo === reqParentNo)) ||
                          (reqSubNo && (sSubNo === reqSubNo || sReqNo === reqSubNo));
 
-      if (!matchesReq) return false;
-
-      // 2. Check item match (for sub-indents)
-      if (reqItemId && reqItemId !== reqParentId) {
-        return sItemId === reqItemId ||
-               sSubNo === reqSubNo ||
-               sItemId === reqSubNo ||
-               sReqNo === reqSubNo ||
-               sSubNo === reqItemId;
+      if (matchesReq) {
+        if (!reqItemId || reqItemId === reqParentId) return true;
+        if (sItemId && (sItemId === reqItemId || sItemId === reqSubNo)) return true;
+        if (sSubNo && (sSubNo === reqSubNo || sSubNo === reqItemId)) return true;
+        if (sReqNo && sReqNo === reqSubNo) return true;
+        return true;
       }
 
-      // Standalone requirement
-      return true;
+      return false;
     });
   };
   const myAllocations = (db.allocations || []).filter((a) => {

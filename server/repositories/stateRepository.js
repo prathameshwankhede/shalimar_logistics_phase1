@@ -85,6 +85,24 @@ export async function fetchPaginatedRequests(limit, offset) {
 
 export async function fetchSubmissions(transporterId = null) {
   try {
+    let transIds = [];
+    if (transporterId) {
+      try {
+        const [tRows] = await pool.query(
+          'SELECT id, code, username, company_name FROM transporters WHERE id = ? OR code = ? OR username = ? LIMIT 1',
+          [transporterId, transporterId, transporterId]
+        );
+        if (tRows && tRows.length > 0) {
+          const t = tRows[0];
+          transIds = [t.id, t.code, t.username, t.company_name, transporterId].filter(Boolean);
+        } else {
+          transIds = [transporterId];
+        }
+      } catch (e) {
+        transIds = [transporterId];
+      }
+    }
+
     let query = `
       SELECT 
         s.id,
@@ -124,9 +142,9 @@ export async function fetchSubmissions(transporterId = null) {
       LEFT JOIN transport_requirement_items i ON i.id = s.item_id
     `;
     const params = [];
-    if (transporterId) {
-      query += ` WHERE s.transporter_id = ? OR t.code = ? OR t.username = ? OR t.id = ?`;
-      params.push(transporterId, transporterId, transporterId, transporterId);
+    if (transIds.length > 0) {
+      query += ` WHERE (s.transporter_id IN (?) OR t.code IN (?) OR t.username IN (?) OR t.id IN (?) OR t.company_name IN (?))`;
+      params.push(transIds, transIds, transIds, transIds, transIds);
     }
     query += ` ORDER BY s.submitted_at DESC LIMIT 500`;
     const [rows] = await pool.query(query, params);
