@@ -1,4 +1,4 @@
-// Hostinger Passenger Process Reload Signal v1.7.7 - Production Schema Diagnostic Route
+// Hostinger Passenger Process Reload Signal v1.7.8 - Verified Complete Counter Offer Pipeline
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
