@@ -29,7 +29,20 @@ import {
 } from 'lucide-react';
 
 export const TransporterPortal = () => {
-  const { currentUser, currentTransporter, db, updateDB, quickSwitchUser, addSecurityLog, refreshRequirements } = useAuth();
+  const { currentUser, currentTransporter, db, updateDB, quickSwitchUser, addSecurityLog, refreshRequirements, refreshDB } = useAuth();
+
+  // 🛡️ SAFE DATA REFRESH HELPER: Guarantees no ReferenceError or unhandled rejection during refresh
+  const safeRefreshRequirements = async () => {
+    try {
+      if (typeof refreshRequirements === 'function') {
+        return await refreshRequirements();
+      } else if (typeof refreshDB === 'function') {
+        return await refreshDB();
+      }
+    } catch (e) {
+      console.error('Data refresh error:', e);
+    }
+  };
 
   // 🧭 TAB PERSISTENCE ENGINE: Read URL Hash or LocalStorage so browser refresh NEVER redirects to Home!
   const getInitialTransporterTab = () => {
@@ -126,7 +139,7 @@ export const TransporterPortal = () => {
       setTimeout(() => setSuccessNotice(''), 4000);
 
       // ⚡ Instantly refresh fresh MySQL database state so all submitted items update immediately
-      await refreshRequirements();
+      await safeRefreshRequirements();
     } catch (err) {
       console.error('Batch submit all error:', err);
       alert(err.message || 'Error submitting batch quotes.');
@@ -428,7 +441,7 @@ export const TransporterPortal = () => {
         await submitTransporterResponse(myExistingBid.id, { action: 'accept' });
         setSuccessNotice(`✓ Accepted Admin Counter Offer of ₹${adminCounter}/MT for ${req.sub_indent_no || req.request_no || req.id}`);
         setTimeout(() => setSuccessNotice(''), 5000);
-        await refreshRequirements();
+        await safeRefreshRequirements();
       } catch (err) {
         alert(err.message || 'Failed to accept counter offer.');
       } finally {
@@ -450,7 +463,7 @@ export const TransporterPortal = () => {
         setActiveTransporterCounterSubId(null);
         setTransporterCounterRateInput('');
         setTimeout(() => setSuccessNotice(''), 5000);
-        await refreshRequirements();
+        await safeRefreshRequirements();
       } catch (err) {
         alert(err.message || 'Failed to submit counter offer.');
       } finally {
@@ -656,12 +669,45 @@ export const TransporterPortal = () => {
         throw new Error(result?.error?.message || result?.message || 'Quote submission failed');
       }
 
+      // ⚡ 1. Optimistic Local State Update for instantaneous UI feedback
+      const serverSub = result.submission || {
+        id: `sub_${transId}_${targetItemId}_${Date.now()}`,
+        requirement_id: parentReqId,
+        rate_request_id: parentReqId,
+        item_id: targetItemId,
+        request_no: subIndentNo,
+        sub_indent_no: subIndentNo,
+        transporter_id: transId,
+        transporter_name: currentTransporter?.company_name || transId,
+        rate_per_unit: rateVal,
+        rate_per_mt: rateVal,
+        quoted_quantity_mt: qtyVal,
+        total_amount: totalCalcAmount,
+        status: 'Submitted',
+        bid_status: 'submitted',
+        submitted_at: new Date().toISOString()
+      };
+
+      if (typeof updateDB === 'function') {
+        updateDB({
+          ...db,
+          rate_submissions: [
+            serverSub,
+            ...(db.rate_submissions || []).filter(s => !(
+              (String(s.transporter_id) === String(transId) || String(s.transporter_id) === String(currentTransporter?.code)) &&
+              (String(s.requirement_id) === String(parentReqId) || String(s.rate_request_id) === String(parentReqId)) &&
+              (String(s.item_id) === String(targetItemId) || String(s.request_no) === String(subIndentNo))
+            ))
+          ]
+        });
+      }
+
       setSuccessNotice(`⚡ Quote rate ₹${rateVal.toLocaleString()}/MT submitted for ${subIndentNo}!`);
       setQuickRates((prev) => ({ ...prev, [rateKey]: '', [req.id]: '' }));
       setTimeout(() => setSuccessNotice(''), 5000);
 
-      // ⚡ Re-fetch fresh MySQL database state so hasSubmittedQuote becomes true instantly
-      await refreshRequirements();
+      // ⚡ 2. Safely re-fetch fresh MySQL database state so hasSubmittedQuote becomes true instantly
+      await safeRefreshRequirements();
 
       // ♿ ACCESSIBILITY: Auto-advance focus to the next unsubmitted item input
       focusNextUnsubmittedItem(targetItemId);

@@ -9,7 +9,20 @@ import { NegotiationHistoryModal } from './NegotiationHistoryModal';
 import { getRequirementRates, awardRequirementRate, sendAdminCounter, finalizeBid } from '../api/rateSubmissionApi';
 
 export const RateComparisonView = ({ rateRequest, onBack }) => {
-  const { db, updateDB, currentUser, addSecurityLog, refreshRequirements } = useAuth();
+  const { db, updateDB, currentUser, addSecurityLog, refreshRequirements, refreshDB } = useAuth();
+
+  const safeRefreshRequirements = async () => {
+    try {
+      if (typeof refreshRequirements === 'function') {
+        await refreshRequirements();
+      } else if (typeof refreshDB === 'function') {
+        await refreshDB();
+      }
+    } catch (e) {
+      console.error('Data refresh error:', e);
+    }
+  };
+
   const [showParticularReportModal, setShowParticularReportModal] = useState(false);
   const [selectedHistorySub, setSelectedHistorySub] = useState(null);
   const [liveRates, setLiveRates] = useState([]);
@@ -118,7 +131,7 @@ export const RateComparisonView = ({ rateRequest, onBack }) => {
       setActiveCounterSub(null);
       setCounterForm({ counter_rate: '', note: '' });
       setTimeout(() => setNotice(''), 5000);
-      await refreshRequirements();
+      await safeRefreshRequirements();
     } catch (err) {
       alert(err.message || 'Failed to send counter offer.');
     }
