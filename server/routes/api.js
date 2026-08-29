@@ -226,10 +226,12 @@ export async function ensureRateSubmissionsTableExists() {
       "status VARCHAR(50) DEFAULT 'Submitted'",
       "submitted_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP",
       "original_rate DECIMAL(12,2) DEFAULT NULL",
-      "original_rate_per_mt DECIMAL(12,2) DEFAULT NULL",
       "counter_rate DECIMAL(12,2) DEFAULT NULL",
+      "counter_offer_rate DECIMAL(12,2) DEFAULT NULL",
+      "counter_offer_status VARCHAR(50) DEFAULT NULL",
+      "counter_offer_at DATETIME DEFAULT NULL",
+      "counter_offer_by VARCHAR(50) DEFAULT NULL",
       "final_rate DECIMAL(12,2) DEFAULT NULL",
-      "final_rate_per_mt DECIMAL(12,2) DEFAULT NULL",
       "bid_status VARCHAR(50) DEFAULT 'Submitted'",
       "negotiation_status VARCHAR(50) DEFAULT 'Submitted'",
       "countered_by VARCHAR(50) DEFAULT NULL",
@@ -853,19 +855,25 @@ async function handleAdminCounter(req, res) {
       const prevRate = parseFloat(sub.counter_rate || sub.rate_per_mt || sub.original_rate || 0);
       const origRate = sub.original_rate ? parseFloat(sub.original_rate) : parseFloat(sub.rate_per_mt);
 
-      await conn.query(
+      const [updateRes] = await conn.query(
         `UPDATE rate_submissions
          SET original_rate = COALESCE(original_rate, ?),
+             counter_offer_rate = ?,
              counter_rate = ?,
+             counter_offer_status = 'PENDING',
              bid_status = 'COUNTER_OFFERED',
              negotiation_status = 'COUNTER_OFFERED',
+             counter_offer_by = 'ADMIN',
              countered_by = 'ADMIN',
              counter_message = ?,
+             counter_offer_at = NOW(),
              counter_updated_at = NOW(),
              updated_at = NOW()
          WHERE id = ?`,
-        [origRate, counterRateVal, remText, id]
+        [origRate, counterRateVal, counterRateVal, remText, id]
       );
+
+      console.log(`💬 [ADMIN COUNTER] Updated bid ID: ${id}, rate: ₹${counterRateVal}/MT, affectedRows: ${updateRes.affectedRows}`);
 
       const negId = `neg_${Date.now()}_${Math.random().toString(36).substring(2,7)}`;
       await conn.query(
@@ -991,19 +999,25 @@ async function handleAdminCounterAll(req, res) {
         const prevRate = parseFloat(sub.counter_rate || sub.rate_per_mt || 0);
         const origRate = sub.original_rate ? parseFloat(sub.original_rate) : parseFloat(sub.rate_per_mt || sub.rate_per_unit || 0);
 
-        await conn.query(
+        const [uRes] = await conn.query(
           `UPDATE rate_submissions
            SET original_rate = COALESCE(original_rate, ?),
+               counter_offer_rate = ?,
                counter_rate = ?,
+               counter_offer_status = 'PENDING',
                bid_status = 'COUNTER_OFFERED',
                negotiation_status = 'COUNTER_OFFERED',
+               counter_offer_by = 'ADMIN',
                countered_by = 'ADMIN',
                counter_message = ?,
+               counter_offer_at = NOW(),
                counter_updated_at = NOW(),
                updated_at = NOW()
            WHERE id = ?`,
-          [origRate, counterRateVal, remText, sub.id]
+          [origRate, counterRateVal, counterRateVal, remText, sub.id]
         );
+
+        console.log(`💬 [ADMIN BULK COUNTER] Updated bid ID: ${sub.id}, rate: ₹${counterRateVal}/MT, affectedRows: ${uRes.affectedRows}`);
 
         const negId = `neg_${Date.now()}_${Math.random().toString(36).substring(2,7)}`;
         await conn.query(
@@ -1085,27 +1099,29 @@ async function handleTransporterResponse(req, res) {
         return res.status(400).json({ success: false, error: 'This bid is finalized and cannot be modified.' });
       }
 
-      const prevRate = parseFloat(sub.counter_rate || sub.rate_per_mt || 0);
-      const isAccept = String(action).toUpperCase() === 'ACCEPT';
+      const prevRate = parseFloat(sub.counter_offer_rate || sub.counter_rate || sub.rate_per_mt || 0);
+      const actionUpper = String(action || '').toUpperCase();
 
-      if (isAccept) {
-        const agreedRate = sub.counter_rate ? parseFloat(sub.counter_rate) : parseFloat(sub.rate_per_mt);
+      if (actionUpper === 'ACCEPT') {
+        const agreedRate = sub.counter_offer_rate ? parseFloat(sub.counter_offer_rate) : (sub.counter_rate ? parseFloat(sub.counter_rate) : parseFloat(sub.rate_per_mt));
         const qtyVal = parseFloat(sub.quoted_quantity_mt || 0);
         const calcTotal = qtyVal ? parseFloat((agreedRate * qtyVal).toFixed(2)) : null;
 
-        await conn.query(
+        const [uRes] = await conn.query(
           `UPDATE rate_submissions
            SET final_rate = ?,
-               final_rate_per_mt = ?,
                rate_per_mt = ?,
                total_amount = ?,
                bid_status = 'COUNTER_ACCEPTED',
                negotiation_status = 'COUNTER_ACCEPTED',
+               counter_offer_status = 'ACCEPTED',
                finalized_at = NOW(),
                updated_at = NOW()
            WHERE id = ?`,
-          [agreedRate, agreedRate, agreedRate, calcTotal, id]
+          [agreedRate, agreedRate, calcTotal, id]
         );
+
+        console.log(`🤝 [TRANSPORTER ACCEPT] Bid ID ${id} accepted at ₹${agreedRate}/MT, affectedRows: ${uRes.affectedRows}`);
 
         const negId = `neg_${Date.now()}_${Math.random().toString(36).substring(2,7)}`;
         await conn.query(
@@ -1131,6 +1147,37 @@ async function handleTransporterResponse(req, res) {
           message: `Accepted counter offer of ₹${agreedRate}/MT successfully`,
           submission: updatedRows[0]
         });
+      } else if (actionUpper === 'REJECT') {
+        const [uRes] = await conn.query(
+          `UPDATE rate_submissions
+           SET counter_offer_status = 'REJECTED',
+               bid_status = 'COUNTER_REJECTED',
+               negotiation_status = 'COUNTER_REJECTED',
+               counter_updated_at = NOW(),
+               updated_at = NOW()
+           WHERE id = ?`,
+          [id]
+        );
+
+        console.log(`❌ [TRANSPORTER REJECT] Bid ID ${id} rejected counter offer, affectedRows: ${uRes.affectedRows}`);
+
+        const negId = `neg_${Date.now()}_${Math.random().toString(36).substring(2,7)}`;
+        await conn.query(
+          `INSERT INTO rate_negotiations
+           (id, requirement_id, item_id, transporter_id, rate_submission_id, action_type, offered_rate, remarks, created_by, created_at)
+           VALUES (?, ?, ?, ?, ?, 'COUNTER_REJECTED', ?, ?, ?, NOW())`,
+          [negId, sub.requirement_id, sub.item_id || 'MAIN', sub.transporter_id, id, prevRate, remText || 'Rejected counter offer', req.user.username || sub.transporter_id]
+        );
+
+        await conn.commit();
+        conn.release();
+
+        const [updatedRows] = await pool.query('SELECT * FROM rate_submissions WHERE id = ? LIMIT 1', [id]);
+        return res.json({
+          success: true,
+          message: 'Rejected counter offer successfully',
+          submission: updatedRows[0]
+        });
       } else {
         const newProposedRate = parseFloat(proposed_rate || counter_rate);
         if (isNaN(newProposedRate) || newProposedRate <= 0) {
@@ -1142,11 +1189,13 @@ async function handleTransporterResponse(req, res) {
         const qtyVal = parseFloat(sub.quoted_quantity_mt || 0);
         const calcTotal = qtyVal ? parseFloat((newProposedRate * qtyVal).toFixed(2)) : null;
 
-        await conn.query(
+        const [uRes] = await conn.query(
           `UPDATE rate_submissions
-           SET counter_rate = ?,
+           SET counter_offer_rate = ?,
+               counter_rate = ?,
                rate_per_mt = ?,
                total_amount = ?,
+               counter_offer_status = 'TRANSPORTER_COUNTERED',
                bid_status = 'COUNTER_RESPONDED',
                negotiation_status = 'COUNTER_RESPONDED',
                countered_by = 'TRANSPORTER',
@@ -1154,8 +1203,10 @@ async function handleTransporterResponse(req, res) {
                counter_updated_at = NOW(),
                updated_at = NOW()
            WHERE id = ?`,
-          [newProposedRate, newProposedRate, calcTotal, remText, id]
+          [newProposedRate, newProposedRate, newProposedRate, calcTotal, remText, id]
         );
+
+        console.log(`💬 [TRANSPORTER COUNTER] Bid ID ${id} proposed revised rate ₹${newProposedRate}/MT, affectedRows: ${uRes.affectedRows}`);
 
         const negId = `neg_${Date.now()}_${Math.random().toString(36).substring(2,7)}`;
         await conn.query(

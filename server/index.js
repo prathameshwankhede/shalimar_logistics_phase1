@@ -1,4 +1,4 @@
-// Hostinger Passenger Process Reload Signal v1.7.4 - Fix Unknown column rate_request_id in Counter Offer API
+// Hostinger Passenger Process Reload Signal v1.7.5 - Complete Admin to Transporter Counter Offer Pipeline
 import express from 'express';
 import cors from 'cors';
 import path from 'path';

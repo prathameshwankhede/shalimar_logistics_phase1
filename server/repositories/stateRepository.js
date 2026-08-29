@@ -124,12 +124,16 @@ export async function fetchSubmissions(transporterId = null) {
         s.negotiation_status,
         s.original_rate,
         s.original_rate AS original_rate_per_mt,
-        s.counter_rate,
+        COALESCE(s.counter_offer_rate, s.counter_rate) AS counter_offer_rate,
+        COALESCE(s.counter_rate, s.counter_offer_rate) AS counter_rate,
+        COALESCE(s.counter_offer_status, CASE WHEN s.bid_status = 'COUNTER_OFFERED' THEN 'PENDING' ELSE s.bid_status END) AS counter_offer_status,
+        COALESCE(s.counter_offer_by, s.countered_by) AS counter_offer_by,
+        COALESCE(s.countered_by, s.counter_offer_by) AS countered_by,
+        s.counter_message,
+        COALESCE(s.counter_offer_at, s.counter_updated_at) AS counter_offer_at,
+        COALESCE(s.counter_updated_at, s.counter_offer_at) AS counter_updated_at,
         s.final_rate,
         s.final_rate AS final_rate_per_mt,
-        s.countered_by,
-        s.counter_message,
-        s.counter_updated_at,
         s.finalized_at,
         s.submitted_at,
         s.updated_at,
@@ -147,6 +151,7 @@ export async function fetchSubmissions(transporterId = null) {
     }
     query += ` ORDER BY s.submitted_at DESC LIMIT 500`;
     const [rows] = await pool.query(query, params);
+    console.log(`🔍 [FETCH SUBMISSIONS] Filter: ${JSON.stringify(transIds)}, rows count: ${rows.length}`);
     return rows;
   } catch (err) {
     console.warn('fetchSubmissions query notice:', err.message);
