@@ -1,4 +1,4 @@
-// Hostinger Passenger Process Reload Signal v1.6.5 - Safe Data Refresh & Zero ReferenceError Fix
+// Hostinger Passenger Process Reload Signal v1.6.6 - Normalized Freight Rate Validation
 import express from 'express';
 import cors from 'cors';
 import path from 'path';

@@ -614,22 +614,30 @@ export const TransporterPortal = () => {
       return;
     }
 
-    // 🔍 2. PREVENT STALE STATE BUG: Read rate directly from explicit parameter, React state, or DOM input
-    let rawInput = explicitRateValue;
-    if (rawInput === null || rawInput === undefined || String(rawInput).trim() === '') {
-      rawInput = quickRates[rateKey] !== undefined ? quickRates[rateKey] : quickRates[req.id];
+    // 🔍 2. PREVENT STALE STATE BUG: Read rate directly with multiple robust fallbacks
+    const normalizedDirect = String(explicitRateValue ?? '').replace(/[₹,\s]/g, '').trim();
+    let rawInput = normalizedDirect;
+
+    if (!rawInput) {
+      const stateVal = quickRates[rateKey] !== undefined ? quickRates[rateKey] : (quickRates[req.id] !== undefined ? quickRates[req.id] : quickRates[targetItemId]);
+      rawInput = String(stateVal ?? '').replace(/[₹,\s]/g, '').trim();
     }
-    if (rawInput === null || rawInput === undefined || String(rawInput).trim() === '') {
-      const inputEl = document.getElementById(`rate_input_${targetItemId}`) || document.getElementById(`rate_input_${req.id}`);
-      if (inputEl && inputEl.value) {
-        rawInput = inputEl.value;
+
+    if (!rawInput) {
+      const el = document.getElementById(`rate_input_${req.item_id || req.sub_indent_no || req.id}`) ||
+                 document.getElementById(`rate_input_${targetItemId}`) ||
+                 document.getElementById(`rate_input_${req.id}`) ||
+                 document.getElementById(`rate_input_${subIndentNo}`);
+      if (el && el.value) {
+        rawInput = String(el.value).replace(/[₹,\s]/g, '').trim();
       }
     }
 
-    // 🛡️ 3. VALIDATE RATE BEFORE REQUEST
-    const rateVal = parseFloat(String(rawInput || '').replace(/,/g, '').trim());
-    if (!rateVal || isNaN(rateVal) || rateVal <= 0) {
-      alert(`Please enter a valid freight rate per MT (greater than 0) for ${subIndentNo}.`);
+    const rateVal = Number(rawInput);
+
+    // 🛡️ 3. VALIDATE RATE: Accepts any positive finite number (> 0, e.g. 22, 22.5, 44, 55, 2450)
+    if (!rawInput || !Number.isFinite(rateVal) || rateVal <= 0) {
+      alert('Please enter a valid freight rate greater than ₹0.');
       return;
     }
 
@@ -745,9 +753,10 @@ export const TransporterPortal = () => {
       return;
     }
 
-    const rateVal = parseFloat(String(bidForm.rate_per_unit || '').replace(/,/g, '').trim());
-    if (!rateVal || isNaN(rateVal) || rateVal <= 0) {
-      alert('Please enter a valid freight rate per MT (e.g. 2450).');
+    const normalizedModalRate = String(bidForm.rate_per_unit ?? '').replace(/[₹,\s]/g, '').trim();
+    const rateVal = Number(normalizedModalRate);
+    if (!normalizedModalRate || !Number.isFinite(rateVal) || rateVal <= 0) {
+      alert('Please enter a valid freight rate greater than ₹0.');
       return;
     }
 
