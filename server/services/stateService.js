@@ -70,7 +70,7 @@ export async function getRateSubmissions(user) {
     counter_offer_by: b.counter_offer_by || null,
     counter_offer_at: b.counter_offer_at || null,
     final_rate: b.final_rate ? Number(b.final_rate) : null,
-    is_frozen: Boolean(b.final_rate || b.bid_status === 'FINALIZED' || b.bid_status === 'COUNTER_ACCEPTED'),
+    is_frozen: ['FINALIZED', 'COUNTER_ACCEPTED'].includes(String(b.bid_status || '').toUpperCase()) || Boolean(Number(b.final_rate) > 0),
     counter_message: b.counter_message || null,
     finalized_at: b.finalized_at || null,
     submitted_at: b.submitted_at ? new Date(b.submitted_at).toISOString() : new Date().toISOString()

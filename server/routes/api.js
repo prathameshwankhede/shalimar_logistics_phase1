@@ -568,7 +568,7 @@ async function handleGetRequirementRates(req, res) {
         counter_message: r.counter_message || null,
         final_rate: r.final_rate ? parseFloat(r.final_rate) : null,
         finalized_at: r.finalized_at || null,
-        is_frozen: Boolean(r.final_rate || r.bid_status === 'FINALIZED' || r.bid_status === 'COUNTER_ACCEPTED'),
+        is_frozen: ['FINALIZED', 'COUNTER_ACCEPTED'].includes(String(r.bid_status || '').toUpperCase()) || Boolean(Number(r.final_rate) > 0),
         submitted_at: r.submitted_at
       };
     });

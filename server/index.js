@@ -1,4 +1,4 @@
-// Hostinger Passenger Process Reload Signal v1.8.1 - Clean Canonical rate_submissions Schema Active
+// Hostinger Passenger Process Reload Signal v1.8.2 - Remove is_frozen dependency & Canonical bid_status Lifecycle
 import express from 'express';
 import cors from 'cors';
 import path from 'path';

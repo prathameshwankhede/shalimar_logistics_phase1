@@ -9,6 +9,7 @@ import { ContractModal } from './ContractModal';
 import { ERPPaymentModal } from './ERPPaymentModal';
 import { TruckDispatchSlipModal } from './TruckDispatchSlipModal';
 import { validateMobile, validateVehicleNo } from '../utils/validationRules';
+import { isBidFrozen, normalizeBidStatus } from '../utils/bidStatus';
 import {
   Truck,
   Send,
@@ -396,7 +397,7 @@ export const TransporterPortal = () => {
 
     // 3. Exclude if rate is accepted/frozen by any transporter
     const isAcceptedByAnyone = (db.rate_submissions || []).some(
-      (s) => (String(s.rate_request_id) === String(r.id) || String(s.rate_request_id) === String(r.request_no)) && (s.is_frozen || s.status === 'Rate Frozen' || s.status === 'Accepted')
+      (s) => (String(s.rate_request_id) === String(r.id) || String(s.rate_request_id) === String(r.request_no) || String(s.requirement_id) === String(r.id)) && isBidFrozen(s)
     );
     if (isAcceptedByAnyone) return false;
 
@@ -450,7 +451,7 @@ export const TransporterPortal = () => {
   });
 
   // Count pending counter offers for badge notification
-  const pendingCounterOffers = mySubmissions.filter((s) => s.status === 'Negotiating' && s.counter_rate_per_unit && !s.is_frozen);
+  const pendingCounterOffers = mySubmissions.filter((s) => (s.counter_offer_status === 'PENDING' || s.bid_status === 'COUNTER_OFFERED') && !isBidFrozen(s));
 
   // MONTH-END CALCULATIONS
   const filteredDispatchesForMonth = myDispatches.filter((d) => {
@@ -910,8 +911,8 @@ export const TransporterPortal = () => {
              (String(s.transporter_id) === String(transIdForModal) || String(s.transporter_id) === String(currentTransporter?.code) || String(s.transporter_id) === String(currentTransporter?.username))
     );
 
-    if (existingIdx >= 0 && updatedSubmissions[existingIdx].is_frozen) {
-      alert(`🛑 RATE FROZEN: Your agreed rate of ₹${updatedSubmissions[existingIdx].rate_per_unit}/MT has already been accepted/awarded and cannot be changed.`);
+    if (existingIdx >= 0 && isBidFrozen(updatedSubmissions[existingIdx])) {
+      alert(`🛑 RATE FROZEN: Your agreed rate of ₹${updatedSubmissions[existingIdx].rate_per_unit || updatedSubmissions[existingIdx].final_rate}/MT has already been accepted/awarded and cannot be changed.`);
       setSelectedReqForBid(null);
       return;
     }
@@ -979,7 +980,9 @@ export const TransporterPortal = () => {
         return {
           ...s,
           rate_per_unit: agreedRate,
-          is_frozen: true,
+          final_rate: agreedRate,
+          bid_status: 'COUNTER_ACCEPTED',
+          counter_offer_status: 'ACCEPTED',
           status: 'Rate Frozen',
           accepted_at: new Date().toISOString()
         };
@@ -2373,9 +2376,9 @@ export const TransporterPortal = () => {
               </thead>
               <tbody>
                 {mySubmissions.map((sub) => {
-                  const req = (db.rate_requests || []).find((r) => r.id === sub.rate_request_id);
-                  const isNegotiating = sub.status === 'Negotiating';
-                  const isFrozen = sub.is_frozen || sub.status === 'Rate Frozen';
+                  const req = (db.rate_requests || []).find((r) => r.id === sub.rate_request_id || r.id === sub.requirement_id);
+                  const isNegotiating = sub.counter_offer_status === 'PENDING' || sub.bid_status === 'COUNTER_OFFERED';
+                  const isFrozen = isBidFrozen(sub);
                   const isReqDeleted = !req;
 
                   return (

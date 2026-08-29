@@ -103,26 +103,35 @@ CREATE TABLE IF NOT EXISTS `rate_requests` (
   KEY `idx_requests_status` (`status`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- 6. BIDS / RATE SUBMISSIONS TABLE
+-- 6. BIDS / RATE SUBMISSIONS TABLE (Canonical Production Schema)
 CREATE TABLE IF NOT EXISTS `rate_submissions` (
-  `id` VARCHAR(64) NOT NULL,
-  `request_id` VARCHAR(64) NOT NULL,
-  `request_no` VARCHAR(100) NOT NULL,
-  `transporter_id` VARCHAR(64) NOT NULL,
-  `transporter_name` VARCHAR(255) NOT NULL,
-  `rate_per_unit` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
-  `vehicle_type` VARCHAR(100) DEFAULT NULL,
-  `comments` TEXT DEFAULT NULL,
-  `status` ENUM('Submitted', 'Accepted', 'Rejected', 'Counter') NOT NULL DEFAULT 'Submitted',
-  `counter_rate` DECIMAL(12,2) DEFAULT NULL,
-  `is_frozen` TINYINT(1) DEFAULT 0,
-  `submitted_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
-  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `id` VARCHAR(100) NOT NULL,
+  `requirement_id` VARCHAR(100) NOT NULL,
+  `item_id` VARCHAR(100) DEFAULT 'MAIN',
+  `transporter_id` VARCHAR(100) NOT NULL,
+  `rate_per_mt` DECIMAL(12,2) NOT NULL,
+  `quoted_quantity_mt` DECIMAL(12,3) DEFAULT NULL,
+  `total_amount` DECIMAL(14,2) DEFAULT NULL,
+  `remarks` TEXT DEFAULT NULL,
+  `original_rate` DECIMAL(12,2) DEFAULT NULL,
+  `counter_offer_rate` DECIMAL(12,2) DEFAULT NULL,
+  `counter_offer_status` VARCHAR(50) DEFAULT NULL,
+  `counter_offer_by` VARCHAR(50) DEFAULT NULL,
+  `counter_offer_at` DATETIME DEFAULT NULL,
+  `counter_message` TEXT DEFAULT NULL,
+  `final_rate` DECIMAL(12,2) DEFAULT NULL,
+  `finalized_at` DATETIME DEFAULT NULL,
+  `bid_status` VARCHAR(50) DEFAULT 'Submitted',
+  `submitted_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
-  KEY `idx_submissions_request` (`request_id`),
-  KEY `idx_submissions_transporter` (`transporter_id`),
-  CONSTRAINT `fk_submissions_request` FOREIGN KEY (`request_id`) REFERENCES `rate_requests` (`id`) ON DELETE CASCADE,
-  CONSTRAINT `fk_submissions_transporter` FOREIGN KEY (`transporter_id`) REFERENCES `transporters` (`id`) ON DELETE CASCADE
+  UNIQUE KEY `uq_req_item_trans` (`requirement_id`, `item_id`, `transporter_id`),
+  KEY `idx_rate_requirement` (`requirement_id`),
+  KEY `idx_rate_transporter` (`transporter_id`),
+  KEY `idx_rate_item` (`item_id`),
+  KEY `idx_rate_counter_status` (`bid_status`, `counter_offer_status`),
+  CONSTRAINT `fk_rs_req` FOREIGN KEY (`requirement_id`) REFERENCES `transport_requirements` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_rs_item` FOREIGN KEY (`item_id`) REFERENCES `transport_requirement_items` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- 7. ALLOCATIONS TABLE

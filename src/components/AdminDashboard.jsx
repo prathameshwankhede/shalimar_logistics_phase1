@@ -388,9 +388,9 @@ export const AdminDashboard = () => {
       const rate = sub.rate_per_unit || 0;
       const counterRate = sub.counter_rate_per_unit || '-';
       const allocQty = alloc?.allocated_qty || 0;
-      const totalVal = alloc ? (alloc.allocated_qty * alloc.agreed_rate) : 0;
-      const status = sub.status || 'Submitted';
-      const approvalStatus = alloc ? 'APPROVED & AWARDED' : (sub.is_frozen ? 'AGREED' : 'PENDING');
+      const status = sub.bid_status || sub.status || 'Submitted';
+      const isAgreed = ['COUNTER_ACCEPTED', 'FINALIZED'].includes(String(sub.bid_status || '').toUpperCase()) || Number(sub.final_rate) > 0;
+      const approvalStatus = alloc ? 'APPROVED & AWARDED' : (isAgreed ? 'AGREED' : 'PENDING');
 
       csvContent += `"${timeStr}","${reqNo}","${batchNo}","${transName}","${transCode}",${rate},"${counterRate}",${allocQty},${totalVal},"${status}","${approvalStatus}"\n`;
     });

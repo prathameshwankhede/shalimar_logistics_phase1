@@ -7,6 +7,7 @@ import { CheckCircle2, TrendingDown, Clock, Sparkles, MessageSquare, Snowflake, 
 import { ParticularBidReportModal } from './ParticularBidReportModal';
 import { NegotiationHistoryModal } from './NegotiationHistoryModal';
 import { getRequirementRates, awardRequirementRate, sendAdminCounter, finalizeBid } from '../api/rateSubmissionApi';
+import { isBidFrozen } from '../utils/bidStatus';
 
 export const RateComparisonView = ({ rateRequest, onBack }) => {
   const { db, updateDB, currentUser, addSecurityLog, refreshRequirements, refreshDB } = useAuth();
@@ -171,7 +172,7 @@ export const RateComparisonView = ({ rateRequest, onBack }) => {
   // Admin Freezes Rate (Locks the rate)
   const handleFreezeRate = (sub) => {
     // 🛑 Cannot freeze if counter offer is pending transporter acceptance
-    if (sub.status === 'Negotiating' && sub.counter_rate_per_unit && !sub.is_frozen) {
+    if (sub.status === 'Negotiating' && sub.counter_rate_per_unit && !isBidFrozen(sub)) {
       alert(`🛑 COUNTER OFFER PENDING: Transporter must first accept your counter-offer rate of ₹${sub.counter_rate_per_unit}/MT from their portal before rate can be frozen.`);
       return;
     }
@@ -183,7 +184,8 @@ export const RateComparisonView = ({ rateRequest, onBack }) => {
         return {
           ...s,
           rate_per_unit: finalRate,
-          is_frozen: true,
+          final_rate: finalRate,
+          bid_status: 'FINALIZED',
           status: 'Rate Frozen',
           frozen_at: new Date().toISOString()
         };
@@ -209,7 +211,7 @@ export const RateComparisonView = ({ rateRequest, onBack }) => {
   // Admin Awards Contract
   const handleAwardContract = (sub) => {
     // 🛑 STRICT RULE: Cannot award contract if counter-offer is pending acceptance by Transporter
-    if (sub.status === 'Negotiating' && sub.counter_rate_per_unit && !sub.is_frozen) {
+    if (sub.status === 'Negotiating' && sub.counter_rate_per_unit && !isBidFrozen(sub)) {
       alert(`🛑 COUNTER ACCEPTANCE REQUIRED: You have proposed a counter rate of ₹${sub.counter_rate_per_unit}/MT. Contract CANNOT be awarded until the Transporter accepts this counter offer from their login portal.`);
       return;
     }
@@ -435,9 +437,9 @@ export const RateComparisonView = ({ rateRequest, onBack }) => {
                     (t.company_name && sub.transporter_id && String(t.company_name).toLowerCase().includes(String(sub.transporter_id).toLowerCase()))
                 );
                 const isL1 = sub.rate_per_unit === lowestRate;
-                const isSelected = sub.status === 'Selected';
-                const isNegotiating = sub.status === 'Negotiating' && sub.counter_rate_per_unit && !sub.is_frozen;
-                const isFrozen = sub.is_frozen || sub.status === 'Rate Frozen';
+                const isSelected = sub.status === 'Selected' || sub.bid_status === 'FINALIZED';
+                const isFrozen = isBidFrozen(sub);
+                const isNegotiating = (sub.status === 'Negotiating' || sub.bid_status === 'COUNTER_OFFERED' || sub.counter_offer_status === 'PENDING') && !isFrozen;
 
                 return (
                   <tr
