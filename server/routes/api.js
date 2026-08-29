@@ -2864,15 +2864,20 @@ router.get('/state', authenticateToken, async (req, res) => {
     }
   }
 
-  // Merge normalized transporters table from MySQL database
+  // Merge normalized transporters, requirements, and rate submissions from MySQL tables (100% Single Source of Truth)
   try {
-    const dbTransporters = await fetchTransportersList();
+    const [dbTransporters, dbSubs] = await Promise.all([
+      fetchTransportersList().catch(() => []),
+      fetchSubmissions(null).catch(() => [])
+    ]);
     state = {
       ...state,
-      transporters: Array.isArray(dbTransporters) ? dbTransporters : []
+      transporters: Array.isArray(dbTransporters) ? dbTransporters : [],
+      rate_submissions: Array.isArray(dbSubs) ? dbSubs : []
     };
   } catch (err) {
-    console.warn('MySQL transporters load notice:', err.message);
+    console.warn('MySQL state load notice:', err.message);
+    state.rate_submissions = [];
   }
 
   if (req.user.role === 'transporter') {

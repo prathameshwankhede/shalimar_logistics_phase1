@@ -262,24 +262,24 @@ export async function loadDBFromSupabase() {
 
     let data = stateRes && stateRes.data ? stateRes.data : { ...EMPTY_STATE };
 
-    if (Array.isArray(transporters) && transporters.length > 0) {
+    if (Array.isArray(transporters)) {
       data.transporters = transporters;
     }
-    if (Array.isArray(companyUnits) && companyUnits.length > 0) {
+    if (Array.isArray(companyUnits)) {
       data.company_units_plants = companyUnits;
       data.company_units = companyUnits;
       data.company_masters = companyUnits;
     }
-    if (Array.isArray(products) && products.length > 0) {
+    if (Array.isArray(products)) {
       data.products = products;
       data.product_masters = products;
     }
-    if (Array.isArray(requirements) && requirements.length > 0) {
+    if (Array.isArray(requirements)) {
       data.rate_requests = requirements;
       data.transport_requirements = requirements;
       data.requirements = requirements;
     }
-    if (Array.isArray(rateSubmissions) && rateSubmissions.length > 0) {
+    if (Array.isArray(rateSubmissions)) {
       data.rate_submissions = rateSubmissions;
     }
 

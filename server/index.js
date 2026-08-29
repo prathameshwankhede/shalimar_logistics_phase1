@@ -1,4 +1,4 @@
-// Hostinger Passenger Process Reload Signal v1.6.9 - Guaranteed Full Submission Sync & Immediate Bid Display
+// Hostinger Passenger Process Reload Signal v1.7.0 - Single Source of Truth MySQL Zero Mock Fallback
 import express from 'express';
 import cors from 'cors';
 import path from 'path';

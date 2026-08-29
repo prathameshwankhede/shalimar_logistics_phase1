@@ -2503,8 +2503,8 @@ export const AdminDashboard = () => {
                                   );
                                 });
                                 const validRates = bids.map(b => parseFloat(b.rate_per_mt || b.rate_per_unit || 0)).filter(r => r > 0);
-                                const lowestRate = validRates.length > 0 ? Math.min(...validRates) : (item.lowest_rate ? Number(item.lowest_rate) : null);
-                                const bidsCount = (bids && bids.length > 0) ? bids.length : Number(item.submitted_bids_count || 0);
+                                const lowestRate = validRates.length > 0 ? Math.min(...validRates) : null;
+                                const bidsCount = bids.length;
                                 const alloc = (db.allocations || []).find((a) => String(a.requirement_id) === String(openedReq.id) || String(a.req_no) === String(reqNoStr));
                                 const awardedTransporter = alloc ? (alloc.transporter_name || alloc.transporter_id) : openedReq.awarded_transporter;
 
@@ -2734,9 +2734,8 @@ export const AdminDashboard = () => {
                             const isBatch = childItems.length > 0;
                             const isMultiItemBatch = childItems.length > 1;
                             const totalQty = req.total_quantity_mt || req.required_qty || req.quantity_mt || 0;
-                            const bidsCount = Number(req.submitted_bids_count || 0);
                             const bids = (db.rate_submissions || []).filter((s) => String(s.rate_request_id) === String(req.id) || String(s.rate_request_id) === String(reqNoStr) || String(s.requirement_id) === String(req.id) || String(s.requirement_id) === String(reqNoStr));
-                            const displayBidCount = Math.max(bids.length, bidsCount);
+                            const displayBidCount = bids.length;
                             const validRates = bids.map((b) => parseFloat(b.rate_per_unit || b.rate_per_mt)).filter((r) => !isNaN(r) && r > 0);
                             const lowestRate = validRates.length > 0 ? Math.min(...validRates) : null;
 
