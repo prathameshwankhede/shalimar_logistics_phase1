@@ -138,8 +138,23 @@ export const AuthProvider = ({ children }) => {
     }
   }, [currentUser]);
 
-  const refreshDB = () => {
-    return db;
+  const refreshRequirements = async () => {
+    console.time('MYSQL_TO_UI_REFRESH');
+    try {
+      const sharedDb = await loadDBFromSupabase();
+      if (sharedDb) {
+        setDb((prevDb) => mergeDbStates(sharedDb, prevDb));
+      }
+      return sharedDb;
+    } catch (e) {
+      console.error('refreshRequirements Error:', e.message);
+    } finally {
+      console.timeEnd('MYSQL_TO_UI_REFRESH');
+    }
+  };
+
+  const refreshDB = async () => {
+    return await refreshRequirements();
   };
 
   const addSecurityLog = (targetDb, action, username, role, status = 'AUTHENTICATED 🛡️') => {
@@ -186,6 +201,9 @@ export const AuthProvider = ({ children }) => {
     } catch (e) {
       // ignore
     }
+
+    // ⚡ Immediately re-fetch fresh MySQL state after mutation
+    await refreshRequirements();
   };
 
   const login = async (username, password) => {
@@ -365,6 +383,7 @@ export const AuthProvider = ({ children }) => {
         quickSwitchUser,
         logout,
         refreshDB,
+        refreshRequirements,
         updateDB,
         resetAllData,
         addSecurityLog

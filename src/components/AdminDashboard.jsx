@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { createRateRequest, createRequirement, updateRequirement, deleteRequirement } from '../api/rateRequestApi';
+import { createRateRequest, createRequirement, updateRequirement, deleteRequirement, deleteRequirementItem } from '../api/rateRequestApi';
 import { createTransporter, updateTransporterStatus, resetTransporterPassword, deleteTransporter } from '../api/transporterApi';
 import { createProduct, updateProduct, deleteProduct, createCompanyUnit, updateCompanyUnit, deleteCompanyUnit } from '../api/masterDataApi';
 import { downloadFullBackupApi, restoreBackupApi, downloadReportApi, clearAllDataApi } from '../api/backupApi';

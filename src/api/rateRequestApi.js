@@ -35,3 +35,9 @@ export async function deleteRequirement(id) {
     method: 'DELETE'
   });
 }
+
+export async function deleteRequirementItem(parentId, itemId) {
+  return apiClient(`/api/requirements/${parentId}/items/${itemId}`, {
+    method: 'DELETE'
+  });
+}

@@ -14,6 +14,8 @@ export async function apiClient(endpoint, options = {}) {
   const token = getAuthToken();
   const headers = {
     'Content-Type': 'application/json',
+    'Cache-Control': 'no-cache',
+    'Pragma': 'no-cache',
     ...(options.headers || {})
   };
 
@@ -21,12 +23,20 @@ export async function apiClient(endpoint, options = {}) {
     headers['Authorization'] = `Bearer ${token}`;
   }
 
+  const method = (options.method || 'GET').toUpperCase();
+  let finalEndpoint = endpoint;
+  if (method === 'GET') {
+    const separator = endpoint.includes('?') ? '&' : '?';
+    finalEndpoint = `${endpoint}${separator}_t=${Date.now()}`;
+  }
+
   const config = {
+    cache: 'no-store',
     ...options,
     headers
   };
 
-  const response = await fetch(`${getApiBaseUrl()}${endpoint}`, config);
+  const response = await fetch(`${getApiBaseUrl()}${finalEndpoint}`, config);
 
   if (response.status === 401) {
     console.warn('⚠️ Authentication session expired or invalid (HTTP 401)');

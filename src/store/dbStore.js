@@ -76,7 +76,11 @@ export function setAuthToken(token) {
 
 function getAuthHeaders() {
   const token = getAuthToken();
-  const headers = { 'Content-Type': 'application/json' };
+  const headers = {
+    'Content-Type': 'application/json',
+    'Cache-Control': 'no-cache',
+    'Pragma': 'no-cache'
+  };
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
   }
@@ -84,11 +88,11 @@ function getAuthHeaders() {
 }
 
 /**
- * ☁️ Modular Targeted API Fetch Functions (Minimal Data Footprint)
+ * ☁️ Modular Targeted API Fetch Functions (Minimal Data Footprint & Zero Stale Cache)
  */
 export async function fetchDashboardMetrics() {
   try {
-    const res = await fetch(`${getApiBaseUrl()}/api/dashboard`, { headers: getAuthHeaders() });
+    const res = await fetch(`${getApiBaseUrl()}/api/dashboard?_t=${Date.now()}`, { cache: 'no-store', headers: getAuthHeaders() });
     if (!res.ok) return null;
     const json = await res.json();
     return json.dashboard || null;
@@ -99,7 +103,7 @@ export async function fetchDashboardMetrics() {
 
 export async function fetchRateRequests(page = 1, limit = 20) {
   try {
-    const res = await fetch(`${getApiBaseUrl()}/api/rate-requests?page=${page}&limit=${limit}`, { headers: getAuthHeaders() });
+    const res = await fetch(`${getApiBaseUrl()}/api/rate-requests?page=${page}&limit=${limit}&_t=${Date.now()}`, { cache: 'no-store', headers: getAuthHeaders() });
     if (!res.ok) return [];
     const json = await res.json();
     return json.rate_requests || [];
@@ -110,7 +114,7 @@ export async function fetchRateRequests(page = 1, limit = 20) {
 
 export async function fetchRateSubmissions() {
   try {
-    const res = await fetch(`${getApiBaseUrl()}/api/rate-submissions`, { headers: getAuthHeaders() });
+    const res = await fetch(`${getApiBaseUrl()}/api/rate-submissions?_t=${Date.now()}`, { cache: 'no-store', headers: getAuthHeaders() });
     if (!res.ok) return [];
     const json = await res.json();
     return json.rate_submissions || [];
@@ -121,7 +125,7 @@ export async function fetchRateSubmissions() {
 
 export async function fetchTransportersList() {
   try {
-    const res = await fetch(`${getApiBaseUrl()}/api/transporters`, { headers: getAuthHeaders() });
+    const res = await fetch(`${getApiBaseUrl()}/api/transporters?_t=${Date.now()}`, { cache: 'no-store', headers: getAuthHeaders() });
     if (!res.ok) return [];
     const json = await res.json();
     return json.transporters || [];
@@ -132,7 +136,7 @@ export async function fetchTransportersList() {
 
 export async function fetchCompanyUnitsList() {
   try {
-    const res = await fetch(`${getApiBaseUrl()}/api/company-units`, { headers: getAuthHeaders() });
+    const res = await fetch(`${getApiBaseUrl()}/api/company-units?_t=${Date.now()}`, { cache: 'no-store', headers: getAuthHeaders() });
     if (!res.ok) return [];
     const json = await res.json();
     return json.data || json.company_units || [];
@@ -143,7 +147,7 @@ export async function fetchCompanyUnitsList() {
 
 export async function fetchProductsList() {
   try {
-    const res = await fetch(`${getApiBaseUrl()}/api/products`, { headers: getAuthHeaders() });
+    const res = await fetch(`${getApiBaseUrl()}/api/products?_t=${Date.now()}`, { cache: 'no-store', headers: getAuthHeaders() });
     if (!res.ok) return [];
     const json = await res.json();
     return json.data || json.products || json.product_masters || [];
@@ -154,7 +158,7 @@ export async function fetchProductsList() {
 
 export async function fetchRequirementsList() {
   try {
-    const res = await fetch(`${getApiBaseUrl()}/api/requirements`, { headers: getAuthHeaders() });
+    const res = await fetch(`${getApiBaseUrl()}/api/requirements?_t=${Date.now()}`, { cache: 'no-store', headers: getAuthHeaders() });
     if (!res.ok) return [];
     const json = await res.json();
     return json.data || json.requirements || json.rate_requests || [];
@@ -246,7 +250,8 @@ export function resetDB() {
 
 export async function loadDBFromSupabase() {
   try {
-    const res = await fetch(`${getApiBaseUrl()}/api/state`, {
+    const res = await fetch(`${getApiBaseUrl()}/api/state?_t=${Date.now()}`, {
+      cache: 'no-store',
       headers: getAuthHeaders()
     });
     let data = null;
