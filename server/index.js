@@ -1,4 +1,4 @@
-// Hostinger Passenger Process Reload Signal v1.4.8 - Counter Rate Button in Matrix Column
+// Hostinger Passenger Process Reload Signal v1.4.9 - Instant Counter Offer Modal Trigger Engine
 import express from 'express';
 import cors from 'cors';
 import path from 'path';

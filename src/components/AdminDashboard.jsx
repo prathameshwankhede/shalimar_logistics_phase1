@@ -134,37 +134,65 @@ export const AdminDashboard = () => {
   const [isSendingCounter, setIsSendingCounter] = useState({});
   const [editingCounterKeys, setEditingCounterKeys] = useState({});
 
-  const handleSendBulkCounter = async (e, reqId, itemId, bidderCount) => {
-    if (e) e.preventDefault();
-    const targetItemId = itemId || 'MAIN';
-    const key = `${reqId}_${targetItemId}`;
-    const rawInput = adminCounterInputs[key];
-    const counterVal = parseFloat(String(rawInput || '').replace(/,/g, '').trim());
+  const [counterModalState, setCounterModalState] = useState({
+    isOpen: false,
+    reqId: null,
+    itemId: null,
+    reqCode: '',
+    bidsCount: 0,
+    lowestRate: null,
+    counterRate: '',
+    remarks: ''
+  });
 
-    if (!counterVal || isNaN(counterVal) || counterVal <= 0) {
-      alert('Please enter a valid counter rate per MT (e.g. 2400).');
+  const handleOpenCounterModal = (reqId, itemId, reqCode, bids, lowestRate, existingCounter) => {
+    const validBids = bids || [];
+    const validRates = validBids.map(b => parseFloat(b.rate_per_mt || b.rate_per_unit || 0)).filter(r => r > 0);
+    const minRate = validRates.length > 0 ? Math.min(...validRates) : lowestRate;
+
+    setCounterModalState({
+      isOpen: true,
+      reqId,
+      itemId: itemId || 'MAIN',
+      reqCode: reqCode || String(reqId),
+      bidsCount: validBids.length,
+      lowestRate: minRate || null,
+      counterRate: existingCounter || (minRate ? Math.round(Number(minRate) * 0.92) : ''),
+      remarks: ''
+    });
+  };
+
+  const handleSendModalCounter = async (e) => {
+    if (e) e.preventDefault();
+    const { reqId, itemId, counterRate, bidsCount, remarks } = counterModalState;
+    const rateVal = parseFloat(String(counterRate || '').replace(/,/g, '').trim());
+
+    if (!rateVal || isNaN(rateVal) || rateVal <= 0) {
+      alert('Please enter a valid target counter rate per MT.');
       return;
     }
 
+    const key = `${reqId}_${itemId}`;
     setIsSendingCounter(prev => ({ ...prev, [key]: true }));
 
     try {
-      const res = await sendAdminCounterAll(reqId, targetItemId, { counter_rate: counterVal });
-      alert(`✓ Counter offer of ₹${counterVal}/MT successfully sent to ${res?.affected_transporters || bidderCount} transporter(s)!`);
-      setEditingCounterKeys(prev => ({ ...prev, [key]: false }));
+      const res = await sendAdminCounterAll(reqId, itemId, { counter_rate: rateVal, remarks });
+      alert(`✓ Counter offer of ₹${rateVal}/MT successfully sent to ${res?.affected_transporters || bidsCount || 'all'} transporter(s)!`);
+      setCounterModalState(prev => ({ ...prev, isOpen: false }));
       if (typeof updateDB === 'function') {
         await updateDB();
       }
     } catch (err) {
-      console.error('Bulk counter offer error:', err);
-      alert(err.message || 'Failed to send counter offer to transporters.');
+      console.error('Counter offer error:', err);
+      alert(err.message || 'Failed to send counter offer.');
     } finally {
       setIsSendingCounter(prev => ({ ...prev, [key]: false }));
     }
   };
 
-  const renderCounterOfferCell = (reqId, itemId, itemBids, openCompareModal, reqCode) => {
+  const renderCounterOfferCell = (reqId, itemId, itemBids, lowestRate, reqCode) => {
     const quoteCount = itemBids ? itemBids.length : 0;
+    const targetItemId = itemId || 'MAIN';
 
     const anyFinalized = itemBids && itemBids.some(b => b.bid_status === 'finalized' || b.bid_status === 'FINALIZED' || b.status === 'Rate Frozen');
     const allResponded = quoteCount > 0 && itemBids.every(b => b.bid_status === 'counter_accepted' || b.bid_status === 'countered_by_transporter' || b.bid_status === 'COUNTER_ACCEPTED' || b.bid_status === 'COUNTER_RESPONDED');
@@ -188,7 +216,7 @@ export const AdminDashboard = () => {
         <div className="counter-responded" style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'flex-start' }}>
           <button
             type="button"
-            onClick={openCompareModal}
+            onClick={() => handleOpenCounterModal(reqId, targetItemId, reqCode, itemBids, lowestRate, latestCounter)}
             className="btn btn-primary"
             style={{ padding: '5px 12px', fontSize: '0.78rem', background: 'linear-gradient(135deg, #059669 0%, #10b981 100%)', color: '#ffffff', borderRadius: '6px', fontWeight: '900', border: 'none', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px', boxShadow: '0 2px 4px rgba(16, 185, 129, 0.3)' }}
           >
@@ -204,7 +232,7 @@ export const AdminDashboard = () => {
         <div className="counter-responded" style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'flex-start' }}>
           <button
             type="button"
-            onClick={openCompareModal}
+            onClick={() => handleOpenCounterModal(reqId, targetItemId, reqCode, itemBids, lowestRate, latestCounter)}
             className="btn btn-primary"
             style={{ padding: '5px 12px', fontSize: '0.78rem', background: 'linear-gradient(135deg, #0284c7 0%, #2563eb 100%)', color: '#ffffff', borderRadius: '6px', fontWeight: '900', border: 'none', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px', boxShadow: '0 2px 4px rgba(2, 132, 199, 0.3)' }}
           >
@@ -225,11 +253,11 @@ export const AdminDashboard = () => {
           </div>
           <button
             type="button"
-            onClick={openCompareModal}
+            onClick={() => handleOpenCounterModal(reqId, targetItemId, reqCode, itemBids, lowestRate, latestCounter)}
             className="btn btn-secondary"
             style={{ padding: '3px 8px', fontSize: '0.72rem', border: '1px solid #38bdf8', color: '#38bdf8', borderRadius: '4px', fontWeight: '800', background: 'transparent', cursor: 'pointer' }}
           >
-            💬 Counter Rate ({quoteCount})
+            ✏ Edit Counter ({quoteCount})
           </button>
         </div>
       );
@@ -240,7 +268,7 @@ export const AdminDashboard = () => {
       <button
         type="button"
         className="counter-rate-btn btn"
-        onClick={openCompareModal}
+        onClick={() => handleOpenCounterModal(reqId, targetItemId, reqCode, itemBids, lowestRate, latestCounter)}
         aria-label={`Send counter rate for ${reqCode || reqId}`}
         style={{
           padding: '6px 14px',
@@ -2484,15 +2512,7 @@ export const AdminDashboard = () => {
 
                                     {/* 💬 COUNTER OFFER */}
                                     <td className="counter-offer-cell" style={{ padding: '14px 16px' }}>
-                                      {renderCounterOfferCell(openedReq.id || reqNoStr, item.id || subCode, bids, () => setSelectedRequestForComparison({
-                                        ...openedReq,
-                                        item_id: item.id,
-                                        sub_indent_id: item.id,
-                                        sub_indent_no: subCode,
-                                        selectedItem: item,
-                                        required_qty: Number(item.quantity_mt || item.required_qty || 0),
-                                        title: `${subCode} (${item.pickup_origin || pickupStr} ➔ ${item.drop_location || dropStr})`
-                                      }), subCode)}
+                                      {renderCounterOfferCell(openedReq.id || reqNoStr, item.id || subCode, bids, lowestRate, subCode)}
                                     </td>
 
                                     <td style={{ padding: '14px 16px' }}>
@@ -2720,7 +2740,7 @@ export const AdminDashboard = () => {
 
                                 {/* 5.5. 💬 COUNTER OFFER */}
                                 <td className="counter-offer-cell">
-                                  {renderCounterOfferCell(req.id || reqNoStr, 'MAIN', bids, () => setSelectedRequestForComparison(req), reqNoStr)}
+                                  {renderCounterOfferCell(req.id || reqNoStr, 'MAIN', bids, lowestRate, reqNoStr)}
                                 </td>
 
                                 {/* 6. BIDDING & APPROVAL REPORT */}
@@ -4557,6 +4577,142 @@ export const AdminDashboard = () => {
                   style={{ padding: '8px 20px', fontSize: '0.85rem', fontWeight: '900', background: 'linear-gradient(135deg, #dc2626 0%, #ef4444 100%)' }}
                 >
                   <Key size={16} /> Authorize & Execute
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* 💬 Admin Counter Offer Modal Dialog */}
+      {counterModalState.isOpen && (
+        <div className="modal-overlay" style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0, 0, 0, 0.75)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 99999,
+          backdropFilter: 'blur(4px)'
+        }}>
+          <div className="modal-content" style={{
+            background: '#0f172a',
+            border: '1.5px solid #38bdf8',
+            borderRadius: '16px',
+            padding: '24px',
+            maxWidth: '480px',
+            width: '90%',
+            boxShadow: '0 20px 40px rgba(0, 0, 0, 0.6)'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div style={{ background: '#0284c7', padding: '8px', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <MessageSquare size={20} color="#ffffff" />
+                </div>
+                <div>
+                  <h3 style={{ fontSize: '1.1rem', fontWeight: '900', color: '#ffffff', margin: 0 }}>Send Counter Offer</h3>
+                  <span style={{ fontSize: '0.78rem', color: '#38bdf8', fontFamily: 'monospace', fontWeight: '800' }}>
+                    {counterModalState.reqCode}
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setCounterModalState(prev => ({ ...prev, isOpen: false }))}
+                style={{ background: 'transparent', border: 'none', color: '#94a3b8', fontSize: '1.4rem', cursor: 'pointer' }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div style={{ background: '#1e293b', padding: '12px 16px', borderRadius: '10px', marginBottom: '16px', border: '1px solid #334155' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', marginBottom: '4px' }}>
+                <span style={{ color: '#94a3b8' }}>Total Submitted Quotes:</span>
+                <strong style={{ color: '#ffffff' }}>{counterModalState.bidsCount} Transporter(s)</strong>
+              </div>
+              {counterModalState.lowestRate && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
+                  <span style={{ color: '#94a3b8' }}>Current Lowest (L1) Quote:</span>
+                  <strong style={{ color: '#34d399' }}>₹{counterModalState.lowestRate}/MT</strong>
+                </div>
+              )}
+            </div>
+
+            <form onSubmit={handleSendModalCounter}>
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: '800', color: '#cbd5e1', marginBottom: '6px' }}>
+                  Target Counter Rate (₹ per MT) *
+                </label>
+                <div style={{ position: 'relative' }}>
+                  <span style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#38bdf8', fontWeight: '900', fontSize: '1rem' }}>₹</span>
+                  <input
+                    type="number"
+                    min="1"
+                    step="0.01"
+                    autoFocus
+                    className="form-control"
+                    placeholder="e.g. 50"
+                    value={counterModalState.counterRate}
+                    onChange={(e) => setCounterModalState(prev => ({ ...prev, counterRate: e.target.value }))}
+                    style={{
+                      width: '100%',
+                      paddingLeft: '32px',
+                      fontSize: '1.1rem',
+                      fontWeight: '900',
+                      height: '46px',
+                      background: '#0f172a',
+                      border: '2px solid #38bdf8',
+                      color: '#ffffff',
+                      borderRadius: '8px'
+                    }}
+                    required
+                  />
+                </div>
+              </div>
+
+              <div style={{ marginBottom: '20px' }}>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: '700', color: '#cbd5e1', marginBottom: '6px' }}>
+                  Negotiation Note (Optional)
+                </label>
+                <textarea
+                  className="form-control"
+                  rows="2"
+                  placeholder="e.g. Target budget is ₹50/MT for immediate allocation."
+                  value={counterModalState.remarks}
+                  onChange={(e) => setCounterModalState(prev => ({ ...prev, remarks: e.target.value }))}
+                  style={{ width: '100%', fontSize: '0.85rem', background: '#0f172a', border: '1px solid #334155', color: '#ffffff', borderRadius: '8px', padding: '10px' }}
+                ></textarea>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+                <button
+                  type="button"
+                  onClick={() => setCounterModalState(prev => ({ ...prev, isOpen: false }))}
+                  className="btn btn-secondary"
+                  style={{ padding: '8px 18px', fontSize: '0.88rem', borderRadius: '8px' }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSendingCounter[`${counterModalState.reqId}_${counterModalState.itemId}`]}
+                  className="btn btn-primary"
+                  style={{
+                    padding: '8px 22px',
+                    fontSize: '0.88rem',
+                    fontWeight: '900',
+                    borderRadius: '8px',
+                    background: 'linear-gradient(135deg, #0284c7 0%, #2563eb 100%)',
+                    border: '1px solid #38bdf8',
+                    boxShadow: '0 4px 12px rgba(2, 132, 199, 0.4)',
+                    cursor: 'pointer'
+                  }}
+                >
+                  {isSendingCounter[`${counterModalState.reqId}_${counterModalState.itemId}`] ? '⏳ Sending...' : '🚀 Send Counter Offer'}
                 </button>
               </div>
             </form>
