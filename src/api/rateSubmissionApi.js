@@ -38,6 +38,15 @@ export async function sendAdminCounter(submissionId, counterPayload) {
   });
 }
 
+export async function sendAdminCounterAll(requirementId, itemId, counterPayload) {
+  const reqId = encodeURIComponent(requirementId);
+  const itmId = encodeURIComponent(itemId || 'MAIN');
+  return apiClient(`/api/requirements/${reqId}/items/${itmId}/counter-offer-all?_t=${Date.now()}`, {
+    method: 'POST',
+    body: JSON.stringify(counterPayload)
+  });
+}
+
 export async function submitTransporterResponse(submissionId, responsePayload) {
   return apiClient(`/api/rate-submissions/${submissionId}/respond-counter?_t=${Date.now()}`, {
     method: 'POST',

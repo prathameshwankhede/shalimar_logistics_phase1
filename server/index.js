@@ -1,4 +1,4 @@
-// Hostinger Passenger Process Reload Signal v1.4.4 - Counter Offer Column Next To Submitted Quotes
+// Hostinger Passenger Process Reload Signal v1.4.5 - Direct Admin Counter Offer Input & Bulk Counter Engine
 import express from 'express';
 import cors from 'cors';
 import path from 'path';

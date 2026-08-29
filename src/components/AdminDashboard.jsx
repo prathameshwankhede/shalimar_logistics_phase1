@@ -4,6 +4,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { createRateRequest, createRequirement, updateRequirement, deleteRequirement, deleteRequirementItem } from '../api/rateRequestApi';
+import { sendAdminCounterAll } from '../api/rateSubmissionApi';
 import { createTransporter, updateTransporterStatus, resetTransporterPassword, deleteTransporter } from '../api/transporterApi';
 import { createProduct, updateProduct, deleteProduct, createCompanyUnit, updateCompanyUnit, deleteCompanyUnit } from '../api/masterDataApi';
 import { downloadFullBackupApi, restoreBackupApi, downloadReportApi, clearAllDataApi } from '../api/backupApi';
@@ -127,6 +128,177 @@ export const AdminDashboard = () => {
   // 🔑 Admin Password Reset Modal State
   const [resetPassTransporter, setResetPassTransporter] = useState(null);
   const [newTransporterPassword, setNewTransporterPassword] = useState('');
+
+  // 💬 Bulk Counter Offer Engine States
+  const [adminCounterInputs, setAdminCounterInputs] = useState({});
+  const [isSendingCounter, setIsSendingCounter] = useState({});
+  const [editingCounterKeys, setEditingCounterKeys] = useState({});
+
+  const handleSendBulkCounter = async (e, reqId, itemId, bidderCount) => {
+    if (e) e.preventDefault();
+    const targetItemId = itemId || 'MAIN';
+    const key = `${reqId}_${targetItemId}`;
+    const rawInput = adminCounterInputs[key];
+    const counterVal = parseFloat(String(rawInput || '').replace(/,/g, '').trim());
+
+    if (!counterVal || isNaN(counterVal) || counterVal <= 0) {
+      alert('Please enter a valid counter rate per MT (e.g. 2400).');
+      return;
+    }
+
+    setIsSendingCounter(prev => ({ ...prev, [key]: true }));
+
+    try {
+      const res = await sendAdminCounterAll(reqId, targetItemId, { counter_rate: counterVal });
+      alert(`✓ Counter offer of ₹${counterVal}/MT successfully sent to ${res?.affected_transporters || bidderCount} transporter(s)!`);
+      setEditingCounterKeys(prev => ({ ...prev, [key]: false }));
+      if (typeof updateDB === 'function') {
+        await updateDB();
+      }
+    } catch (err) {
+      console.error('Bulk counter offer error:', err);
+      alert(err.message || 'Failed to send counter offer to transporters.');
+    } finally {
+      setIsSendingCounter(prev => ({ ...prev, [key]: false }));
+    }
+  };
+
+  const renderCounterOfferCell = (reqId, itemId, itemBids, openCompareModal) => {
+    const targetItemId = itemId || 'MAIN';
+    const key = `${reqId}_${targetItemId}`;
+
+    if (!itemBids || itemBids.length === 0) {
+      return <span style={{ fontSize: '0.78rem', color: '#64748b' }}>No Bids Yet</span>;
+    }
+
+    const anyFinalized = itemBids.some(b => b.bid_status === 'finalized' || b.bid_status === 'FINALIZED' || b.status === 'Rate Frozen');
+    const allResponded = itemBids.length > 0 && itemBids.every(b => b.bid_status === 'counter_accepted' || b.bid_status === 'countered_by_transporter' || b.bid_status === 'COUNTER_ACCEPTED' || b.bid_status === 'COUNTER_RESPONDED');
+    const someResponded = itemBids.some(b => b.bid_status === 'counter_accepted' || b.bid_status === 'countered_by_transporter' || b.bid_status === 'COUNTER_ACCEPTED' || b.bid_status === 'COUNTER_RESPONDED');
+    const respondedCount = itemBids.filter(b => b.bid_status === 'counter_accepted' || b.bid_status === 'countered_by_transporter' || b.bid_status === 'COUNTER_ACCEPTED' || b.bid_status === 'COUNTER_RESPONDED').length;
+    const isCounterSent = itemBids.some(b => b.bid_status === 'countered_by_admin' || b.bid_status === 'COUNTER_OFFERED');
+    const latestCounter = itemBids.find(b => b.counter_rate || b.counter_rate_per_unit)?.counter_rate || itemBids.find(b => b.counter_rate_per_unit)?.counter_rate_per_unit;
+
+    if (anyFinalized) {
+      return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', alignItems: 'flex-start' }}>
+          <span className="badge badge-success" style={{ fontSize: '0.76rem', background: '#dcfce7', color: '#166534', border: '1px solid #86efac', padding: '4px 10px', borderRadius: '6px', fontWeight: '900' }}>
+            🏆 Final Rate: ₹{latestCounter || 'Agreed'}/MT
+          </span>
+        </div>
+      );
+    }
+
+    if (allResponded) {
+      return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'flex-start' }}>
+          <span style={{ fontSize: '0.76rem', background: '#dcfce7', color: '#047857', border: '1px solid #86efac', padding: '3px 8px', borderRadius: '6px', fontWeight: '900', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+            ✓ All Responses Received
+          </span>
+          <button
+            type="button"
+            onClick={openCompareModal}
+            className="btn btn-primary"
+            style={{ padding: '3px 10px', fontSize: '0.74rem', background: '#0284c7', color: '#ffffff', borderRadius: '6px', fontWeight: '800' }}
+          >
+            Compare Responses
+          </button>
+        </div>
+      );
+    }
+
+    if (someResponded) {
+      return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'flex-start' }}>
+          <div style={{ fontSize: '0.78rem', color: '#38bdf8', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '4px' }}>
+            🔄 {respondedCount}/{itemBids.length} Responded
+            {latestCounter && <strong style={{ color: '#fbbf24' }}>₹{latestCounter}/MT</strong>}
+          </div>
+          <button
+            type="button"
+            onClick={openCompareModal}
+            className="btn btn-primary"
+            style={{ padding: '3px 10px', fontSize: '0.74rem', background: '#0284c7', color: '#ffffff', borderRadius: '6px', fontWeight: '800' }}
+          >
+            View Responses
+          </button>
+        </div>
+      );
+    }
+
+    if (isCounterSent && !editingCounterKeys[key]) {
+      return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'flex-start' }}>
+          <div style={{ fontSize: '0.78rem', color: '#fbbf24', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '4px' }}>
+            💬 Counter Sent: <strong>₹{latestCounter}/MT</strong> → {itemBids.length} Transporter(s)
+          </div>
+          <div style={{ display: 'flex', gap: '6px' }}>
+            <button
+              type="button"
+              onClick={() => {
+                setAdminCounterInputs(prev => ({ ...prev, [key]: latestCounter || '' }));
+                setEditingCounterKeys(prev => ({ ...prev, [key]: true }));
+              }}
+              className="btn btn-secondary"
+              style={{ padding: '3px 8px', fontSize: '0.72rem', border: '1px solid #f59e0b', color: '#fbbf24', borderRadius: '6px', fontWeight: '800' }}
+            >
+              ✏ Edit Counter
+            </button>
+            <button
+              type="button"
+              onClick={openCompareModal}
+              className="btn btn-secondary"
+              style={{ padding: '3px 8px', fontSize: '0.72rem', border: '1px solid #38bdf8', color: '#38bdf8', borderRadius: '6px', fontWeight: '800' }}
+            >
+              Compare ({itemBids.length})
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <form onSubmit={(e) => handleSendBulkCounter(e, reqId, targetItemId, itemBids.length)} style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
+        <div style={{ position: 'relative' }}>
+          <span style={{ position: 'absolute', left: '8px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8', fontSize: '0.85rem' }}>₹</span>
+          <input
+            type="number"
+            inputMode="decimal"
+            min="1"
+            step="0.01"
+            placeholder="Rate"
+            value={adminCounterInputs[key] !== undefined ? adminCounterInputs[key] : (latestCounter || '')}
+            onChange={(e) => {
+              const val = e.target.value;
+              setAdminCounterInputs(prev => ({ ...prev, [key]: val }));
+            }}
+            disabled={isSendingCounter[key]}
+            style={{ paddingLeft: '22px', fontSize: '0.85rem', fontWeight: '800', height: '34px', width: '95px', background: '#0f172a', border: '1px solid #38bdf8', color: '#ffffff', borderRadius: '6px' }}
+            required
+          />
+        </div>
+        <button
+          type="submit"
+          disabled={isSendingCounter[key] || !adminCounterInputs[key] || Number(adminCounterInputs[key]) <= 0}
+          className="btn btn-primary"
+          style={{
+            padding: '4px 10px',
+            fontSize: '0.78rem',
+            height: '34px',
+            borderRadius: '6px',
+            fontWeight: '900',
+            whiteSpace: 'nowrap',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '4px',
+            background: 'linear-gradient(135deg, #0284c7 0%, #2563eb 100%)',
+            border: '1px solid #38bdf8'
+          }}
+        >
+          {isSendingCounter[key] ? '⏳ Sending...' : `📤 Send to All (${itemBids.length})`}
+        </button>
+      </form>
+    );
+  };
 
   // Archive Notice State
   const [archiveNotice, setArchiveNotice] = useState('');

@@ -851,6 +851,135 @@ async function handleAdminCounter(req, res) {
 }
 
 // -------------------------------------------------------------
+// ADMIN BULK COUNTER OFFER API HANDLER (Send to All Bidders on Item) 🎯
+// -------------------------------------------------------------
+async function handleAdminCounterAll(req, res) {
+  try {
+    await ensureRateSubmissionsTableExists();
+    await ensureBidNegotiationHistoryTableExists();
+    await ensureRateNegotiationsTableExists();
+
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ success: false, error: 'Access denied. Admin access required.' });
+    }
+
+    const requirementId = req.params.requirementId || req.body.requirement_id;
+    const itemId = req.params.itemId || req.body.item_id;
+    const { counter_rate, remarks, message } = req.body;
+    const remText = remarks || message || null;
+
+    const counterRateVal = parseFloat(counter_rate);
+    if (isNaN(counterRateVal) || counterRateVal <= 0) {
+      return res.status(400).json({ success: false, error: 'counter_rate must be a positive number.' });
+    }
+
+    if (!requirementId || !itemId) {
+      return res.status(400).json({ success: false, error: 'requirementId and itemId are required.' });
+    }
+
+    const conn = await pool.getConnection();
+    try {
+      await conn.beginTransaction();
+
+      // Find all submitted quotes for exact (requirement_id, item_id)
+      const [quotes] = await conn.query(
+        `SELECT * FROM rate_submissions 
+         WHERE (requirement_id = ? OR rate_request_id = ?) 
+           AND (item_id = ? OR sub_indent_no = ?)
+           AND (bid_status != 'finalized' AND bid_status != 'FINALIZED' AND status != 'Rate Frozen' AND status != 'Awarded')`,
+        [requirementId, requirementId, itemId, itemId]
+      );
+
+      let targetQuotes = [...quotes];
+
+      if (targetQuotes.length === 0) {
+        // Fallback search matching requirement_id only
+        const [fallbackQuotes] = await conn.query(
+          `SELECT * FROM rate_submissions 
+           WHERE (requirement_id = ? OR rate_request_id = ?) 
+             AND (bid_status != 'finalized' AND bid_status != 'FINALIZED' AND status != 'Rate Frozen' AND status != 'Awarded')`,
+          [requirementId, requirementId]
+        );
+
+        if (fallbackQuotes.length > 0) {
+          const matched = fallbackQuotes.filter(s => 
+            String(s.item_id || '').trim() === String(itemId).trim() ||
+            String(s.item_id || '').trim() === 'MAIN' ||
+            !s.item_id
+          );
+          if (matched.length > 0) {
+            targetQuotes = matched;
+          }
+        }
+      }
+
+      if (targetQuotes.length === 0) {
+        await conn.rollback();
+        conn.release();
+        return res.status(404).json({ success: false, error: 'No active transporter quotes found for this sub-indent item.' });
+      }
+
+      const adminUser = req.user.username || 'admin';
+      let updatedCount = 0;
+
+      for (const sub of targetQuotes) {
+        const prevRate = parseFloat(sub.counter_rate || sub.rate_per_mt || 0);
+        const origRate = sub.original_rate ? parseFloat(sub.original_rate) : parseFloat(sub.rate_per_mt || sub.rate_per_unit || 0);
+
+        await conn.query(
+          `UPDATE rate_submissions
+           SET original_rate = COALESCE(original_rate, ?),
+               original_rate_per_mt = COALESCE(original_rate_per_mt, ?),
+               counter_rate = ?,
+               bid_status = 'COUNTER_OFFERED',
+               negotiation_status = 'COUNTER_OFFERED',
+               countered_by = 'ADMIN',
+               counter_message = ?,
+               counter_updated_at = NOW(),
+               updated_at = NOW()
+           WHERE id = ?`,
+          [origRate, origRate, counterRateVal, remText, sub.id]
+        );
+
+        const negId = `neg_${Date.now()}_${Math.random().toString(36).substring(2,7)}`;
+        await conn.query(
+          `INSERT INTO rate_negotiations
+           (id, requirement_id, item_id, transporter_id, rate_submission_id, action_type, offered_rate, remarks, created_by, created_at)
+           VALUES (?, ?, ?, ?, ?, 'ADMIN_COUNTER', ?, ?, ?, NOW())`,
+          [negId, sub.requirement_id || requirementId, sub.item_id || itemId, sub.transporter_id, sub.id, counterRateVal, remText, adminUser]
+        );
+
+        await conn.query(
+          `INSERT INTO bid_negotiation_history 
+           (rate_submission_id, requirement_id, item_id, transporter_id, action_type, previous_rate, new_rate, actor_type, actor_id, message, created_at)
+           VALUES (?, ?, ?, ?, 'ADMIN_COUNTER', ?, ?, 'ADMIN', ?, ?, NOW())`,
+          [sub.id, sub.requirement_id || requirementId, sub.item_id || itemId, sub.transporter_id, prevRate, counterRateVal, adminUser, remText || `Admin proposed counter offer of ₹${counterRateVal}/MT to all bidders`]
+        );
+
+        updatedCount++;
+      }
+
+      await conn.commit();
+      conn.release();
+
+      return res.json({
+        success: true,
+        counter_rate: counterRateVal,
+        affected_transporters: updatedCount,
+        message: `Counter offer of ₹${counterRateVal}/MT sent successfully to ${updatedCount} transporter(s)`
+      });
+    } catch (txErr) {
+      await conn.rollback();
+      conn.release();
+      throw txErr;
+    }
+  } catch (err) {
+    console.error('❌ POST /api/requirements/:requirementId/items/:itemId/counter-offer-all Error:', err.message);
+    return res.status(500).json({ success: false, error: { code: 'DATABASE_ERROR', message: err.message } });
+  }
+}
+
+// -------------------------------------------------------------
 // TRANSPORTER RESPONSE (ACCEPT / REJECT / COUNTER) API HANDLER 🚛
 // -------------------------------------------------------------
 async function handleTransporterResponse(req, res) {
@@ -1111,6 +1240,8 @@ router.get('/requirements', authenticateToken, handleGetRequirements);
 router.get('/rate-requests', authenticateToken, handleGetRequirements);
 router.get('/requirements/:id/rates', authenticateToken, handleGetRequirementRates);
 router.get('/rate-requests/:id/rates', authenticateToken, handleGetRequirementRates);
+router.post('/requirements/:requirementId/items/:itemId/counter-offer-all', authenticateToken, requireRole('admin'), handleAdminCounterAll);
+router.post('/rate-submissions/counter-offer-all', authenticateToken, requireRole('admin'), handleAdminCounterAll);
 router.post('/rate-submissions/:id/counter-offer', authenticateToken, handleAdminCounter);
 router.post('/rate-submissions/:id/admin-counter', authenticateToken, handleAdminCounter);
 router.post('/rate-submissions/:id/respond-counter', authenticateToken, handleTransporterResponse);
