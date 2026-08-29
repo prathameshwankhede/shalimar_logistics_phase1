@@ -1,4 +1,4 @@
-// Hostinger Passenger Process Reload Signal v1.2.4 - Remove mergeDbStates & Direct MySQL Authoritative Replacement
+// Hostinger Passenger Process Reload Signal v1.2.5 - Remove Compare Rates Button from Parent Batch Rows
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
