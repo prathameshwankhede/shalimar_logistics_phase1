@@ -29,7 +29,7 @@ import {
 } from 'lucide-react';
 
 export const TransporterPortal = () => {
-  const { currentUser, currentTransporter, db, updateDB, quickSwitchUser, addSecurityLog } = useAuth();
+  const { currentUser, currentTransporter, db, updateDB, quickSwitchUser, addSecurityLog, refreshRequirements } = useAuth();
 
   // 🧭 TAB PERSISTENCE ENGINE: Read URL Hash or LocalStorage so browser refresh NEVER redirects to Home!
   const getInitialTransporterTab = () => {

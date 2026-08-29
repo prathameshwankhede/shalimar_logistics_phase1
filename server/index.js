@@ -1,4 +1,4 @@
-// Hostinger Passenger Process Reload Signal v1.5.7 - Fix Rate Submissions Persistence & Query Sync
+// Hostinger Passenger Process Reload Signal v1.5.8 - Destructure refreshRequirements in TransporterPortal
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
