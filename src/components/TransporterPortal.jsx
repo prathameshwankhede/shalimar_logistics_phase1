@@ -1158,7 +1158,18 @@ export const TransporterPortal = () => {
                                                     <td style={{ padding: '10px 14px' }}>
                                                       {hasSubmittedQuote ? (
                                                         <div className="submitted-quote-state" style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                                          <div className="current-bid-preview submitted">
+                                                          <div className="current-bid-preview submitted" style={{
+                                                            background: '#dcfce7',
+                                                            border: '1.5px solid #16a34a',
+                                                            padding: '6px 12px',
+                                                            borderRadius: '8px',
+                                                            color: '#064e3b',
+                                                            fontSize: '0.88rem',
+                                                            fontWeight: '900',
+                                                            display: 'inline-flex',
+                                                            alignItems: 'center',
+                                                            gap: '6px'
+                                                          }}>
                                                             <span>✓ Current Bid:</span>
                                                             <strong>₹{myExistingBid.rate_per_unit || myExistingBid.rate_per_mt}/MT</strong>
                                                           </div>
@@ -1168,52 +1179,79 @@ export const TransporterPortal = () => {
                                                         </div>
                                                       ) : isAwarded ? (
                                                         <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Requirements Closed</span>
-                                                      ) : (() => {
-                                                        const hasTypedRate = currentInputRate !== undefined && currentInputRate !== '' && parseFloat(currentInputRate) > 0;
-
-                                                        return (
-                                                          <div className="bid-entry-container" style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-                                                            <div style={{ position: 'relative' }}>
-                                                              <span style={{ position: 'absolute', left: '8px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', fontSize: '0.85rem' }}>₹</span>
-                                                              <input
-                                                                id={`rate_input_${req.item_id || req.sub_indent_no || req.id}`}
-                                                                type="number"
-                                                                inputMode="decimal"
-                                                                min="1"
-                                                                step="0.01"
-                                                                placeholder="Rate"
-                                                                aria-label={`Enter quote rate for ${displayCode}`}
-                                                                className="form-control"
-                                                                disabled={isSubmitting}
-                                                                value={currentInputRate}
-                                                                onChange={(e) => {
-                                                                  const val = e.target.value;
-                                                                  const key = getSubIndentKey(req);
-                                                                  setQuickRates((prev) => ({
-                                                                    ...prev,
-                                                                    [key]: val
-                                                                  }));
-                                                                }}
-                                                                onKeyDown={(e) => {
-                                                                  if (e.key === 'Enter' && parseFloat(currentInputRate) > 0) {
-                                                                    handleExpressQuickSubmit(e, req);
-                                                                  }
-                                                                }}
-                                                                style={{ paddingLeft: '22px', fontSize: '0.86rem', fontWeight: '800', height: '36px', width: '110px' }}
-                                                                autoComplete="off"
-                                                                required
-                                                              />
-                                                            </div>
-
-                                                            {hasTypedRate && (
-                                                              <div className="current-bid-preview">
-                                                                <span>✓ Current Bid:</span>
-                                                                <strong>₹{currentInputRate}/MT</strong>
-                                                              </div>
-                                                            )}
+                                                      ) : (
+                                                        <form onSubmit={(e) => handleExpressQuickSubmit(e, req)} style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
+                                                          <div style={{ position: 'relative' }}>
+                                                            <span style={{ position: 'absolute', left: '8px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', fontSize: '0.85rem' }}>₹</span>
+                                                            <input
+                                                              id={`rate_input_${req.item_id || req.sub_indent_no || req.id}`}
+                                                              type="number"
+                                                              inputMode="decimal"
+                                                              min="1"
+                                                              step="0.01"
+                                                              placeholder="Rate"
+                                                              aria-label={`Enter quote rate for ${displayCode}`}
+                                                              className="form-control"
+                                                              disabled={isSubmitting}
+                                                              value={currentInputRate}
+                                                              onChange={(e) => {
+                                                                const val = e.target.value;
+                                                                const key = getSubIndentKey(req);
+                                                                setQuickRates((prev) => ({
+                                                                  ...prev,
+                                                                  [key]: val,
+                                                                  [req.id]: val
+                                                                }));
+                                                              }}
+                                                              onKeyDown={(e) => {
+                                                                if (e.key === 'Enter' && Number(currentInputRate) > 0) {
+                                                                  handleExpressQuickSubmit(e, req);
+                                                                }
+                                                              }}
+                                                              style={{ paddingLeft: '22px', fontSize: '0.86rem', fontWeight: '800', height: '36px', width: '110px' }}
+                                                              required
+                                                            />
                                                           </div>
-                                                        );
-                                                      })()}
+
+                                                          <button
+                                                            type="submit"
+                                                            aria-label={`Submit quote for ${displayCode}`}
+                                                            className="btn btn-primary"
+                                                            disabled={isSubmitting || !currentInputRate || Number(currentInputRate) <= 0}
+                                                            style={{
+                                                              padding: '6px 14px',
+                                                              fontSize: '0.8rem',
+                                                              whiteSpace: 'nowrap',
+                                                              height: '36px',
+                                                              borderRadius: '8px',
+                                                              fontWeight: '900',
+                                                              display: 'inline-flex',
+                                                              alignItems: 'center',
+                                                              gap: '4px'
+                                                            }}
+                                                          >
+                                                            {isSubmitting ? '⏳ Submitting...' : '🚀 Quote'}
+                                                          </button>
+
+                                                          {Number(currentInputRate) > 0 && (
+                                                            <div className="current-bid-preview" style={{
+                                                              fontSize: '0.75rem',
+                                                              background: '#e0f2fe',
+                                                              color: '#0369a1',
+                                                              border: '1px solid #7dd3fc',
+                                                              padding: '4px 10px',
+                                                              borderRadius: '6px',
+                                                              fontWeight: '800',
+                                                              display: 'inline-flex',
+                                                              alignItems: 'center',
+                                                              gap: '4px'
+                                                            }}>
+                                                              <span>✓ Current Bid:</span>
+                                                              <strong>₹{currentInputRate}/MT</strong>
+                                                            </div>
+                                                          )}
+                                                        </form>
+                                                      )}
                                                     </td>
 
                                                     <td style={{ textAlign: 'right', padding: '10px 14px' }}>
@@ -1422,7 +1460,18 @@ export const TransporterPortal = () => {
                           <td>
                             {hasSubmittedQuote ? (
                               <div className="submitted-quote-state" style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                <div className="current-bid-preview submitted">
+                                <div className="current-bid-preview submitted" style={{
+                                  background: '#dcfce7',
+                                  border: '1.5px solid #16a34a',
+                                  padding: '6px 12px',
+                                  borderRadius: '8px',
+                                  color: '#064e3b',
+                                  fontSize: '0.88rem',
+                                  fontWeight: '900',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '6px'
+                                }}>
                                   <span>✓ Current Bid:</span>
                                   <strong>₹{myExistingBid.rate_per_unit || myExistingBid.rate_per_mt}/MT</strong>
                                 </div>
@@ -1432,45 +1481,69 @@ export const TransporterPortal = () => {
                               </div>
                             ) : isAwarded ? (
                               <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Requirements Closed</span>
-                            ) : (() => {
-                              const hasTypedRate = currentInputRate !== undefined && currentInputRate !== '' && parseFloat(currentInputRate) > 0;
-
-                              return (
-                                <div className="bid-entry-container" style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-                                  <div style={{ position: 'relative' }}>
-                                    <span style={{ position: 'absolute', left: '8px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', fontSize: '0.85rem' }}>₹</span>
-                                    <input
-                                      id={`rate_input_${req.id}`}
-                                      type="number"
-                                      inputMode="decimal"
-                                      min="1"
-                                      step="0.01"
-                                      placeholder="Rate"
-                                      aria-label={`Enter quote rate for ${displayCode}`}
-                                      className="form-control"
-                                      disabled={isSubmitting}
-                                      value={currentInputRate}
-                                      onChange={(e) => setQuickRates({ ...quickRates, [req.id]: e.target.value })}
-                                      onKeyDown={(e) => {
-                                        if (e.key === 'Enter' && parseFloat(currentInputRate) > 0) {
-                                          handleExpressQuickSubmit(e, req);
-                                        }
-                                      }}
-                                      style={{ paddingLeft: '22px', fontSize: '0.88rem', fontWeight: '700', height: '36px', width: '110px' }}
-                                      autoComplete="off"
-                                      required
-                                    />
-                                  </div>
-
-                                  {hasTypedRate && (
-                                    <div className="current-bid-preview">
-                                      <span>✓ Current Bid:</span>
-                                      <strong>₹{currentInputRate}/MT</strong>
-                                    </div>
-                                  )}
+                            ) : (
+                              <form onSubmit={(e) => handleExpressQuickSubmit(e, req)} style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
+                                <div style={{ position: 'relative' }}>
+                                  <span style={{ position: 'absolute', left: '8px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', fontSize: '0.85rem' }}>₹</span>
+                                  <input
+                                    id={`rate_input_${req.id}`}
+                                    type="number"
+                                    inputMode="decimal"
+                                    min="1"
+                                    step="0.01"
+                                    placeholder="Rate"
+                                    aria-label={`Enter quote rate for ${displayCode}`}
+                                    className="form-control"
+                                    disabled={isSubmitting}
+                                    value={currentInputRate}
+                                    onChange={(e) => setQuickRates({ ...quickRates, [req.id]: e.target.value })}
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter' && Number(currentInputRate) > 0) {
+                                        handleExpressQuickSubmit(e, req);
+                                      }
+                                    }}
+                                    style={{ paddingLeft: '22px', fontSize: '0.88rem', fontWeight: '700', height: '36px', width: '110px' }}
+                                    required
+                                  />
                                 </div>
-                              );
-                            })()}
+                                <button
+                                  type="submit"
+                                  aria-label={`Submit quote for ${displayCode}`}
+                                  className="btn btn-primary"
+                                  disabled={isSubmitting || !currentInputRate || Number(currentInputRate) <= 0}
+                                  style={{
+                                    padding: '6px 14px',
+                                    fontSize: '0.8rem',
+                                    whiteSpace: 'nowrap',
+                                    height: '36px',
+                                    borderRadius: '8px',
+                                    fontWeight: '900',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '4px'
+                                  }}
+                                >
+                                  {isSubmitting ? '⏳ Submitting...' : '🚀 Quote'}
+                                </button>
+                                {Number(currentInputRate) > 0 && (
+                                  <div className="current-bid-preview" style={{
+                                    fontSize: '0.75rem',
+                                    background: '#e0f2fe',
+                                    color: '#0369a1',
+                                    border: '1px solid #7dd3fc',
+                                    padding: '4px 10px',
+                                    borderRadius: '6px',
+                                    fontWeight: '800',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '4px'
+                                  }}>
+                                    <span>✓ Current Bid:</span>
+                                    <strong>₹{currentInputRate}/MT</strong>
+                                  </div>
+                                )}
+                              </form>
+                            )}
                           </td>
 
                           <td style={{ textAlign: 'right' }}>
