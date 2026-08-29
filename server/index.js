@@ -1,4 +1,4 @@
-// Hostinger Passenger Process Reload Signal v1.1.8 - Read-Only Quote Audit Endpoint
+// Hostinger Passenger Process Reload Signal v1.1.9 - Audit Route Closure Fix
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
