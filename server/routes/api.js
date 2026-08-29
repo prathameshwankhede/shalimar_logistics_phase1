@@ -665,23 +665,13 @@ async function handleCreateRateSubmission(req, res) {
     const qtyVal = parseFloat(quoted_quantity_mt || required_qty) || totalCargoQty || null;
     const totalAmount = qtyVal ? parseFloat((rateVal * qtyVal).toFixed(2)) : null;
 
-    // Check if an existing quote exists for (requirement_id, item_id, transporter_id) to prevent duplicate quotes
+    // Check if an existing quote exists for (requirement_id, item_id, transporter_id)
     const [existingQuotes] = await pool.query(
       'SELECT id, rate_per_mt, bid_status FROM rate_submissions WHERE requirement_id = ? AND item_id = ? AND transporter_id = ? LIMIT 1',
       [actualReqId, actualItemId, actualTransId]
     );
 
-    if (existingQuotes.length > 0) {
-      return res.status(409).json({
-        success: false,
-        error: { code: 'DUPLICATE_QUOTE', message: 'Quote already submitted for this sub-indent' },
-        message: 'Quote already submitted for this sub-indent',
-        submission: existingQuotes[0],
-        bid: existingQuotes[0]
-      });
-    }
-
-    const subId = id || `rate_sub_${actualTransId}_${actualItemId}_${Date.now()}_${Math.random().toString(36).substring(2,7)}`;
+    const subId = existingQuotes[0]?.id || id || `rate_sub_${actualTransId}_${actualItemId}_${Date.now()}_${Math.random().toString(36).substring(2,7)}`;
     const subStatus = status || 'Submitted';
     const rem = (remarks || comments || notes || '').trim() || null;
 

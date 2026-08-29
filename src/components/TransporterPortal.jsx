@@ -202,6 +202,41 @@ export const TransporterPortal = () => {
            (cCode && sCode && sCode === cCode) ||
            (cName && sName && (sName === cName || sName.includes(cName) || cName.includes(sName)));
   });
+
+  // 🎯 ROBUST UNIVERSAL BID MATCHER: Guarantees 100% accurate match across batch sub-indents & standalone requirements
+  const findMyBid = (req) => {
+    if (!req) return null;
+    const reqParentId = String(req.requirement_id || req.parent_req_no || req.id || '').trim().toLowerCase();
+    const reqParentNo = String(req.parent_req_no || req.req_no || req.batch_no || '').trim().toLowerCase();
+    const reqItemId = String(req.item_id || req.sub_indent_id || '').trim().toLowerCase();
+    const reqSubNo = String(req.sub_indent_no || req.request_no || req.title || '').trim().toLowerCase();
+
+    return (mySubmissions || []).find((s) => {
+      const sReqId = String(s.requirement_id || s.rate_request_id || s.request_id || '').trim().toLowerCase();
+      const sReqNo = String(s.request_no || '').trim().toLowerCase();
+      const sItemId = String(s.item_id || '').trim().toLowerCase();
+      const sSubNo = String(s.sub_indent_no || '').trim().toLowerCase();
+
+      // 1. Check parent requirement match
+      const matchesReq = (reqParentId && (sReqId === reqParentId || sReqNo === reqParentId)) ||
+                         (reqParentNo && (sReqId === reqParentNo || sReqNo === reqParentNo)) ||
+                         (reqSubNo && (sSubNo === reqSubNo || sReqNo === reqSubNo));
+
+      if (!matchesReq) return false;
+
+      // 2. Check item match (for sub-indents)
+      if (reqItemId && reqItemId !== reqParentId) {
+        return sItemId === reqItemId ||
+               sSubNo === reqSubNo ||
+               sItemId === reqSubNo ||
+               sReqNo === reqSubNo ||
+               sSubNo === reqItemId;
+      }
+
+      // Standalone requirement
+      return true;
+    });
+  };
   const myAllocations = (db.allocations || []).filter((a) => {
     const aId = String(a.transporter_id || '').toLowerCase();
     const aName = String(a.transporter_name || '').toLowerCase();
@@ -375,9 +410,9 @@ export const TransporterPortal = () => {
   const renderTransporterNegotiationCell = (myExistingBid, req) => {
     if (!myExistingBid) return null;
 
-    const bidStatus = myExistingBid.bid_status || (myExistingBid.is_frozen || myExistingBid.status === 'Rate Frozen' ? 'finalized' : 'submitted');
-    const origRate = myExistingBid.original_rate || myExistingBid.rate_per_unit || myExistingBid.rate_per_mt;
-    const currentRate = myExistingBid.rate_per_unit || myExistingBid.rate_per_mt;
+    const bidStatus = (myExistingBid.bid_status || myExistingBid.status || '').toLowerCase();
+    const origRate = myExistingBid.original_rate || myExistingBid.original_rate_per_mt || myExistingBid.rate_per_mt || myExistingBid.rate_per_unit;
+    const currentRate = myExistingBid.final_rate || myExistingBid.final_rate_per_mt || myExistingBid.rate_per_mt || myExistingBid.rate_per_unit || myExistingBid.original_rate_per_mt || myExistingBid.original_rate;
     const adminCounter = myExistingBid.counter_rate;
 
     const isFinalized = bidStatus === 'counter_accepted' || bidStatus === 'finalized' || myExistingBid.is_frozen || myExistingBid.status === 'Rate Frozen' || req.status === 'Awarded';
@@ -1326,22 +1361,7 @@ export const TransporterPortal = () => {
                                            </thead>
                                            <tbody>
                                              {(group.items || []).map((req, rIdx) => {
-                                                const reqParentId = String(req.requirement_id || req.parent_req_no || req.id || '').trim();
-                                                const reqItemId = String(req.item_id || req.sub_indent_no || req.request_no || '').trim();
-
-                                                const myExistingBid = (mySubmissions || []).find((s) => {
-                                                  const sReqId = String(s.requirement_id || s.rate_request_id || '').trim();
-                                                  const sItemId = String(s.item_id || '').trim();
-
-                                                  const matchesReq = sReqId === reqParentId || sReqId === String(req.parent_req_no || '').trim() || sReqId === String(req.id || '').trim();
-
-                                                  const matchesItem = (reqItemId && sItemId === reqItemId) ||
-                                                                      (req.item_id && sItemId === String(req.item_id).trim()) ||
-                                                                      (req.sub_indent_no && sItemId === String(req.sub_indent_no).trim()) ||
-                                                                      (req.request_no && sItemId === String(req.request_no).trim());
-
-                                                  return matchesReq && matchesItem;
-                                                });
+                                                const myExistingBid = findMyBid(req);
                                                 const hasSubmittedQuote = Boolean(myExistingBid);
                                                 const isAwarded = req.status === 'Awarded';
                                                 const subKey = getSubIndentKey(req);
@@ -1482,19 +1502,7 @@ export const TransporterPortal = () => {
                                       {/* BATCH QUOTE ACTION FOOTER BELOW TABLE 🚀 */}
                                       {(() => {
                                         const unquotedItems = (group.items || []).filter((reqItem) => {
-                                          const parentId = String(reqItem.requirement_id || reqItem.parent_req_no || reqItem.id || '').trim();
-                                          const itemId = String(reqItem.item_id || reqItem.sub_indent_no || reqItem.request_no || '').trim();
-
-                                          const isQuoted = (mySubmissions || []).some((s) => {
-                                            const sReqId = String(s.requirement_id || s.rate_request_id || '').trim();
-                                            const sItemId = String(s.item_id || '').trim();
-                                            const matchesReq = sReqId === parentId || sReqId === String(reqItem.parent_req_no || '').trim() || sReqId === String(reqItem.id || '').trim();
-                                            const matchesItem = (itemId && sItemId === itemId) ||
-                                                                (reqItem.item_id && sItemId === String(reqItem.item_id).trim()) ||
-                                                                (reqItem.sub_indent_no && sItemId === String(reqItem.sub_indent_no).trim()) ||
-                                                                (reqItem.request_no && sItemId === String(reqItem.request_no).trim());
-                                            return matchesReq && matchesItem;
-                                          });
+                                          const isQuoted = Boolean(findMyBid(reqItem));
                                           return !isQuoted && reqItem.status !== 'Awarded';
                                         });
 
@@ -1585,30 +1593,7 @@ export const TransporterPortal = () => {
 
                         // SINGLE ITEM ROW
                       const req = group.items[0];
-                      const reqParentId = String(req.requirement_id || req.parent_req_no || req.id || '').trim();
-                      const reqItemId = String(req.item_id || req.sub_indent_no || req.request_no || '').trim();
-
-                      const myExistingBid = (mySubmissions || []).find((s) => {
-                        const sReqId = String(s.requirement_id || s.rate_request_id || '').trim();
-                        const sItemId = String(s.item_id || s.request_no || '').trim();
-                        const sReqNo = String(s.request_no || '').trim();
-                        const reqNo = String(req.request_no || req.title || '').trim();
-
-                        const matchesReq = sReqId === reqParentId || 
-                                           sReqId === String(req.parent_req_no || '').trim() || 
-                                           sReqId === String(req.id || '').trim() ||
-                                           (sReqNo && reqNo && sReqNo === reqNo);
-
-                        const matchesItem = !req.item_id ||
-                                            sItemId === reqItemId ||
-                                            sItemId === String(req.id || '').trim() ||
-                                            (req.item_id && sItemId === String(req.item_id).trim()) ||
-                                            (req.sub_indent_no && sItemId === String(req.sub_indent_no).trim()) ||
-                                            (req.request_no && sItemId === String(req.request_no).trim()) ||
-                                            (sReqNo && reqNo && sReqNo === reqNo);
-
-                        return matchesReq && matchesItem;
-                      });
+                      const myExistingBid = findMyBid(req);
                       const hasSubmittedQuote = Boolean(myExistingBid);
                       const isAwarded = req.status === 'Awarded';
                       const isSubmitting = submittingItems[req.id];
