@@ -324,6 +324,36 @@ export const TransporterPortal = () => {
     document.body.removeChild(link);
   };
 
+  // ♿ ACCESSIBILITY FOCUS MANAGEMENT: Auto-advance focus to the next unsubmitted item input
+  const focusNextUnsubmittedItem = (currentItemId) => {
+    setTimeout(() => {
+      const allRateInputs = Array.from(document.querySelectorAll('input[id^="rate_input_"]'));
+      if (!allRateInputs || allRateInputs.length === 0) {
+        const submitAllBtn = document.getElementById('submit_all_batch_bids_btn') || document.getElementById('close_batch_btn_footer');
+        if (submitAllBtn) submitAllBtn.focus();
+        return;
+      }
+
+      const currentInputId = `rate_input_${currentItemId}`;
+      const currentIndex = allRateInputs.findIndex(el => el.id === currentInputId || el.id.includes(String(currentItemId)));
+      
+      let nextInput = null;
+      if (currentIndex >= 0 && currentIndex < allRateInputs.length - 1) {
+        nextInput = allRateInputs[currentIndex + 1];
+      } else if (allRateInputs.length > 0) {
+        nextInput = allRateInputs[0];
+      }
+
+      if (nextInput) {
+        nextInput.focus();
+        if (typeof nextInput.select === 'function') nextInput.select();
+      } else {
+        const submitAllBtn = document.getElementById('submit_all_batch_bids_btn') || document.getElementById('close_batch_btn_footer');
+        if (submitAllBtn) submitAllBtn.focus();
+      }
+    }, 150);
+  };
+
   // FAST 1-LINE INLINE SUBMIT HANDLER (Supports Double/Re-Quoted Bids 🚀)
   const handleExpressQuickSubmit = async (e, req) => {
     e.preventDefault();
@@ -371,6 +401,9 @@ export const TransporterPortal = () => {
 
       // ⚡ Immediately re-fetch fresh MySQL database state so hasSubmittedQuote becomes true instantly
       await refreshRequirements();
+
+      // ♿ ACCESSIBILITY: Auto-advance focus to the next unsubmitted item input
+      focusNextUnsubmittedItem(targetItemId);
     } catch (err) {
       console.error('Quick bid submission error:', err);
       alert(err.message || 'Failed to submit quote. Please try again.');
@@ -1139,7 +1172,7 @@ export const TransporterPortal = () => {
                                                           }}>
                                                             <span>₹{myExistingBid.rate_per_unit || myExistingBid.rate_per_mt} / MT</span>
                                                           </div>
-                                                          <div className="quote-submitted-badge" style={{ color: '#047857', fontSize: '0.78rem', fontWeight: '900', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                  <div className="quote-submitted-badge" style={{ color: '#047857', fontSize: '0.78rem', fontWeight: '900', display: 'flex', alignItems: 'center', gap: '4px' }}>
                                                             ✓ Quote Submitted
                                                           </div>
                                                         </div>
@@ -1150,11 +1183,13 @@ export const TransporterPortal = () => {
                                                           <div style={{ position: 'relative', width: '100%' }}>
                                                             <span style={{ position: 'absolute', left: '8px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', fontSize: '0.85rem' }}>₹</span>
                                                             <input
+                                                              id={`rate_input_${req.item_id || req.sub_indent_no || req.id}`}
                                                               type="number"
                                                               inputMode="decimal"
                                                               min="1"
                                                               step="0.01"
                                                               placeholder="Rate"
+                                                              aria-label={`Enter quote rate for ${displayCode}`}
                                                               className="form-control"
                                                               disabled={isSubmitting}
                                                               value={currentInputRate}
@@ -1172,6 +1207,7 @@ export const TransporterPortal = () => {
                                                           </div>
                                                           <button
                                                             type="submit"
+                                                            aria-label={`Submit quote for ${displayCode}`}
                                                             className="btn btn-primary"
                                                             disabled={isSubmitting || !currentInputRate}
                                                             style={{ padding: '6px 12px', fontSize: '0.78rem', whiteSpace: 'nowrap', height: '36px', borderRadius: '8px', fontWeight: '800' }}
@@ -1247,39 +1283,63 @@ export const TransporterPortal = () => {
                                             <div style={{ fontSize: '0.82rem', fontWeight: '900', color: unquotedCount > 0 ? '#0284c7' : '#047857', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
                                               ⚡ BATCH QUOTE ACTION
                                             </div>
-                                            <div style={{ fontSize: '0.78rem', color: unquotedCount > 0 ? '#64748b' : '#15803d', marginTop: '2px', marginBottom: '12px', fontWeight: '600' }}>
+                                            <div style={{ fontSize: '0.78rem', color: unquotedCount > 0 ? '#64748b' : '#15803d', marginTop: '2px', marginBottom: '14px', fontWeight: '600' }}>
                                               {unquotedCount > 0
                                                 ? 'Type rates into the input boxes above and submit all pending quotes together in 1-Click'
                                                 : `All ${group.items.length} sub-indents in this batch have active quotes recorded.`}
                                             </div>
 
-                                            {unquotedCount > 0 ? (
+                                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                                              {unquotedCount > 0 ? (
+                                                <button
+                                                  id="submit_all_batch_bids_btn"
+                                                  type="button"
+                                                  onClick={() => handleBatchSubmitAll(group.batchKey, group.items)}
+                                                  aria-label="Submit all pending batch bids"
+                                                  className="btn btn-primary"
+                                                  style={{
+                                                    padding: '10px 24px',
+                                                    fontSize: '0.88rem',
+                                                    fontWeight: '900',
+                                                    background: 'linear-gradient(135deg, #0284c7 0%, #059669 100%)',
+                                                    border: 'none',
+                                                    borderRadius: '10px',
+                                                    cursor: 'pointer',
+                                                    display: 'inline-flex',
+                                                    alignItems: 'center',
+                                                    gap: '8px',
+                                                    boxShadow: '0 4px 14px rgba(2, 132, 199, 0.35)'
+                                                  }}
+                                                  title="Submit individual typed rates for all pending batch sub-indents in 1-Click"
+                                                >
+                                                  <Send size={16} /> 🚀 Submit All Batch Bids ({unquotedCount})
+                                                </button>
+                                              ) : (
+                                                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: '#dcfce7', color: '#047857', border: '1.5px solid #16a34a', padding: '8px 18px', borderRadius: '10px', fontWeight: '900', fontSize: '0.88rem' }}>
+                                                  ✓ All Batch Quotes Submitted
+                                                </div>
+                                              )}
+
                                               <button
+                                                id="close_batch_btn_footer"
                                                 type="button"
-                                                onClick={() => handleBatchSubmitAll(group.batchKey, group.items)}
-                                                className="btn btn-primary"
+                                                onClick={() => toggleBatchExpand(group.batchKey)}
+                                                aria-label="Close batch folder"
+                                                className="btn"
                                                 style={{
-                                                  padding: '10px 24px',
-                                                  fontSize: '0.88rem',
-                                                  fontWeight: '900',
-                                                  background: 'linear-gradient(135deg, #0284c7 0%, #059669 100%)',
+                                                  background: '#0284c7',
+                                                  color: '#ffffff',
                                                   border: 'none',
+                                                  padding: '10px 18px',
+                                                  fontSize: '0.88rem',
+                                                  fontWeight: '800',
                                                   borderRadius: '10px',
-                                                  cursor: 'pointer',
-                                                  display: 'inline-flex',
-                                                  alignItems: 'center',
-                                                  gap: '8px',
-                                                  boxShadow: '0 4px 14px rgba(2, 132, 199, 0.35)'
+                                                  cursor: 'pointer'
                                                 }}
-                                                title="Submit individual typed rates for all pending batch sub-indents in 1-Click"
                                               >
-                                                <Send size={16} /> 🚀 Submit All Batch Bids ({unquotedCount})
+                                                📂 Close Batch 🔼
                                               </button>
-                                            ) : (
-                                              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: '#dcfce7', color: '#047857', border: '1.5px solid #16a34a', padding: '8px 18px', borderRadius: '10px', fontWeight: '900', fontSize: '0.88rem' }}>
-                                                ✓ All Batch Quotes Submitted
-                                              </div>
-                                            )}
+                                            </div>
                                           </div>
                                         );
                                       })()}

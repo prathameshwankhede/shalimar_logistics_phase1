@@ -38,6 +38,15 @@ input::-webkit-credentials-auto-fill-button {
   height: 0 !important;
 }
 
+/* ♿ ACCESSIBILITY FOCUS INDICATORS */
+input:focus-visible,
+button:focus-visible,
+.btn:focus-visible,
+a:focus-visible {
+  outline: 3px solid #38bdf8 !important;
+  outline-offset: 3px !important;
+}
+
 /* ☀️ LIGHT MODE COMPREHENSIVE OVERRIDES & COLOR MAPPING */
 [data-theme="light"] {
   color-scheme: light;
