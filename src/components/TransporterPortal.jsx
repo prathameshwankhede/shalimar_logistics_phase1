@@ -50,12 +50,7 @@ export const TransporterPortal = () => {
       window.history.replaceState(null, '', `#${activeTab}`);
     }
   }, [activeTab]);
-  const [biddingViewMode, setBiddingViewMode] = useState(() => {
-    if (typeof window !== 'undefined' && window.innerWidth <= 768) {
-      return 'card';
-    }
-    return 'express';
-  }); // 'express' (1-line), 'card' (detailed grid)
+
   const [allocationFilter, setAllocationFilter] = useState('all'); // 'all', 'active', 'completed'
   const [selectedMonth, setSelectedMonth] = useState('2026-08'); // Month filter for statement
 
@@ -929,61 +924,17 @@ export const TransporterPortal = () => {
         </div>
       </div>
 
-      {/* TAB 1: Available Open Requirements (WITH 1-LINE EXPRESS BIDDING GRID ⚡) */}
+      {/* TAB 1: Available Open Requirements */}
       {activeTab === 'open_requests' && (
         <div className="glass-panel" style={{ padding: '24px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
-            <div>
-              <h3 style={{ fontSize: '1.1rem', fontWeight: '700' }}>
-                Available Freight Requirements for Bidding
-              </h3>
-              <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Enter your quote rate directly on the line and click Quote for 1-second submission!</p>
-            </div>
-
-            {/* View Mode Toggle Switch */}
-            <div style={{ display: 'flex', background: 'rgba(0,0,0,0.3)', padding: '3px', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
-              <button
-                onClick={() => setBiddingViewMode('express')}
-                style={{
-                  background: biddingViewMode === 'express' ? '#38bdf8' : 'transparent',
-                  color: biddingViewMode === 'express' ? '#000000' : 'var(--text-sub)',
-                  border: 'none',
-                  borderRadius: '6px',
-                  padding: '6px 12px',
-                  fontSize: '0.78rem',
-                  fontWeight: '700',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '5px'
-                }}
-              >
-                <Zap size={13} /> ⚡ 1-Line Express Table
-              </button>
-              <button
-                onClick={() => setBiddingViewMode('card')}
-                style={{
-                  background: biddingViewMode === 'card' ? '#38bdf8' : 'transparent',
-                  color: biddingViewMode === 'card' ? '#000000' : 'var(--text-sub)',
-                  border: 'none',
-                  borderRadius: '6px',
-                  padding: '6px 12px',
-                  fontSize: '0.78rem',
-                  fontWeight: '700',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '5px'
-                }}
-              >
-                <Grid size={13} /> 📇 Detailed Cards
-              </button>
-            </div>
+          <div style={{ marginBottom: '16px' }}>
+            <h3 style={{ fontSize: '1.1rem', fontWeight: '700' }}>
+              Available Freight Requirements for Bidding
+            </h3>
+            <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Enter your quote rate directly on the line and click Quote for 1-second submission!</p>
           </div>
 
-          {/* MODE 1: 1-LINE EXPRESS QUICK BIDDING TABLE ⚡ */}
-          {biddingViewMode === 'express' ? (
-            <div className="custom-table-container">
+          <div className="custom-table-container">
               <table className="custom-table">
                 <thead>
                   <tr>
@@ -1547,113 +1498,6 @@ export const TransporterPortal = () => {
                 </tbody>
               </table>
             </div>
-          ) : (
-            /* MODE 2: DETAILED CARD GRID */
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '16px' }}>
-              {openRateRequests.map((req) => {
-                const myExistingBid = mySubmissions.find((s) => s.rate_request_id === req.id);
-                const isAwarded = req.status === 'Awarded';
-
-                return (
-                  <div
-                    key={req.id}
-                    style={{
-                      background: 'rgba(255, 255, 255, 0.03)',
-                      border: myExistingBid ? (myExistingBid.counter_rate_per_unit ? '2px solid #f59e0b' : '1px solid #10b981') : '1px solid var(--border-color)',
-                      borderRadius: '14px',
-                      padding: '18px',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      justify: 'space-between',
-                      gap: '12px'
-                    }}
-                  >
-                    <div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                        <span className="badge badge-open">{req.request_no}</span>
-                        <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Target: {req.target_date}</span>
-                      </div>
-
-                      <h4 style={{ fontSize: '1.05rem', fontWeight: '700', marginBottom: '6px' }}>{req.title}</h4>
-
-                      <div style={{ fontSize: '0.82rem', color: 'var(--text-sub)', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                        <MapPin size={14} color="#38bdf8" /> {req.origin_city} ➔ {req.dest_city}
-                      </div>
-
-                      <div style={{ display: 'flex', justifyContent: 'space-between', background: 'rgba(0,0,0,0.2)', padding: '10px', borderRadius: '8px', marginBottom: '8px' }}>
-                        <div>
-                          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Cargo</div>
-                          <div style={{ fontSize: '0.85rem', fontWeight: '700', color: '#38bdf8' }}>{req.material_type}</div>
-                        </div>
-                        <div style={{ textAlign: 'right' }}>
-                          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Quantity</div>
-                          <div style={{ fontSize: '0.95rem', fontWeight: '800', color: '#ffffff' }}>{req.required_qty} {req.unit}</div>
-                        </div>
-                      </div>
-
-                      {req.notes && (
-                        <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>
-                          Note: {req.notes}
-                        </p>
-                      )}
-                    </div>
-
-                    <div>
-                      {myExistingBid ? (
-                        myExistingBid.counter_rate_per_unit && !myExistingBid.is_frozen ? (
-                          <div style={{ background: 'rgba(245, 158, 11, 0.2)', border: '1px solid #f59e0b', padding: '12px', borderRadius: '10px' }}>
-                            <div style={{ fontSize: '0.75rem', color: '#fbbf24', fontWeight: '800', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                              <MessageSquare size={14} /> 🔥 LOWER COMPETING TRANSPORTER BID OFFERED!
-                            </div>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                              <div>
-                                <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Lowest Competitor Rate:</span>
-                                <div style={{ fontSize: '1.2rem', fontWeight: '800', color: '#ffffff' }}>₹{myExistingBid.counter_rate_per_unit}/MT</div>
-                              </div>
-                              <button
-                                onClick={() => handleAcceptCounterRate(myExistingBid)}
-                                className="btn btn-success"
-                                style={{ padding: '6px 12px', fontSize: '0.78rem' }}
-                              >
-                                <Snowflake size={14} /> Match Lowest Bid ₹{myExistingBid.counter_rate_per_unit} ❄️
-                              </button>
-                            </div>
-                          </div>
-                        ) : (
-                          <div style={{ background: 'rgba(16, 185, 129, 0.15)', border: '1px solid #10b981', padding: '10px 14px', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <div>
-                              <div style={{ fontSize: '0.72rem', color: '#34d399', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                <Lock size={12} /> {myExistingBid.is_frozen ? '❄️ RATE FROZEN (AGREED)' : 'SUBMITTED RATE (LOCKED)'}
-                              </div>
-                              <div style={{ fontSize: '1.15rem', fontWeight: '800', color: '#ffffff' }}>₹{myExistingBid.rate_per_unit}/MT</div>
-                            </div>
-                            <span className="badge badge-awarded" style={{ fontSize: '0.75rem', padding: '4px 10px' }}>
-                              {myExistingBid.is_frozen ? '❄️ FROZEN' : '🔒 FINAL BID'}
-                            </span>
-                          </div>
-                        )
-                      ) : isAwarded ? (
-                        <div style={{ textAlign: 'center', padding: '8px', background: 'rgba(255,255,255,0.05)', borderRadius: '8px', color: 'var(--text-muted)', fontSize: '0.8rem' }}>
-                          🔒 Requirement Closed & Awarded
-                        </div>
-                      ) : (
-                        <button
-                          onClick={() => {
-                            setSelectedReqForBid(req);
-                            setBidForm({ rate_per_unit: '', transit_days: '2', notes: '' });
-                          }}
-                          className="btn btn-primary"
-                          style={{ width: '100%', padding: '10px', fontSize: '0.85rem' }}
-                        >
-                          <Send size={15} /> Submit Freight Quote
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
         </div>
       )}
 
