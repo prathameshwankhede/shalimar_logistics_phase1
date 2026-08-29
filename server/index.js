@@ -1,4 +1,4 @@
-// Hostinger Passenger Process Reload Signal v1.2.3 - Eliminate 30s Stale Cache Delay & Instant Post-Mutation Refresh
+// Hostinger Passenger Process Reload Signal v1.2.4 - Remove mergeDbStates & Direct MySQL Authoritative Replacement
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
