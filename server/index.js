@@ -139,9 +139,9 @@ app.get('/api/diag/full-audit', async (req, res) => {
     `).catch(e => [[{ error: e.message }]]);
 
     const [statusDistribution] = await pool.query(`
-      SELECT bid_status, negotiation_status, status, counter_offer_status, COUNT(*) as count
+      SELECT bid_status, counter_offer_status, COUNT(*) as count
       FROM rate_submissions
-      GROUP BY bid_status, negotiation_status, status, counter_offer_status
+      GROUP BY bid_status, counter_offer_status
     `).catch(e => [[{ error: e.message }]]);
 
     res.json({

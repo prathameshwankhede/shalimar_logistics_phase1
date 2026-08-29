@@ -1527,15 +1527,15 @@ router.get('/diag/schema', async (req, res) => {
     `).catch(e => [[{ error: e.message }]]);
 
     const [statusDistribution] = await pool.query(`
-      SELECT bid_status, negotiation_status, status, counter_offer_status, COUNT(*) as count
+      SELECT bid_status, counter_offer_status, COUNT(*) as count
       FROM rate_submissions
-      GROUP BY bid_status, negotiation_status, status, counter_offer_status
+      GROUP BY bid_status, counter_offer_status
     `).catch(e => [[{ error: e.message }]]);
 
     const [finalizedWithoutRate] = await pool.query(`
       SELECT COUNT(*) AS count
       FROM rate_submissions
-      WHERE (UPPER(bid_status) IN ('FINALIZED', 'COUNTER_ACCEPTED') OR UPPER(status) IN ('FINALIZED', 'ACCEPTED'))
+      WHERE UPPER(bid_status) IN ('FINALIZED', 'COUNTER_ACCEPTED')
         AND (final_rate IS NULL OR final_rate <= 0)
     `).catch(e => [[{ error: e.message }]]);
 
@@ -1543,7 +1543,7 @@ router.get('/diag/schema', async (req, res) => {
       SELECT COUNT(*) AS count
       FROM rate_submissions
       WHERE (UPPER(bid_status) = 'COUNTER_OFFERED' OR UPPER(counter_offer_status) = 'PENDING')
-        AND (counter_offer_rate IS NULL AND counter_rate IS NULL)
+        AND (counter_offer_rate IS NULL)
     `).catch(e => [[{ error: e.message }]]);
 
     // 4. Row counts for all tables
