@@ -1,4 +1,4 @@
-// Hostinger Passenger Process Reload Signal v1.5.4 - Fix ReferenceError Award is not defined
+// Hostinger Passenger Process Reload Signal v1.5.5 - Finalize Rate strictly inside Batch Sub-Items
 import express from 'express';
 import cors from 'cors';
 import path from 'path';

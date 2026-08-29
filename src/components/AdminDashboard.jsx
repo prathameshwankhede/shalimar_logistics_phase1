@@ -2716,7 +2716,6 @@ export const AdminDashboard = () => {
                           <th>📊 Bidding & Approval Report</th>
                           <th>Status</th>
                           <th style={{ textAlign: 'right' }}>Actions</th>
-                          <th className="finalize-rate-header" style={{ textAlign: 'center' }}>🏅 FINALIZE RATE</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -2965,63 +2964,6 @@ export const AdminDashboard = () => {
                                     </button>
                                   </div>
                                 </td>
-
-                                {/* 9. FINALIZE RATE */}
-                                <td className="finalize-rate-cell" style={{ textAlign: 'center' }}>
-                                  {isBatch ? (
-                                    <button
-                                      type="button"
-                                      onClick={() => toggleBatchExpand(reqNoStr)}
-                                      className="btn btn-secondary"
-                                      style={{
-                                        padding: '6px 12px',
-                                        fontSize: '0.78rem',
-                                        fontWeight: '800',
-                                        borderRadius: '6px',
-                                        border: '1px solid #10b981',
-                                        color: '#10b981',
-                                        background: 'rgba(16, 185, 129, 0.1)',
-                                        cursor: 'pointer',
-                                        whiteSpace: 'nowrap',
-                                        display: 'inline-flex',
-                                        alignItems: 'center',
-                                        gap: '4px'
-                                      }}
-                                      title="Open batch to finalize individual sub-indents"
-                                    >
-                                      🏅 Batch Sub-Items ({childItems.length})
-                                    </button>
-                                  ) : bids && bids.some(b => b.bid_status === 'finalized' || b.bid_status === 'FINALIZED' || b.status === 'Rate Frozen') ? (
-                                    <span className="rate-finalized-badge badge badge-success" style={{ background: '#dcfce7', color: '#166534', border: '1px solid #86efac', padding: '6px 12px', borderRadius: '20px', fontWeight: '900', fontSize: '0.8rem' }}>
-                                      ✓ Rate Finalized
-                                    </span>
-                                  ) : (
-                                    <button
-                                      type="button"
-                                      className="finalize-rate-btn btn btn-primary"
-                                      onClick={() => handleFinalizeRateForItem(req, childItems[0] || req, reqNoStr, bids)}
-                                      disabled={isFinalizingKey === `${req.id || reqNoStr}_MAIN` || bids.length === 0}
-                                      style={{
-                                        padding: '6px 14px',
-                                        fontSize: '0.8rem',
-                                        fontWeight: '900',
-                                        background: 'linear-gradient(135deg, #059669 0%, #10b981 100%)',
-                                        border: '1px solid #34d399',
-                                        color: '#ffffff',
-                                        borderRadius: '8px',
-                                        cursor: bids.length === 0 ? 'not-allowed' : 'pointer',
-                                        opacity: bids.length === 0 ? 0.6 : 1,
-                                        whiteSpace: 'nowrap',
-                                        display: 'inline-flex',
-                                        alignItems: 'center',
-                                        gap: '6px'
-                                      }}
-                                    >
-                                      <span style={{ fontSize: '0.85rem' }}>🏅</span>
-                                      <span>Finalize Rate</span>
-                                    </button>
-                                  )}
-                                </td>
                               </tr>
                             );
                           });
@@ -3029,7 +2971,7 @@ export const AdminDashboard = () => {
 
                         {db.rate_requests.length === 0 && (
                           <tr>
-                            <td colSpan="10" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>
+                            <td colSpan="9" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>
                               No transport requirements created yet. Click 'Create Requirement' above.
                             </td>
                           </tr>
