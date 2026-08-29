@@ -587,8 +587,16 @@ export const TransporterPortal = () => {
       // ♿ ACCESSIBILITY: Auto-advance focus to the next unsubmitted item input
       focusNextUnsubmittedItem(targetItemId);
     } catch (err) {
-      console.error('Quick bid submission error:', err);
-      alert(err.message || 'Failed to submit quote. Please try again.');
+      console.error('Quick bid submission notice:', err);
+      const isDuplicate = err.message && (err.message.includes('already submitted') || err.message.includes('Duplicate') || err.message.includes('409'));
+      if (isDuplicate) {
+        setSuccessNotice(`✓ Quote already submitted for ${subIndentNo}!`);
+      } else {
+        alert(err.message || 'Failed to submit quote. Please try again.');
+      }
+      setQuickRates((prev) => ({ ...prev, [rateKey]: '' }));
+      setTimeout(() => setSuccessNotice(''), 5000);
+      await refreshRequirements();
     } finally {
       setSubmittingItems((prev) => ({ ...prev, [rateKey]: false, [req.id]: false }));
     }
@@ -1395,24 +1403,6 @@ export const TransporterPortal = () => {
                                                           >
                                                             {isSubmitting ? '⏳ Submitting...' : '🚀 Quote'}
                                                           </button>
-
-                                                          {Number(currentInputRate) > 0 && (
-                                                            <div className="current-bid-preview" style={{
-                                                              fontSize: '0.75rem',
-                                                              background: '#e0f2fe',
-                                                              color: '#0369a1',
-                                                              border: '1px solid #7dd3fc',
-                                                              padding: '4px 10px',
-                                                              borderRadius: '6px',
-                                                              fontWeight: '800',
-                                                              display: 'inline-flex',
-                                                              alignItems: 'center',
-                                                              gap: '4px'
-                                                            }}>
-                                                              <span>✓ Current Bid:</span>
-                                                              <strong>₹{currentInputRate}/MT</strong>
-                                                            </div>
-                                                          )}
                                                         </form>
                                                       )}
                                                     </td>
@@ -1667,27 +1657,10 @@ export const TransporterPortal = () => {
                                     gap: '4px'
                                   }}
                                 >
-                                  {isSubmitting ? '⏳ Submitting...' : '🚀 Quote'}
-                                </button>
-                                {Number(currentInputRate) > 0 && (
-                                  <div className="current-bid-preview" style={{
-                                    fontSize: '0.75rem',
-                                    background: '#e0f2fe',
-                                    color: '#0369a1',
-                                    border: '1px solid #7dd3fc',
-                                    padding: '4px 10px',
-                                    borderRadius: '6px',
-                                    fontWeight: '800',
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    gap: '4px'
-                                  }}>
-                                    <span>✓ Current Bid:</span>
-                                    <strong>₹{currentInputRate}/MT</strong>
-                                  </div>
-                                )}
-                              </form>
-                            )}
+                                 {isSubmitting ? '⏳ Submitting...' : '🚀 Quote'}
+                                 </button>
+                               </form>
+                             )}
                           </td>
 
                           <td style={{ textAlign: 'right' }}>

@@ -1,4 +1,4 @@
-// Hostinger Passenger Process Reload Signal v1.4.2 - Fix SyntaxError in ensureRateSubmissionsTableExists
+// Hostinger Passenger Process Reload Signal v1.4.3 - Show Only Current Bid & Block Duplicate Quotes HTTP 409
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
