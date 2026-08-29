@@ -1,4 +1,4 @@
-// Hostinger Passenger Process Reload Signal v1.7.6 - Final Production Schema Diagnostic
+// Hostinger Passenger Process Reload Signal v1.7.7 - Production Schema Diagnostic Route
 import express from 'express';
 import cors from 'cors';
 import path from 'path';

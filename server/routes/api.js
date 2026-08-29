@@ -1432,6 +1432,23 @@ router.post('/bids', authenticateToken, handleCreateRateSubmission);
 router.get('/rate-submissions', authenticateToken, handleGetRateSubmissions);
 router.get('/transporters', authenticateToken, handleGetTransporters);
 router.get('/master-data', authenticateToken, handleGetMasterData);
+router.get('/diag/schema', async (req, res) => {
+  try {
+    const [rateSubCols] = await pool.query('DESCRIBE rate_submissions');
+    const [reqCols] = await pool.query('DESCRIBE transport_requirements');
+    const [itemCols] = await pool.query('DESCRIBE transport_requirement_items');
+    res.json({
+      success: true,
+      tables: {
+        rate_submissions: rateSubCols.map(c => ({ Field: c.Field, Type: c.Type, Null: c.Null, Key: c.Key, Default: c.Default })),
+        transport_requirements: reqCols.map(c => ({ Field: c.Field, Type: c.Type })),
+        transport_requirement_items: itemCols.map(c => ({ Field: c.Field, Type: c.Type }))
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
 
 // -------------------------------------------------------------
 // Dedicated Products & Cargo Master CRUD API
