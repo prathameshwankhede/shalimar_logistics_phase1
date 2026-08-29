@@ -5,11 +5,13 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { Award, CheckCircle2, TrendingDown, Clock, Sparkles, MessageSquare, Snowflake, Send, X, AlertCircle, Lock, FileText, Printer } from 'lucide-react';
 import { ParticularBidReportModal } from './ParticularBidReportModal';
-import { getRequirementRates, awardRequirementRate } from '../api/rateSubmissionApi';
+import { NegotiationHistoryModal } from './NegotiationHistoryModal';
+import { getRequirementRates, awardRequirementRate, sendAdminCounter, finalizeBid } from '../api/rateSubmissionApi';
 
 export const RateComparisonView = ({ rateRequest, onBack }) => {
-  const { db, updateDB, currentUser, addSecurityLog } = useAuth();
+  const { db, updateDB, currentUser, addSecurityLog, refreshRequirements } = useAuth();
   const [showParticularReportModal, setShowParticularReportModal] = useState(false);
+  const [selectedHistorySub, setSelectedHistorySub] = useState(null);
   const [liveRates, setLiveRates] = useState([]);
   const [loadingRates, setLoadingRates] = useState(true);
   
@@ -89,8 +91,8 @@ export const RateComparisonView = ({ rateRequest, onBack }) => {
       )
     : null;
 
-  // Admin Sends Counter Rate (Broadcast to ALL Transporters for this requirement 📡)
-  const handleSendCounterOffer = (e, broadcastToAll = true) => {
+  // Admin Sends Counter Rate
+  const handleSendCounterOffer = async (e, broadcastToAll = false) => {
     if (e) e.preventDefault();
 
     const counterRateVal = parseFloat(counterForm.counter_rate);
@@ -99,57 +101,40 @@ export const RateComparisonView = ({ rateRequest, onBack }) => {
       return;
     }
 
-    const noteText = counterForm.note || `Lowest competitive bid rate: ₹${counterRateVal}/MT`;
+    const noteText = counterForm.note || `Admin counter offer: ₹${counterRateVal}/MT`;
 
-    // 1. Update rate_requests master record with global admin_counter_rate
-    const updatedRateRequests = (db.rate_requests || []).map((req) => {
-      if (req.id === rateRequest.id) {
-        return {
-          ...req,
-          admin_counter_rate: counterRateVal,
-          counter_note: noteText,
-          counter_broadcast_at: new Date().toISOString()
-        };
-      }
-      return req;
-    });
-
-    // 2. Update all submissions for this rate request
-    const updatedSubmissions = (db.rate_submissions || []).map((s) => {
-      if (s.rate_request_id === rateRequest.id) {
-        if (broadcastToAll || (activeCounterSub && s.id === activeCounterSub.id)) {
-          if (!s.is_frozen && s.status !== 'Awarded') {
-            return {
-              ...s,
-              counter_rate_per_unit: counterRateVal,
-              counter_note: noteText,
-              status: 'Negotiating',
-              counter_sent_at: new Date().toISOString()
-            };
+    try {
+      if (activeCounterSub) {
+        await sendAdminCounter(activeCounterSub.id, { counter_rate: counterRateVal, message: noteText });
+        setNotice(`📢 Counter Offer ₹${counterRateVal}/MT sent to ${activeCounterSub.transporter_name || activeCounterSub.transporter_id}!`);
+      } else if (submissions.length > 0) {
+        for (const sub of submissions) {
+          if (sub.bid_status !== 'finalized') {
+            await sendAdminCounter(sub.id, { counter_rate: counterRateVal, message: noteText }).catch(() => {});
           }
         }
+        setNotice(`📢 Counter Offer ₹${counterRateVal}/MT broadcasted to bidders!`);
       }
-      return s;
-    });
+      setActiveCounterSub(null);
+      setCounterForm({ counter_rate: '', note: '' });
+      setTimeout(() => setNotice(''), 5000);
+      await refreshRequirements();
+    } catch (err) {
+      alert(err.message || 'Failed to send counter offer.');
+    }
+  };
 
-    const updatedDb = addSecurityLog(
-      {
-        ...db,
-        rate_requests: updatedRateRequests,
-        rate_submissions: updatedSubmissions
-      },
-      `PROPOSE_COUNTER_RATE (₹${counterRateVal}/MT broadcasted to ${broadcastToAll ? 'ALL TRANSPORTERS' : 'transporter'} for ${rateRequest.request_no})`,
-      currentUser?.username || 'admin',
-      currentUser?.role || 'admin',
-      'COUNTER_BROADCAST_SENT 📢'
-    );
-
-    updateDB(updatedDb);
-    setNotice(`📢 Counter Offer ₹${counterRateVal}/MT BROADCASTED to ALL TRANSPORTERS for ${rateRequest.request_no}!`);
-    setActiveCounterSub(null);
-    setCounterForm({ counter_rate: '', note: '' });
-
-    setTimeout(() => setNotice(''), 5000);
+  // Admin Finalizes Agreed Rate 🏆
+  const handleAdminFinalizeBid = async (sub) => {
+    try {
+      const agreedRate = sub.counter_rate || sub.rate_per_unit || sub.rate_per_mt;
+      await finalizeBid(sub.id, { final_rate: agreedRate });
+      setNotice(`🏆 Bid finalized at ₹${agreedRate}/MT!`);
+      setTimeout(() => setNotice(''), 5000);
+      await refreshRequirements();
+    } catch (err) {
+      alert(err.message || 'Failed to finalize bid.');
+    }
   };
 
   // Admin Freezes Rate (Locks the rate)
@@ -595,36 +580,51 @@ export const RateComparisonView = ({ rateRequest, onBack }) => {
                           
                           {/* Send Counter Rate Button */}
                           <button
+                            type="button"
                             onClick={() => {
                               setActiveCounterSub(sub);
-                              setCounterForm({ counter_rate: sub.counter_rate_per_unit || Math.round(sub.rate_per_unit * 0.92), note: '' });
+                              setCounterForm({ counter_rate: sub.counter_rate || Math.round((sub.rate_per_unit || sub.rate_per_mt) * 0.92), note: '' });
                             }}
                             className="btn btn-secondary"
                             style={{ padding: '6px 10px', fontSize: '0.78rem' }}
-                            title="Send target rate to transporter"
+                            title="Send target counter rate to transporter"
                           >
                             <MessageSquare size={14} color="#f59e0b" /> Counter Rate
                           </button>
 
-                          {/* Freeze / Award Contract Button Logic */}
-                          {isNegotiating ? (
+                          {/* Finalize Bid Button */}
+                          {sub.bid_status !== 'finalized' && (
                             <button
-                              disabled
-                              className="btn btn-secondary"
-                              style={{ opacity: 0.65, cursor: 'not-allowed', padding: '6px 10px', fontSize: '0.78rem', border: '1px solid #f59e0b', color: '#fbbf24' }}
-                              title="Contract cannot be awarded until Transporter accepts counter offer"
+                              type="button"
+                              onClick={() => handleAdminFinalizeBid(sub)}
+                              className="btn btn-primary"
+                              style={{ padding: '6px 10px', fontSize: '0.78rem', background: '#059669', border: 'none' }}
+                              title="Finalize agreed rate for contract award"
                             >
-                              <Lock size={13} color="#f59e0b" /> Awaiting Acceptance
-                            </button>
-                          ) : (
-                            <button
-                              onClick={() => handleAwardContract(sub)}
-                              className={isFrozen ? 'btn btn-success' : isL1 ? 'btn btn-success' : 'btn btn-primary'}
-                              style={{ padding: '6px 12px', fontSize: '0.78rem' }}
-                            >
-                              <Award size={14} /> Award Contract
+                              <Award size={14} /> Finalize Rate
                             </button>
                           )}
+
+                          {/* View Negotiation History */}
+                          <button
+                            type="button"
+                            onClick={() => setSelectedHistorySub(sub)}
+                            className="btn btn-secondary"
+                            style={{ padding: '6px 10px', fontSize: '0.78rem', background: '#1e293b', border: '1px solid #334155', color: '#38bdf8' }}
+                            title="View negotiation timeline history"
+                          >
+                            📜 History
+                          </button>
+
+                          {/* Award Contract Button */}
+                          <button
+                            type="button"
+                            onClick={() => handleAwardContract(sub)}
+                            className={isFrozen ? 'btn btn-success' : isL1 ? 'btn btn-success' : 'btn btn-primary'}
+                            style={{ padding: '6px 12px', fontSize: '0.78rem' }}
+                          >
+                            <Award size={14} /> Award Contract
+                          </button>
                         </div>
                       )}
                     </td>
@@ -659,7 +659,7 @@ export const RateComparisonView = ({ rateRequest, onBack }) => {
             </div>
 
             <p style={{ fontSize: '0.82rem', color: 'var(--text-sub)', marginBottom: '16px' }}>
-              Transporter original quote: <strong>₹{activeCounterSub.rate_per_unit}/MT</strong>. Enter your revised target rate to negotiate. Contract can only be awarded after Transporter accepts.
+              Transporter original quote: <strong>₹{activeCounterSub.original_rate || activeCounterSub.rate_per_unit}/MT</strong>. Enter your revised target rate to negotiate.
             </p>
 
             <form onSubmit={handleSendCounterOffer}>
@@ -698,6 +698,15 @@ export const RateComparisonView = ({ rateRequest, onBack }) => {
             </form>
           </div>
         </div>
+      )}
+
+      {/* Negotiation History Timeline Modal */}
+      {selectedHistorySub && (
+        <NegotiationHistoryModal
+          submission={selectedHistorySub}
+          isOpen={Boolean(selectedHistorySub)}
+          onClose={() => setSelectedHistorySub(null)}
+        />
       )}
 
       {/* Particular Bid Audit Report Modal */}

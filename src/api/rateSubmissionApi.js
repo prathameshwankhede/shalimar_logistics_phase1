@@ -30,3 +30,30 @@ export async function awardRequirementRate(requirementId, awardPayload) {
     body: JSON.stringify(awardPayload)
   });
 }
+
+export async function sendAdminCounter(submissionId, counterPayload) {
+  return apiClient(`/api/rate-submissions/${submissionId}/admin-counter`, {
+    method: 'POST',
+    body: JSON.stringify(counterPayload)
+  });
+}
+
+export async function submitTransporterResponse(submissionId, responsePayload) {
+  return apiClient(`/api/rate-submissions/${submissionId}/transporter-response`, {
+    method: 'POST',
+    body: JSON.stringify(responsePayload)
+  });
+}
+
+export async function finalizeBid(submissionId, finalizePayload = {}) {
+  return apiClient(`/api/rate-submissions/${submissionId}/finalize`, {
+    method: 'POST',
+    body: JSON.stringify(finalizePayload)
+  });
+}
+
+export async function getSubmissionHistory(submissionId) {
+  return apiClient(`/api/rate-submissions/${submissionId}/history`, {
+    method: 'GET'
+  });
+}

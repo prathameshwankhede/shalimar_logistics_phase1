@@ -3,7 +3,8 @@
 
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { submitBid } from '../api/rateSubmissionApi';
+import { submitBid, submitTransporterResponse } from '../api/rateSubmissionApi';
+import { NegotiationHistoryModal } from './NegotiationHistoryModal';
 import { ContractModal } from './ContractModal';
 import { ERPPaymentModal } from './ERPPaymentModal';
 import { TruckDispatchSlipModal } from './TruckDispatchSlipModal';
@@ -324,6 +325,11 @@ export const TransporterPortal = () => {
     document.body.removeChild(link);
   };
 
+  // 🤝 Negotiation State
+  const [activeTransporterCounterSubId, setActiveTransporterCounterSubId] = useState(null);
+  const [transporterCounterRateInput, setTransporterCounterRateInput] = useState('');
+  const [selectedHistorySub, setSelectedHistorySub] = useState(null);
+
   // ♿ ACCESSIBILITY FOCUS MANAGEMENT: Auto-advance focus to the next unsubmitted item input
   const focusNextUnsubmittedItem = (currentItemId) => {
     setTimeout(() => {
@@ -352,6 +358,182 @@ export const TransporterPortal = () => {
         if (submitAllBtn) submitAllBtn.focus();
       }
     }, 150);
+  };
+
+  // 🤝 Render Negotiation Cell for Transporter
+  const renderTransporterNegotiationCell = (myExistingBid, req) => {
+    if (!myExistingBid) return null;
+
+    const bidStatus = myExistingBid.bid_status || (myExistingBid.is_frozen || myExistingBid.status === 'Rate Frozen' ? 'finalized' : 'submitted');
+    const origRate = myExistingBid.original_rate || myExistingBid.rate_per_unit || myExistingBid.rate_per_mt;
+    const currentRate = myExistingBid.rate_per_unit || myExistingBid.rate_per_mt;
+    const adminCounter = myExistingBid.counter_rate;
+
+    const isFinalized = bidStatus === 'counter_accepted' || bidStatus === 'finalized' || myExistingBid.is_frozen || myExistingBid.status === 'Rate Frozen' || req.status === 'Awarded';
+    const isCounteredByAdmin = bidStatus === 'countered_by_admin';
+    const isCounteredByTransporter = bidStatus === 'countered_by_transporter';
+
+    const isResponding = submittingItems[`resp_${myExistingBid.id}`];
+    const showCounterInput = activeTransporterCounterSubId === myExistingBid.id;
+
+    const handleAcceptAdminCounter = async () => {
+      try {
+        setSubmittingItems(prev => ({ ...prev, [`resp_${myExistingBid.id}`]: true }));
+        await submitTransporterResponse(myExistingBid.id, { action: 'accept' });
+        setSuccessNotice(`✓ Accepted Admin Counter Offer of ₹${adminCounter}/MT for ${req.sub_indent_no || req.request_no || req.id}`);
+        setTimeout(() => setSuccessNotice(''), 5000);
+        await refreshRequirements();
+      } catch (err) {
+        alert(err.message || 'Failed to accept counter offer.');
+      } finally {
+        setSubmittingItems(prev => ({ ...prev, [`resp_${myExistingBid.id}`]: false }));
+      }
+    };
+
+    const handleSendTransporterCounter = async (e) => {
+      if (e) e.preventDefault();
+      const counterVal = parseFloat(transporterCounterRateInput);
+      if (!counterVal || counterVal <= 0) {
+        alert('Please enter a valid rate.');
+        return;
+      }
+      try {
+        setSubmittingItems(prev => ({ ...prev, [`resp_${myExistingBid.id}`]: true }));
+        await submitTransporterResponse(myExistingBid.id, { action: 'counter', counter_rate: counterVal });
+        setSuccessNotice(`⚡ Counter Offer ₹${counterVal}/MT submitted to Admin for ${req.sub_indent_no || req.request_no || req.id}`);
+        setActiveTransporterCounterSubId(null);
+        setTransporterCounterRateInput('');
+        setTimeout(() => setSuccessNotice(''), 5000);
+        await refreshRequirements();
+      } catch (err) {
+        alert(err.message || 'Failed to submit counter offer.');
+      } finally {
+        setSubmittingItems(prev => ({ ...prev, [`resp_${myExistingBid.id}`]: false }));
+      }
+    };
+
+    if (isFinalized) {
+      return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+          <div style={{ background: '#dcfce7', border: '1.5px solid #16a34a', padding: '6px 12px', borderRadius: '8px', color: '#064e3b', fontSize: '0.88rem', fontWeight: '900', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+            🏆 FINAL AGREED RATE: ₹{myExistingBid.final_rate || currentRate}/MT
+          </div>
+          <div style={{ color: '#047857', fontSize: '0.78rem', fontWeight: '900', display: 'flex', alignItems: 'center', gap: '6px' }}>
+            ✓ Bid Finalized
+            <button type="button" onClick={() => setSelectedHistorySub(myExistingBid)} style={{ background: 'none', border: 'none', color: '#0284c7', cursor: 'pointer', fontSize: '0.75rem', fontWeight: '700', textDecoration: 'underline' }}>
+              📜 History
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    if (isCounteredByAdmin) {
+      return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', background: '#fffbeb', border: '1.5px solid #f59e0b', padding: '10px 12px', borderRadius: '10px' }}>
+          <div style={{ fontSize: '0.78rem', color: '#78350f', fontWeight: '700' }}>
+            Your Original Bid: <strong style={{ color: '#92400e' }}>₹{origRate}/MT</strong>
+          </div>
+          <div style={{ fontSize: '0.92rem', fontWeight: '900', color: '#b45309', display: 'flex', alignItems: 'center', gap: '6px' }}>
+            🔥 Admin Counter Offer: <span style={{ background: '#fef3c7', padding: '2px 8px', borderRadius: '6px', border: '1px solid #f59e0b' }}>₹{adminCounter}/MT</span>
+          </div>
+
+          {showCounterInput ? (
+            <form onSubmit={handleSendTransporterCounter} style={{ display: 'flex', gap: '6px', marginTop: '4px', alignItems: 'center' }}>
+              <input
+                type="number"
+                min="1"
+                step="0.01"
+                placeholder="Your Rate"
+                className="form-control"
+                value={transporterCounterRateInput}
+                onChange={(e) => setTransporterCounterRateInput(e.target.value)}
+                style={{ width: '90px', height: '32px', fontSize: '0.82rem', fontWeight: '800' }}
+                required
+              />
+              <button type="submit" disabled={isResponding} className="btn btn-primary" style={{ padding: '4px 10px', fontSize: '0.75rem', height: '32px' }}>
+                {isResponding ? '⏳...' : 'Send Counter'}
+              </button>
+              <button type="button" onClick={() => setActiveTransporterCounterSubId(null)} className="btn" style={{ padding: '4px 8px', fontSize: '0.75rem', height: '32px', background: '#cbd5e1' }}>
+                Cancel
+              </button>
+            </form>
+          ) : (
+            <div style={{ display: 'flex', gap: '6px', marginTop: '4px', flexWrap: 'wrap', alignItems: 'center' }}>
+              <button
+                type="button"
+                disabled={isResponding}
+                onClick={handleAcceptAdminCounter}
+                className="btn btn-success"
+                style={{ padding: '5px 12px', fontSize: '0.76rem', fontWeight: '800', borderRadius: '6px' }}
+              >
+                {isResponding ? '⏳...' : `✓ Accept ₹${adminCounter}`}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveTransporterCounterSubId(myExistingBid.id);
+                  setTransporterCounterRateInput(String(Math.round((origRate + adminCounter) / 2)));
+                }}
+                className="btn btn-primary"
+                style={{ padding: '5px 12px', fontSize: '0.76rem', fontWeight: '800', borderRadius: '6px', background: '#0284c7' }}
+              >
+                ✏ Counter Offer
+              </button>
+              <button type="button" onClick={() => setSelectedHistorySub(myExistingBid)} style={{ background: 'none', border: 'none', color: '#0284c7', cursor: 'pointer', fontSize: '0.75rem', fontWeight: '700', textDecoration: 'underline' }}>
+                📜 History
+              </button>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    if (isCounteredByTransporter) {
+      return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', background: '#f0f9ff', border: '1.5px solid #0284c7', padding: '8px 12px', borderRadius: '10px' }}>
+          <div style={{ fontSize: '0.76rem', color: '#0369a1' }}>
+            Your Original Bid: <strong>₹{origRate}</strong> | Admin Counter: <strong>₹{adminCounter || '-'}</strong>
+          </div>
+          <div style={{ fontSize: '0.88rem', fontWeight: '900', color: '#0284c7' }}>
+            Your Revised Offer: ₹{currentRate}/MT
+          </div>
+          <div style={{ fontSize: '0.76rem', color: '#64748b', fontWeight: '700', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span>Status: Waiting for Admin Decision</span>
+            <button type="button" onClick={() => setSelectedHistorySub(myExistingBid)} style={{ background: 'none', border: 'none', color: '#0284c7', cursor: 'pointer', fontSize: '0.75rem', fontWeight: '700', textDecoration: 'underline' }}>
+              📜 History
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    // DEFAULT STATUS = 'submitted'
+    return (
+      <div className="submitted-quote-state" style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+        <div className="current-bid-preview submitted" style={{
+          background: '#dcfce7',
+          border: '1.5px solid #16a34a',
+          padding: '6px 12px',
+          borderRadius: '8px',
+          color: '#064e3b',
+          fontSize: '0.88rem',
+          fontWeight: '900',
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: '6px'
+        }}>
+          <span>✓ Current Bid:</span>
+          <strong>₹{currentRate}/MT</strong>
+        </div>
+        <div className="quote-submitted-badge" style={{ color: '#047857', fontSize: '0.78rem', fontWeight: '900', display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <span>Status: Waiting for Admin Response</span>
+          <button type="button" onClick={() => setSelectedHistorySub(myExistingBid)} style={{ background: 'none', border: 'none', color: '#0284c7', cursor: 'pointer', fontSize: '0.75rem', fontWeight: '700', textDecoration: 'underline' }}>
+            📜 History
+          </button>
+        </div>
+      </div>
+    );
   };
 
   // FAST 1-LINE INLINE SUBMIT HANDLER (Supports Double/Re-Quoted Bids 🚀)
@@ -1157,26 +1339,7 @@ export const TransporterPortal = () => {
 
                                                     <td style={{ padding: '10px 14px' }}>
                                                       {hasSubmittedQuote ? (
-                                                        <div className="submitted-quote-state" style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                                          <div className="current-bid-preview submitted" style={{
-                                                            background: '#dcfce7',
-                                                            border: '1.5px solid #16a34a',
-                                                            padding: '6px 12px',
-                                                            borderRadius: '8px',
-                                                            color: '#064e3b',
-                                                            fontSize: '0.88rem',
-                                                            fontWeight: '900',
-                                                            display: 'inline-flex',
-                                                            alignItems: 'center',
-                                                            gap: '6px'
-                                                          }}>
-                                                            <span>✓ Current Bid:</span>
-                                                            <strong>₹{myExistingBid.rate_per_unit || myExistingBid.rate_per_mt}/MT</strong>
-                                                          </div>
-                                                          <div className="quote-submitted-badge" style={{ color: '#047857', fontSize: '0.78rem', fontWeight: '900', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                                            ✓ Quote Submitted
-                                                          </div>
-                                                        </div>
+                                                        renderTransporterNegotiationCell(myExistingBid, req)
                                                       ) : isAwarded ? (
                                                         <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Requirements Closed</span>
                                                       ) : (
@@ -1459,26 +1622,7 @@ export const TransporterPortal = () => {
 
                           <td>
                             {hasSubmittedQuote ? (
-                              <div className="submitted-quote-state" style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                <div className="current-bid-preview submitted" style={{
-                                  background: '#dcfce7',
-                                  border: '1.5px solid #16a34a',
-                                  padding: '6px 12px',
-                                  borderRadius: '8px',
-                                  color: '#064e3b',
-                                  fontSize: '0.88rem',
-                                  fontWeight: '900',
-                                  display: 'inline-flex',
-                                  alignItems: 'center',
-                                  gap: '6px'
-                                }}>
-                                  <span>✓ Current Bid:</span>
-                                  <strong>₹{myExistingBid.rate_per_unit || myExistingBid.rate_per_mt}/MT</strong>
-                                </div>
-                                <div className="quote-submitted-badge" style={{ color: '#047857', fontSize: '0.78rem', fontWeight: '900', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                  ✓ Quote Submitted
-                                </div>
-                              </div>
+                              renderTransporterNegotiationCell(myExistingBid, req)
                             ) : isAwarded ? (
                               <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Requirements Closed</span>
                             ) : (
@@ -2162,6 +2306,15 @@ export const TransporterPortal = () => {
             </form>
           </div>
         </div>
+      )}
+
+      {/* 📜 Negotiation History Modal */}
+      {selectedHistorySub && (
+        <NegotiationHistoryModal
+          submission={selectedHistorySub}
+          isOpen={Boolean(selectedHistorySub)}
+          onClose={() => setSelectedHistorySub(null)}
+        />
       )}
 
       {/* Truck Dispatch Slip PDF Modal */}

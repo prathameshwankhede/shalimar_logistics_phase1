@@ -219,7 +219,15 @@ export async function ensureRateSubmissionsTableExists() {
       "total_amount DECIMAL(14,2) DEFAULT NULL",
       "remarks TEXT DEFAULT NULL",
       "status VARCHAR(50) DEFAULT 'Submitted'",
-      "submitted_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP"
+      "submitted_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP",
+      "original_rate DECIMAL(12,2) DEFAULT NULL",
+      "counter_rate DECIMAL(12,2) DEFAULT NULL",
+      "final_rate DECIMAL(12,2) DEFAULT NULL",
+      "bid_status VARCHAR(50) DEFAULT 'submitted'",
+      "countered_by VARCHAR(50) DEFAULT NULL",
+      "counter_message TEXT DEFAULT NULL",
+      "counter_updated_at DATETIME DEFAULT NULL",
+      "finalized_at DATETIME DEFAULT NULL"
     ];
     for (const colDef of cols) {
       await pool.query(`ALTER TABLE rate_submissions ADD COLUMN ${colDef}`).catch(() => {});
@@ -295,9 +303,34 @@ export async function ensureRateSubmissionsTableExists() {
       FOREIGN KEY (item_id) REFERENCES transport_requirement_items(id) 
       ON DELETE CASCADE
     `).catch(() => {});
-    isRateSubmissionsTableEnsured = true;
+}
+
+let isBidNegotiationTableEnsured = false;
+export async function ensureBidNegotiationHistoryTableExists() {
+  if (isBidNegotiationTableEnsured) return;
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS bid_negotiation_history (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        rate_submission_id VARCHAR(100) NOT NULL,
+        requirement_id VARCHAR(100) NOT NULL,
+        item_id VARCHAR(100) DEFAULT NULL,
+        transporter_id VARCHAR(100) NOT NULL,
+        action_type VARCHAR(50) NOT NULL,
+        previous_rate DECIMAL(12,2) DEFAULT NULL,
+        new_rate DECIMAL(12,2) DEFAULT NULL,
+        actor_type ENUM('ADMIN','TRANSPORTER') NOT NULL,
+        actor_id VARCHAR(100) DEFAULT NULL,
+        message TEXT DEFAULT NULL,
+        created_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_bnh_submission (rate_submission_id),
+        INDEX idx_bnh_req_item (requirement_id, item_id),
+        INDEX idx_bnh_transporter (transporter_id)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+    isBidNegotiationTableEnsured = true;
   } catch (err) {
-    console.warn('ensureRateSubmissionsTableExists notice:', err.message);
+    console.warn('bid_negotiation_history table creation notice:', err.message);
   }
 }
 
@@ -395,7 +428,7 @@ async function handleGetRequirementRates(req, res) {
       });
     }
 
-    let ratesQuery = 'SELECT id, requirement_id, item_id, transporter_id, rate_per_mt, quoted_quantity_mt, total_amount, remarks, status, submitted_at, updated_at FROM rate_submissions WHERE requirement_id = ?';
+    let ratesQuery = 'SELECT id, requirement_id, item_id, transporter_id, rate_per_mt, original_rate, counter_rate, final_rate, bid_status, countered_by, counter_message, counter_updated_at, finalized_at, quoted_quantity_mt, total_amount, remarks, status, submitted_at, updated_at FROM rate_submissions WHERE requirement_id = ?';
     let queryParams = [actualReqId];
 
     if (itemId) {
@@ -444,7 +477,15 @@ async function handleGetRequirementRates(req, res) {
         total_amount: calcTotal,
         remarks: r.remarks || '',
         status: r.status || 'Submitted',
-        submitted_at: r.submitted_at
+        submitted_at: r.submitted_at,
+        original_rate: r.original_rate ? parseFloat(r.original_rate) : rateVal,
+        counter_rate: r.counter_rate ? parseFloat(r.counter_rate) : null,
+        final_rate: r.final_rate ? parseFloat(r.final_rate) : null,
+        bid_status: r.bid_status || 'submitted',
+        countered_by: r.countered_by || null,
+        counter_message: r.counter_message || null,
+        counter_updated_at: r.counter_updated_at || null,
+        finalized_at: r.finalized_at || null
       };
     });
 
@@ -590,19 +631,39 @@ async function handleCreateRateSubmission(req, res) {
     const subStatus = status || 'Submitted';
     const rem = (remarks || comments || notes || '').trim() || null;
 
+    await ensureBidNegotiationHistoryTableExists();
+
     await pool.query(
-      `INSERT INTO rate_submissions (id, requirement_id, item_id, transporter_id, rate_per_mt, quoted_quantity_mt, total_amount, remarks, status, submitted_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+      `INSERT INTO rate_submissions (id, requirement_id, item_id, transporter_id, rate_per_mt, original_rate, quoted_quantity_mt, total_amount, remarks, status, bid_status, submitted_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'submitted', NOW())
        ON DUPLICATE KEY UPDATE
        rate_per_mt = VALUES(rate_per_mt),
+       original_rate = COALESCE(original_rate, VALUES(rate_per_mt)),
        quoted_quantity_mt = VALUES(quoted_quantity_mt),
        total_amount = VALUES(total_amount),
        remarks = VALUES(remarks),
        status = VALUES(status),
        submitted_at = NOW(),
        updated_at = NOW()`,
-      [subId, actualReqId, actualItemId, actualTransId, rateVal, qtyVal, totalAmount, rem, subStatus]
+      [subId, actualReqId, actualItemId, actualTransId, rateVal, rateVal, qtyVal, totalAmount, rem, subStatus]
     );
+
+    try {
+      const [histCheck] = await pool.query(
+        'SELECT id FROM bid_negotiation_history WHERE rate_submission_id = ? AND action_type = "INITIAL_BID" LIMIT 1',
+        [subId]
+      );
+      if (histCheck.length === 0) {
+        await pool.query(
+          `INSERT INTO bid_negotiation_history 
+           (rate_submission_id, requirement_id, item_id, transporter_id, action_type, previous_rate, new_rate, actor_type, actor_id, message, created_at)
+           VALUES (?, ?, ?, ?, 'INITIAL_BID', NULL, ?, 'TRANSPORTER', ?, ?, NOW())`,
+          [subId, actualReqId, actualItemId, actualTransId, rateVal, actualTransId, rem || 'Initial bid submitted by transporter']
+        );
+      }
+    } catch (hErr) {
+      console.warn('History insertion notice:', hErr.message);
+    }
 
     const submissionObj = {
       id: subId,
@@ -631,6 +692,263 @@ async function handleCreateRateSubmission(req, res) {
 }
 
 // -------------------------------------------------------------
+// ADMIN COUNTER OFFER API HANDLER 🛡️
+// -------------------------------------------------------------
+async function handleAdminCounter(req, res) {
+  try {
+    await ensureRateSubmissionsTableExists();
+    await ensureBidNegotiationHistoryTableExists();
+
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ success: false, error: 'Access denied. Admin access required.' });
+    }
+
+    const { id } = req.params;
+    const { counter_rate, message } = req.body;
+
+    const counterRateVal = parseFloat(counter_rate);
+    if (isNaN(counterRateVal) || counterRateVal <= 0) {
+      return res.status(400).json({ success: false, error: 'counter_rate must be a positive number.' });
+    }
+
+    const [rows] = await pool.query('SELECT * FROM rate_submissions WHERE id = ? LIMIT 1', [id]);
+    if (rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Rate submission not found.' });
+    }
+
+    const sub = rows[0];
+    if (sub.bid_status === 'finalized' || sub.status === 'Rate Frozen' || sub.status === 'Awarded') {
+      return res.status(400).json({ success: false, error: 'Cannot send counter offer for a finalized or awarded bid.' });
+    }
+
+    const prevRate = parseFloat(sub.counter_rate || sub.rate_per_mt || sub.original_rate || 0);
+    const origRate = sub.original_rate ? parseFloat(sub.original_rate) : parseFloat(sub.rate_per_mt);
+
+    await pool.query(
+      `UPDATE rate_submissions
+       SET original_rate = COALESCE(original_rate, ?),
+           counter_rate = ?,
+           bid_status = 'countered_by_admin',
+           countered_by = 'ADMIN',
+           counter_message = ?,
+           counter_updated_at = NOW(),
+           updated_at = NOW()
+       WHERE id = ?`,
+      [origRate, counterRateVal, message || null, id]
+    );
+
+    await pool.query(
+      `INSERT INTO bid_negotiation_history 
+       (rate_submission_id, requirement_id, item_id, transporter_id, action_type, previous_rate, new_rate, actor_type, actor_id, message, created_at)
+       VALUES (?, ?, ?, ?, 'ADMIN_COUNTER', ?, ?, 'ADMIN', ?, ?, NOW())`,
+      [id, sub.requirement_id, sub.item_id || 'MAIN', sub.transporter_id, prevRate, counterRateVal, req.user.username || 'admin', message || `Admin proposed counter offer of ₹${counterRateVal}/MT`]
+    );
+
+    const [updatedRows] = await pool.query('SELECT * FROM rate_submissions WHERE id = ? LIMIT 1', [id]);
+    return res.json({
+      success: true,
+      message: `Counter offer of ₹${counterRateVal}/MT sent successfully`,
+      submission: updatedRows[0]
+    });
+  } catch (err) {
+    console.error('❌ POST /api/rate-submissions/:id/admin-counter Error:', err.message);
+    return res.status(500).json({ success: false, error: { code: 'DATABASE_ERROR', message: err.message } });
+  }
+}
+
+// -------------------------------------------------------------
+// TRANSPORTER RESPONSE (ACCEPT / COUNTER) API HANDLER 🚛
+// -------------------------------------------------------------
+async function handleTransporterResponse(req, res) {
+  try {
+    await ensureRateSubmissionsTableExists();
+    await ensureBidNegotiationHistoryTableExists();
+
+    const { id } = req.params;
+    const { action, counter_rate, message } = req.body;
+
+    const [rows] = await pool.query('SELECT * FROM rate_submissions WHERE id = ? LIMIT 1', [id]);
+    if (rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Rate submission not found.' });
+    }
+
+    const sub = rows[0];
+
+    // Security check: Only owner transporter or admin allowed
+    if (req.user.role === 'transporter') {
+      const authTransporterId = req.user.transporter_id || req.user.id || req.user.username;
+      if (String(sub.transporter_id) !== String(authTransporterId) && String(sub.transporter_id) !== String(req.user.username)) {
+        return res.status(403).json({ success: false, error: 'Access denied. You can only respond to your own bids.' });
+      }
+    }
+
+    if (sub.bid_status === 'finalized' || sub.status === 'Rate Frozen' || sub.status === 'Awarded') {
+      return res.status(400).json({ success: false, error: 'This bid is finalized and cannot be modified.' });
+    }
+
+    const prevRate = parseFloat(sub.counter_rate || sub.rate_per_mt || 0);
+
+    if (action === 'accept') {
+      const agreedRate = sub.counter_rate ? parseFloat(sub.counter_rate) : parseFloat(sub.rate_per_mt);
+      const qtyVal = parseFloat(sub.quoted_quantity_mt || 0);
+      const calcTotal = qtyVal ? parseFloat((agreedRate * qtyVal).toFixed(2)) : null;
+
+      await pool.query(
+        `UPDATE rate_submissions
+         SET final_rate = ?,
+             rate_per_mt = ?,
+             total_amount = ?,
+             bid_status = 'counter_accepted',
+             finalized_at = NOW(),
+             updated_at = NOW()
+         WHERE id = ?`,
+        [agreedRate, agreedRate, calcTotal, id]
+      );
+
+      await pool.query(
+        `INSERT INTO bid_negotiation_history 
+         (rate_submission_id, requirement_id, item_id, transporter_id, action_type, previous_rate, new_rate, actor_type, actor_id, message, created_at)
+         VALUES (?, ?, ?, ?, 'COUNTER_ACCEPTED', ?, ?, 'TRANSPORTER', ?, ?, NOW())`,
+        [id, sub.requirement_id, sub.item_id || 'MAIN', sub.transporter_id, prevRate, agreedRate, req.user.username || sub.transporter_id, message || `Transporter accepted counter offer of ₹${agreedRate}/MT`]
+      );
+
+      const [updatedRows] = await pool.query('SELECT * FROM rate_submissions WHERE id = ? LIMIT 1', [id]);
+      return res.json({
+        success: true,
+        message: `Accepted counter offer of ₹${agreedRate}/MT successfully`,
+        submission: updatedRows[0]
+      });
+    } else if (action === 'counter') {
+      const newCounterRate = parseFloat(counter_rate);
+      if (isNaN(newCounterRate) || newCounterRate <= 0) {
+        return res.status(400).json({ success: false, error: 'counter_rate must be a positive number.' });
+      }
+
+      const qtyVal = parseFloat(sub.quoted_quantity_mt || 0);
+      const calcTotal = qtyVal ? parseFloat((newCounterRate * qtyVal).toFixed(2)) : null;
+
+      await pool.query(
+        `UPDATE rate_submissions
+         SET counter_rate = ?,
+             rate_per_mt = ?,
+             total_amount = ?,
+             bid_status = 'countered_by_transporter',
+             countered_by = 'TRANSPORTER',
+             counter_message = ?,
+             counter_updated_at = NOW(),
+             updated_at = NOW()
+         WHERE id = ?`,
+        [newCounterRate, newCounterRate, calcTotal, message || null, id]
+      );
+
+      await pool.query(
+        `INSERT INTO bid_negotiation_history 
+         (rate_submission_id, requirement_id, item_id, transporter_id, action_type, previous_rate, new_rate, actor_type, actor_id, message, created_at)
+         VALUES (?, ?, ?, ?, 'TRANSPORTER_COUNTER', ?, ?, 'TRANSPORTER', ?, ?, NOW())`,
+        [id, sub.requirement_id, sub.item_id || 'MAIN', sub.transporter_id, prevRate, newCounterRate, req.user.username || sub.transporter_id, message || `Transporter proposed revised counter offer of ₹${newCounterRate}/MT`]
+      );
+
+      const [updatedRows] = await pool.query('SELECT * FROM rate_submissions WHERE id = ? LIMIT 1', [id]);
+      return res.json({
+        success: true,
+        message: `Counter offer of ₹${newCounterRate}/MT submitted successfully`,
+        submission: updatedRows[0]
+      });
+    } else {
+      return res.status(400).json({ success: false, error: "Invalid action. Must be 'accept' or 'counter'." });
+    }
+  } catch (err) {
+    console.error('❌ POST /api/rate-submissions/:id/transporter-response Error:', err.message);
+    return res.status(500).json({ success: false, error: { code: 'DATABASE_ERROR', message: err.message } });
+  }
+}
+
+// -------------------------------------------------------------
+// FINALIZE BID API HANDLER 🏆
+// -------------------------------------------------------------
+async function handleFinalizeBid(req, res) {
+  try {
+    await ensureRateSubmissionsTableExists();
+    await ensureBidNegotiationHistoryTableExists();
+
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ success: false, error: 'Access denied. Admin access required.' });
+    }
+
+    const { id } = req.params;
+    const { final_rate } = req.body;
+
+    const [rows] = await pool.query('SELECT * FROM rate_submissions WHERE id = ? LIMIT 1', [id]);
+    if (rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Rate submission not found.' });
+    }
+
+    const sub = rows[0];
+    const agreedRate = parseFloat(final_rate || sub.final_rate || sub.counter_rate || sub.rate_per_mt);
+    if (isNaN(agreedRate) || agreedRate <= 0) {
+      return res.status(400).json({ success: false, error: 'final_rate must be a positive number.' });
+    }
+
+    const qtyVal = parseFloat(sub.quoted_quantity_mt || 0);
+    const calcTotal = qtyVal ? parseFloat((agreedRate * qtyVal).toFixed(2)) : null;
+    const prevRate = parseFloat(sub.rate_per_mt || 0);
+
+    await pool.query(
+      `UPDATE rate_submissions
+       SET final_rate = ?,
+           rate_per_mt = ?,
+           total_amount = ?,
+           bid_status = 'finalized',
+           finalized_at = NOW(),
+           updated_at = NOW()
+       WHERE id = ?`,
+      [agreedRate, agreedRate, calcTotal, id]
+    );
+
+    await pool.query(
+      `INSERT INTO bid_negotiation_history 
+       (rate_submission_id, requirement_id, item_id, transporter_id, action_type, previous_rate, new_rate, actor_type, actor_id, message, created_at)
+       VALUES (?, ?, ?, ?, 'BID_FINALIZED', ?, ?, 'ADMIN', ?, ?, NOW())`,
+      [id, sub.requirement_id, sub.item_id || 'MAIN', sub.transporter_id, prevRate, agreedRate, req.user.username || 'admin', `Bid finalized by Admin at ₹${agreedRate}/MT`]
+    );
+
+    const [updatedRows] = await pool.query('SELECT * FROM rate_submissions WHERE id = ? LIMIT 1', [id]);
+    return res.json({
+      success: true,
+      message: `Bid finalized at ₹${agreedRate}/MT`,
+      submission: updatedRows[0]
+    });
+  } catch (err) {
+    console.error('❌ POST /api/rate-submissions/:id/finalize Error:', err.message);
+    return res.status(500).json({ success: false, error: { code: 'DATABASE_ERROR', message: err.message } });
+  }
+}
+
+// -------------------------------------------------------------
+// GET NEGOTIATION HISTORY TIMELINE 📜
+// -------------------------------------------------------------
+async function handleGetNegotiationHistory(req, res) {
+  try {
+    await ensureBidNegotiationHistoryTableExists();
+    const { id } = req.params;
+
+    const [rows] = await pool.query(
+      `SELECT * FROM bid_negotiation_history WHERE rate_submission_id = ? ORDER BY created_at ASC, id ASC`,
+      [id]
+    );
+
+    return res.json({
+      success: true,
+      submission_id: id,
+      history: rows
+    });
+  } catch (err) {
+    console.error('❌ GET /api/rate-submissions/:id/history Error:', err.message);
+    return res.status(500).json({ success: false, error: { code: 'DATABASE_ERROR', message: err.message } });
+  }
+}
+
+// -------------------------------------------------------------
 // Layered Controller Routes (Targeted Minimal DTO Endpoints)
 // -------------------------------------------------------------
 router.get('/dashboard', authenticateToken, handleGetDashboard);
@@ -638,6 +956,10 @@ router.get('/requirements', authenticateToken, handleGetRequirements);
 router.get('/rate-requests', authenticateToken, handleGetRequirements);
 router.get('/requirements/:id/rates', authenticateToken, handleGetRequirementRates);
 router.get('/rate-requests/:id/rates', authenticateToken, handleGetRequirementRates);
+router.post('/rate-submissions/:id/admin-counter', authenticateToken, handleAdminCounter);
+router.post('/rate-submissions/:id/transporter-response', authenticateToken, handleTransporterResponse);
+router.post('/rate-submissions/:id/finalize', authenticateToken, handleFinalizeBid);
+router.get('/rate-submissions/:id/history', authenticateToken, handleGetNegotiationHistory);
 router.post('/rate-submissions', authenticateToken, handleCreateRateSubmission);
 router.post('/bids', authenticateToken, handleCreateRateSubmission);
 router.get('/rate-submissions', authenticateToken, handleGetRateSubmissions);
