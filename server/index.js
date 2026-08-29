@@ -47,10 +47,6 @@ app.use((req, res, next) => {
   next();
 });
 
-// API Routes
-app.use('/api/auth', authRoutes);
-app.use('/api', apiRoutes);
-
 // Health check endpoint
 app.get('/api/health', (req, res) => {
   res.json({
@@ -63,6 +59,116 @@ app.get('/api/health', (req, res) => {
     db_name: process.env.DB_NAME || process.env.DATABASE_NAME || 'transflow_db'
   });
 });
+
+// Full read-only schema and consistency audit endpoint
+app.get('/api/diag/full-audit', async (req, res) => {
+  try {
+    const { pool } = await import('./config/db.js');
+    const [tablesRows] = await pool.query('SHOW TABLES');
+    const tableNames = tablesRows.map(r => Object.values(r)[0]);
+
+    const tableDetails = {};
+    const tableIndexes = {};
+    const tableCreateSql = {};
+    const tableCounts = {};
+
+    for (const tName of tableNames) {
+      try {
+        const [cols] = await pool.query(`DESCRIBE \`${tName}\``);
+        tableDetails[tName] = cols;
+      } catch (e) {
+        tableDetails[tName] = { error: e.message };
+      }
+
+      try {
+        const [idx] = await pool.query(`SHOW INDEX FROM \`${tName}\``);
+        tableIndexes[tName] = idx.map(i => ({ Table: i.Table, Key_name: i.Key_name, Column_name: i.Column_name, Non_unique: i.Non_unique }));
+      } catch (e) {
+        tableIndexes[tName] = { error: e.message };
+      }
+
+      try {
+        const [createRows] = await pool.query(`SHOW CREATE TABLE \`${tName}\``);
+        tableCreateSql[tName] = createRows[0] ? Object.values(createRows[0])[1] : null;
+      } catch (e) {
+        tableCreateSql[tName] = { error: e.message };
+      }
+
+      try {
+        const [cRows] = await pool.query(`SELECT COUNT(*) AS count FROM \`${tName}\``);
+        tableCounts[tName] = cRows[0].count;
+      } catch (e) {
+        tableCounts[tName] = 0;
+      }
+    }
+
+    const [fkRows] = await pool.query(`
+      SELECT 
+        TABLE_NAME, COLUMN_NAME, CONSTRAINT_NAME, REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME
+      FROM information_schema.KEY_COLUMN_USAGE
+      WHERE TABLE_SCHEMA = DATABASE() AND REFERENCED_TABLE_NAME IS NOT NULL
+    `);
+
+    // Read-only Data Consistency Checks
+    const [duplicateBids] = await pool.query(`
+      SELECT requirement_id, item_id, transporter_id, COUNT(*) AS count
+      FROM rate_submissions
+      GROUP BY requirement_id, COALESCE(item_id, 'MAIN'), transporter_id
+      HAVING count > 1
+    `).catch(e => [[{ error: e.message }]]);
+
+    const [orphanSubsReq] = await pool.query(`
+      SELECT COUNT(*) AS count
+      FROM rate_submissions s
+      LEFT JOIN transport_requirements r ON r.id = s.requirement_id
+      WHERE r.id IS NULL
+    `).catch(e => [[{ error: e.message }]]);
+
+    const [orphanSubsItem] = await pool.query(`
+      SELECT COUNT(*) AS count
+      FROM rate_submissions s
+      LEFT JOIN transport_requirement_items i ON i.id = s.item_id
+      WHERE s.item_id IS NOT NULL AND s.item_id != 'MAIN' AND i.id IS NULL
+    `).catch(e => [[{ error: e.message }]]);
+
+    const [orphanSubsTrans] = await pool.query(`
+      SELECT COUNT(*) AS count
+      FROM rate_submissions s
+      LEFT JOIN transporters t ON (t.id = s.transporter_id OR t.code = s.transporter_id OR t.username = s.transporter_id)
+      WHERE t.id IS NULL
+    `).catch(e => [[{ error: e.message }]]);
+
+    const [statusDistribution] = await pool.query(`
+      SELECT bid_status, negotiation_status, status, counter_offer_status, COUNT(*) as count
+      FROM rate_submissions
+      GROUP BY bid_status, negotiation_status, status, counter_offer_status
+    `).catch(e => [[{ error: e.message }]]);
+
+    res.json({
+      success: true,
+      database: 'u704836459_shalimar_logi',
+      tables: tableNames,
+      tableCounts,
+      tableDetails,
+      tableIndexes,
+      tableCreateSql,
+      foreignKeys: fkRows,
+      consistency: {
+        duplicateBids,
+        orphanSubsReq: orphanSubsReq[0]?.count || 0,
+        orphanSubsItem: orphanSubsItem[0]?.count || 0,
+        orphanSubsTrans: orphanSubsTrans[0]?.count || 0,
+        statusDistribution
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// API Routes
+app.use('/api/auth', authRoutes);
+app.use('/api', apiRoutes);
 
 // Hostinger Passenger Process Reload Signal v1.8.0 - Full Production Database Schema Audit
 
