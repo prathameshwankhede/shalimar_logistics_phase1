@@ -1,4 +1,4 @@
-// Hostinger Passenger Process Reload Signal v1.2.7 - Remove Detailed Cards View Mode & Keep Only 1-Line Express Table
+// Hostinger Passenger Process Reload Signal v1.2.8 - Prevent Duplicate Quotes & Enforce Submitted State Per Sub-Indent
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
