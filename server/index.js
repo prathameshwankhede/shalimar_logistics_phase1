@@ -1,4 +1,4 @@
-// Hostinger Passenger Process Reload Signal v1.7.5 - Complete Admin to Transporter Counter Offer Pipeline
+// Hostinger Passenger Process Reload Signal v1.7.6 - Final Production Schema Diagnostic
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
@@ -62,6 +62,26 @@ app.get('/api/health', (req, res) => {
     db_user: process.env.DB_USER || process.env.DATABASE_USER || 'root',
     db_name: process.env.DB_NAME || process.env.DATABASE_NAME || 'transflow_db'
   });
+});
+
+// Diagnostic schema inspection endpoint
+app.get('/api/diag/schema', async (req, res) => {
+  try {
+    const { pool } = await import('./config/db.js');
+    const [rateSubCols] = await pool.query('DESCRIBE rate_submissions');
+    const [reqCols] = await pool.query('DESCRIBE transport_requirements');
+    const [itemCols] = await pool.query('DESCRIBE transport_requirement_items');
+    res.json({
+      success: true,
+      tables: {
+        rate_submissions: rateSubCols.map(c => ({ Field: c.Field, Type: c.Type, Null: c.Null, Key: c.Key, Default: c.Default })),
+        transport_requirements: reqCols.map(c => ({ Field: c.Field, Type: c.Type })),
+        transport_requirement_items: itemCols.map(c => ({ Field: c.Field, Type: c.Type }))
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
 });
 
 // Static File Serving for Hostinger Production Build (dist folder)
