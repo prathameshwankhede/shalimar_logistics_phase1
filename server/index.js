@@ -1,4 +1,4 @@
-// Hostinger Passenger Process Reload Signal v1.2.9 - Relocate Submit All Batch Bids Button to Bottom Footer
+// Hostinger Passenger Process Reload Signal v1.3.0 - Keyboard Navigation, Focus Auto-Advance & Accessible Focus Indicators
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
