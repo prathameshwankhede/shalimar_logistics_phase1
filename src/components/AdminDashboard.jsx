@@ -2255,6 +2255,7 @@ export const AdminDashboard = () => {
                                 <th style={{ color: '#f8fafc', padding: '14px 16px', fontSize: '0.8rem', fontWeight: '900', borderBottom: '2px solid #334155' }}>CARGO & QTY</th>
                                 <th style={{ color: '#f8fafc', padding: '14px 16px', fontSize: '0.8rem', fontWeight: '900', borderBottom: '2px solid #334155' }}>TARGET DATE</th>
                                 <th style={{ color: '#f8fafc', padding: '14px 16px', fontSize: '0.8rem', fontWeight: '900', borderBottom: '2px solid #334155' }}>SUBMITTED QUOTES</th>
+                                <th style={{ color: '#f8fafc', padding: '14px 16px', fontSize: '0.8rem', fontWeight: '900', borderBottom: '2px solid #334155' }}>💬 COUNTER OFFER</th>
                                 <th style={{ color: '#f8fafc', padding: '14px 16px', fontSize: '0.8rem', fontWeight: '900', borderBottom: '2px solid #334155' }}>📊 BID & APPROVAL REPORT</th>
                                 <th style={{ color: '#f8fafc', padding: '14px 16px', fontSize: '0.8rem', fontWeight: '900', borderBottom: '2px solid #334155' }}>STATUS</th>
                                 <th style={{ color: '#f8fafc', padding: '14px 16px', fontSize: '0.8rem', fontWeight: '900', borderBottom: '2px solid #334155', textAlign: 'center' }}>ACTIONS</th>
@@ -2437,6 +2438,7 @@ export const AdminDashboard = () => {
                           <th>Cargo & Qty</th>
                           <th>Target Date</th>
                           <th>Submitted Bids</th>
+                          <th>💬 COUNTER OFFER</th>
                           <th>📊 Bidding & Approval Report</th>
                           <th>Status</th>
                           <th style={{ textAlign: 'right' }}>Actions</th>

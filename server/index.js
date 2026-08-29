@@ -1,4 +1,4 @@
-// Hostinger Passenger Process Reload Signal v1.4.3 - Show Only Current Bid & Block Duplicate Quotes HTTP 409
+// Hostinger Passenger Process Reload Signal v1.4.4 - Counter Offer Column Next To Submitted Quotes
 import express from 'express';
 import cors from 'cors';
 import path from 'path';

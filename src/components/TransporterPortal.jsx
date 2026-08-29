@@ -508,30 +508,23 @@ export const TransporterPortal = () => {
       );
     }
 
-    // DEFAULT STATUS = 'submitted'
+    // DEFAULT STATUS = 'submitted' — Render ONLY the exact Current Bid pill badge
     return (
-      <div className="submitted-quote-state" style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-        <div className="current-bid-preview submitted" style={{
-          background: '#dcfce7',
-          border: '1.5px solid #16a34a',
-          padding: '6px 12px',
-          borderRadius: '8px',
-          color: '#064e3b',
-          fontSize: '0.88rem',
-          fontWeight: '900',
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: '6px'
-        }}>
-          <span>✓ Current Bid:</span>
-          <strong>₹{currentRate}/MT</strong>
-        </div>
-        <div className="quote-submitted-badge" style={{ color: '#047857', fontSize: '0.78rem', fontWeight: '900', display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <span>Status: Waiting for Admin Response</span>
-          <button type="button" onClick={() => setSelectedHistorySub(myExistingBid)} style={{ background: 'none', border: 'none', color: '#0284c7', cursor: 'pointer', fontSize: '0.75rem', fontWeight: '700', textDecoration: 'underline' }}>
-            📜 History
-          </button>
-        </div>
+      <div className="current-bid-preview submitted" style={{
+        background: '#e0f2fe',
+        border: '1px solid #7dd3fc',
+        padding: '6px 14px',
+        borderRadius: '10px',
+        color: '#0284c7',
+        fontSize: '0.88rem',
+        fontWeight: '700',
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: '6px',
+        whiteSpace: 'nowrap'
+      }}>
+        <span style={{ color: '#0284c7', fontWeight: '700' }}>✓ Current Bid:</span>
+        <strong style={{ color: '#0369a1', fontWeight: '800' }}>₹{currentRate}/MT</strong>
       </div>
     );
   };
