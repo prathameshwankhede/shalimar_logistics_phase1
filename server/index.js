@@ -1,4 +1,4 @@
-// Hostinger Passenger Process Reload Signal v1.5.2 - Dedicated Finalize Rate Table Column
+// Hostinger Passenger Process Reload Signal v1.5.3 - Auth Base URL & Token Store Fix
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
