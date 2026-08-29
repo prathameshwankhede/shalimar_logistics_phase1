@@ -1,4 +1,4 @@
-// Hostinger Passenger Process Reload Signal v1.3.0 - Keyboard Navigation, Focus Auto-Advance & Accessible Focus Indicators
+// Hostinger Passenger Process Reload Signal v1.3.1 - Restore Quote Button & Live Current Bid Rate Preview
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
