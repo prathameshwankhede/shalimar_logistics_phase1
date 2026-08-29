@@ -556,9 +556,9 @@ async function handleGetRequirementRates(req, res) {
         quoted_quantity_mt: qtyVal,
         total_amount: calcTotal,
         remarks: r.remarks || '',
-        status: r.bid_status || 'Submitted',
-        bid_status: r.bid_status || 'Submitted',
-        negotiation_status: r.bid_status || 'Submitted',
+        status: r.bid_status ? String(r.bid_status).toUpperCase() : 'SUBMITTED',
+        bid_status: r.bid_status ? String(r.bid_status).toUpperCase() : 'SUBMITTED',
+        negotiation_status: r.bid_status ? String(r.bid_status).toUpperCase() : 'SUBMITTED',
         original_rate: r.original_rate ? parseFloat(r.original_rate) : rateVal,
         counter_rate: r.counter_offer_rate ? parseFloat(r.counter_offer_rate) : null,
         counter_offer_rate: r.counter_offer_rate ? parseFloat(r.counter_offer_rate) : null,
@@ -728,15 +728,14 @@ async function handleCreateRateSubmission(req, res) {
 
     await pool.query(
       `INSERT INTO rate_submissions (id, requirement_id, item_id, transporter_id, rate_per_mt, original_rate, quoted_quantity_mt, total_amount, remarks, bid_status, submitted_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Submitted', NOW(), NOW())
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'SUBMITTED', NOW(), NOW())
        ON DUPLICATE KEY UPDATE
        rate_per_mt = VALUES(rate_per_mt),
-       original_rate = COALESCE(original_rate, VALUES(rate_per_mt)),
+       original_rate = COALESCE(original_rate, VALUES(original_rate)),
        quoted_quantity_mt = VALUES(quoted_quantity_mt),
        total_amount = VALUES(total_amount),
        remarks = VALUES(remarks),
-       bid_status = VALUES(bid_status),
-       submitted_at = NOW(),
+       bid_status = 'SUBMITTED',
        updated_at = NOW()`,
       [subId, actualReqId, actualItemId, actualTransId, rateVal, rateVal, qtyVal, totalAmount, rem]
     );
@@ -834,9 +833,9 @@ async function handleCreateRateSubmission(req, res) {
       quoted_quantity_mt: qtyVal,
       total_amount: totalAmount,
       remarks: rem,
-      status: subStatus,
-      bid_status: 'Submitted',
-      negotiation_status: 'Submitted',
+      status: 'SUBMITTED',
+      bid_status: 'SUBMITTED',
+      negotiation_status: 'SUBMITTED',
       submitted_at: new Date().toISOString()
     };
 
