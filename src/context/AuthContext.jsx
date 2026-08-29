@@ -60,97 +60,95 @@ export const AuthProvider = ({ children }) => {
   useEffect(() => {
     let isMounted = true;
 
-  const fetchSharedServerDb = async () => {
-    try {
-      const sharedDb = await loadDBFromSupabase();
+    const fetchSharedServerDb = async () => {
+      try {
+        const sharedDb = await loadDBFromSupabase();
 
-      if (sharedDb && isMounted) {
-        setDb(sharedDb);
+        if (sharedDb && isMounted) {
+          setDb(sharedDb);
+        }
+      } catch (e) {
+        console.error('API load failed:', e);
       }
-    } catch (e) {
-      console.error('API load failed:', e);
-    }
-  };
+    };
 
-  fetchSharedServerDb();
-
-  const handleStorageChange = () => {
     fetchSharedServerDb();
-  };
 
-  let bc = null;
-  if (typeof BroadcastChannel !== 'undefined') {
+    const handleStorageChange = () => {
+      fetchSharedServerDb();
+    };
+
+    let bc = null;
+    if (typeof BroadcastChannel !== 'undefined') {
+      try {
+        bc = new BroadcastChannel('transflow_live_sync_v1');
+        bc.onmessage = () => {
+          fetchSharedServerDb();
+        };
+      } catch (e) {}
+    }
+
+    const interval = setInterval(fetchSharedServerDb, 30000);
+
+    window.addEventListener('storage', handleStorageChange);
+    return () => {
+      isMounted = false;
+      window.removeEventListener('storage', handleStorageChange);
+      if (bc) bc.close();
+      clearInterval(interval);
+    };
+  }, []);
+
+  // Save session state
+  useEffect(() => {
+    if (currentUser) {
+      try {
+        sessionStorage.setItem(USER_SESSION_KEY, JSON.stringify(currentUser));
+      } catch (e) {
+        console.error('Failed to save session token', e);
+      }
+    } else {
+      sessionStorage.removeItem(USER_SESSION_KEY);
+    }
+  }, [currentUser]);
+
+  const refreshRequirements = async () => {
     try {
-      bc = new BroadcastChannel('transflow_live_sync_v1');
-      bc.onmessage = () => {
-        fetchSharedServerDb();
-      };
-    } catch (e) {}
-  }
+      const freshDb = await loadDBFromSupabase();
 
-  const interval = setInterval(fetchSharedServerDb, 3000);
-
-  window.addEventListener('storage', handleStorageChange);
-  return () => {
-    isMounted = false;
-    window.removeEventListener('storage', handleStorageChange);
-    if (bc) bc.close();
-    clearInterval(interval);
-  };
-}, []);
-
-// Save session state
-useEffect(() => {
-  if (currentUser) {
-    try {
-      sessionStorage.setItem(USER_SESSION_KEY, JSON.stringify(currentUser));
+      if (freshDb) {
+        setDb(freshDb);
+        if (typeof BroadcastChannel !== 'undefined') {
+          try {
+            const bc = new BroadcastChannel('transflow_live_sync_v1');
+            bc.postMessage({ type: 'SYNC_DB', timestamp: Date.now() });
+            bc.close();
+          } catch (e) {}
+        }
+      }
+      return freshDb;
     } catch (e) {
-      console.error('Failed to save session token', e);
+      console.error('refreshRequirements Error:', e);
     }
-  } else {
-    sessionStorage.removeItem(USER_SESSION_KEY);
-  }
-}, [currentUser]);
-
-const refreshRequirements = async () => {
-  console.time('MYSQL_TO_UI_REFRESH');
-
-  try {
-    const freshDb = await loadDBFromSupabase();
-
-    if (freshDb) {
-      // IMPORTANT:
-      // MySQL/API response is the single source of truth.
-      // Do NOT merge old React state into fresh server data.
-      setDb(freshDb);
-    }
-
-    return freshDb;
-  } catch (e) {
-    console.error('refreshRequirements Error:', e);
-    throw e;
-  } finally {
-    console.timeEnd('MYSQL_TO_UI_REFRESH');
-  }
-};
-
-const refreshDB = async () => {
-  return await refreshRequirements();
-};
-
-const addSecurityLog = (targetDb, action, username, role, status = 'AUTHENTICATED 🛡️') => {
-  const newLog = {
-    id: `sec_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
-    action,
-    username: username || 'Guest',
-    role: role || 'user',
-    ip: '192.168.1.105 (Secure MIDC Network)',
-    status,
-    timestamp: new Date().toISOString()
   };
-  const logs = [newLog, ...(targetDb.security_audit_logs || [])].slice(0, 100);
-  return { ...targetDb, security_audit_logs: logs };
-};
+
+  const refreshDB = async () => {
+    return await refreshRequirements();
+  };
+
+  const addSecurityLog = (targetDb, action, username, role, status = 'AUTHENTICATED 🛡️') => {
+    const newLog = {
+      id: `sec_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+      action,
+      username: username || 'Guest',
+      role: role || 'user',
+      ip: '192.168.1.105 (Secure MIDC Network)',
+      status,
+      timestamp: new Date().toISOString()
+    };
+    const logs = [newLog, ...(targetDb?.security_audit_logs || [])].slice(0, 100);
+    return { ...(targetDb || {}), security_audit_logs: logs };
+  };
 
 const updateDB = async (newDb) => {
   if (!newDb) return;

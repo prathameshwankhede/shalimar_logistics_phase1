@@ -103,7 +103,7 @@ export async function fetchDashboardMetrics() {
 
 export async function fetchRateRequests(page = 1, limit = 20) {
   try {
-    const res = await fetch(`${getApiBaseUrl()}/api/rate-requests?page=${page}&limit=${limit}&_t=${Date.now()}`, { cache: 'no-store', headers: getAuthHeaders() });
+    const res = await fetch(`${getApiBaseUrl()}/api/rate-requests?page=${page}&limit=${limit}`, { headers: getAuthHeaders() });
     if (!res.ok) return [];
     const json = await res.json();
     return json.rate_requests || [];
@@ -114,7 +114,7 @@ export async function fetchRateRequests(page = 1, limit = 20) {
 
 export async function fetchRateSubmissions() {
   try {
-    const res = await fetch(`${getApiBaseUrl()}/api/rate-submissions?_t=${Date.now()}`, { cache: 'no-store', headers: getAuthHeaders() });
+    const res = await fetch(`${getApiBaseUrl()}/api/rate-submissions`, { headers: getAuthHeaders() });
     if (!res.ok) return [];
     const json = await res.json();
     return json.rate_submissions || [];
@@ -125,7 +125,7 @@ export async function fetchRateSubmissions() {
 
 export async function fetchTransportersList() {
   try {
-    const res = await fetch(`${getApiBaseUrl()}/api/transporters?_t=${Date.now()}`, { cache: 'no-store', headers: getAuthHeaders() });
+    const res = await fetch(`${getApiBaseUrl()}/api/transporters`, { headers: getAuthHeaders() });
     if (!res.ok) return [];
     const json = await res.json();
     return json.transporters || [];
@@ -136,7 +136,7 @@ export async function fetchTransportersList() {
 
 export async function fetchCompanyUnitsList() {
   try {
-    const res = await fetch(`${getApiBaseUrl()}/api/company-units?_t=${Date.now()}`, { cache: 'no-store', headers: getAuthHeaders() });
+    const res = await fetch(`${getApiBaseUrl()}/api/company-units`, { headers: getAuthHeaders() });
     if (!res.ok) return [];
     const json = await res.json();
     return json.data || json.company_units || [];
@@ -147,7 +147,7 @@ export async function fetchCompanyUnitsList() {
 
 export async function fetchProductsList() {
   try {
-    const res = await fetch(`${getApiBaseUrl()}/api/products?_t=${Date.now()}`, { cache: 'no-store', headers: getAuthHeaders() });
+    const res = await fetch(`${getApiBaseUrl()}/api/products`, { headers: getAuthHeaders() });
     if (!res.ok) return [];
     const json = await res.json();
     return json.data || json.products || json.product_masters || [];
@@ -158,7 +158,7 @@ export async function fetchProductsList() {
 
 export async function fetchRequirementsList() {
   try {
-    const res = await fetch(`${getApiBaseUrl()}/api/requirements?_t=${Date.now()}`, { cache: 'no-store', headers: getAuthHeaders() });
+    const res = await fetch(`${getApiBaseUrl()}/api/requirements`, { headers: getAuthHeaders() });
     if (!res.ok) return [];
     const json = await res.json();
     return json.data || json.requirements || json.rate_requests || [];
@@ -250,84 +250,37 @@ export function resetDB() {
 
 export async function loadDBFromSupabase() {
   try {
-    const res = await fetch(`${getApiBaseUrl()}/api/state?_t=${Date.now()}`, {
-      cache: 'no-store',
-      headers: getAuthHeaders()
-    });
-    let data = null;
-    if (res.ok) {
-      const json = await res.json();
-      data = json && json.data ? json.data : null;
-    }
+    // ⚡ HIGH-PERFORMANCE PARALLEL FETCH: All independent endpoints fetched concurrently in a single round-trip
+    const [stateRes, transporters, companyUnits, products, requirements, rateSubmissions] = await Promise.all([
+      fetch(`${getApiBaseUrl()}/api/state`, { headers: getAuthHeaders() }).then(r => r.ok ? r.json() : null).catch(() => null),
+      fetchTransportersList().catch(() => []),
+      fetchCompanyUnitsList().catch(() => []),
+      fetchProductsList().catch(() => []),
+      fetchRequirementsList().catch(() => []),
+      fetchRateSubmissions().catch(() => [])
+    ]);
 
-    // Always fetch live transporters list from MySQL database
-    try {
-      const liveTransporters = await fetchTransportersList();
-      if (Array.isArray(liveTransporters)) {
-        data = {
-          ...(data || EMPTY_STATE),
-          transporters: liveTransporters
-        };
-      }
-    } catch (err) {
-      console.warn('Live transporters fetch notice:', err.message);
-    }
+    let data = stateRes && stateRes.data ? stateRes.data : { ...EMPTY_STATE };
 
-    // Always fetch live company units list from MySQL database
-    try {
-      const liveCompanyUnits = await fetchCompanyUnitsList();
-      if (Array.isArray(liveCompanyUnits)) {
-        data = {
-          ...(data || EMPTY_STATE),
-          company_units_plants: liveCompanyUnits,
-          company_units: liveCompanyUnits,
-          company_masters: liveCompanyUnits
-        };
-      }
-    } catch (err) {
-      console.warn('Live company units fetch notice:', err.message);
+    if (Array.isArray(transporters) && transporters.length > 0) {
+      data.transporters = transporters;
     }
-
-    // Always fetch live products list from MySQL database
-    try {
-      const liveProducts = await fetchProductsList();
-      if (Array.isArray(liveProducts)) {
-        data = {
-          ...(data || EMPTY_STATE),
-          products: liveProducts,
-          product_masters: liveProducts
-        };
-      }
-    } catch (err) {
-      console.warn('Live products fetch notice:', err.message);
+    if (Array.isArray(companyUnits) && companyUnits.length > 0) {
+      data.company_units_plants = companyUnits;
+      data.company_units = companyUnits;
+      data.company_masters = companyUnits;
     }
-
-    // Always fetch live transport requirements list from MySQL database
-    try {
-      const liveRequirements = await fetchRequirementsList();
-      if (Array.isArray(liveRequirements)) {
-        data = {
-          ...(data || EMPTY_STATE),
-          rate_requests: liveRequirements,
-          transport_requirements: liveRequirements,
-          requirements: liveRequirements
-        };
-      }
-    } catch (err) {
-      console.warn('Live requirements fetch notice:', err.message);
+    if (Array.isArray(products) && products.length > 0) {
+      data.products = products;
+      data.product_masters = products;
     }
-
-    // Always fetch live rate submissions list from MySQL database
-    try {
-      const liveSubmissions = await fetchRateSubmissions();
-      if (Array.isArray(liveSubmissions)) {
-        data = {
-          ...(data || EMPTY_STATE),
-          rate_submissions: liveSubmissions
-        };
-      }
-    } catch (err) {
-      console.warn('Live rate submissions fetch notice:', err.message);
+    if (Array.isArray(requirements) && requirements.length > 0) {
+      data.rate_requests = requirements;
+      data.transport_requirements = requirements;
+      data.requirements = requirements;
+    }
+    if (Array.isArray(rateSubmissions) && rateSubmissions.length > 0) {
+      data.rate_submissions = rateSubmissions;
     }
 
     return data;

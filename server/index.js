@@ -1,4 +1,4 @@
-// Hostinger Passenger Process Reload Signal v1.5.8 - Destructure refreshRequirements in TransporterPortal
+// Hostinger Passenger Process Reload Signal v1.6.0 - High Performance Parallel Loading & Query Optimization
 import express from 'express';
 import cors from 'cors';
 import path from 'path';

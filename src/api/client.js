@@ -14,8 +14,6 @@ export async function apiClient(endpoint, options = {}) {
   const token = getAuthToken();
   const headers = {
     'Content-Type': 'application/json',
-    'Cache-Control': 'no-cache',
-    'Pragma': 'no-cache',
     ...(options.headers || {})
   };
 
@@ -25,13 +23,13 @@ export async function apiClient(endpoint, options = {}) {
 
   const method = (options.method || 'GET').toUpperCase();
   let finalEndpoint = endpoint;
-  if (method === 'GET') {
+  // Only add cache buster if explicitly requested via options.bypassCache
+  if (options.bypassCache) {
     const separator = endpoint.includes('?') ? '&' : '?';
     finalEndpoint = `${endpoint}${separator}_t=${Date.now()}`;
   }
 
   const config = {
-    cache: 'no-store',
     ...options,
     headers
   };

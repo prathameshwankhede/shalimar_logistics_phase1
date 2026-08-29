@@ -41,7 +41,9 @@ function sanitizeStateForClient(rawState) {
 // Dedicated Transport Requirements & Rate Requests CRUD API
 // Parent: transport_requirements | Child: transport_requirement_items
 // -------------------------------------------------------------
+let isRequirementsTableEnsured = false;
 async function ensureRequirementsTableExists() {
+  if (isRequirementsTableEnsured) return;
   try {
     await pool.query(`
       CREATE TABLE IF NOT EXISTS transport_requirements (
@@ -96,7 +98,10 @@ async function ensureRequirementsTableExists() {
     for (const colDef of childCols) {
       await pool.query(`ALTER TABLE transport_requirement_items ADD COLUMN ${colDef}`).catch(() => {});
     }
+    await pool.query('ALTER TABLE transport_requirements ADD INDEX idx_req_status_created (status, created_at)').catch(() => {});
     await pool.query('ALTER TABLE transport_requirement_items ADD INDEX idx_sub_indent_no (sub_indent_no)').catch(() => {});
+    await pool.query('ALTER TABLE transport_requirement_items ADD INDEX idx_req_item_lookup (requirement_id, id)').catch(() => {});
+    isRequirementsTableEnsured = true;
   } catch (err) {
     console.warn('transport_requirements table creation notice:', err.message);
   }
@@ -374,34 +379,37 @@ async function handleGetRequirements(req, res) {
   try {
     await ensureRequirementsTableExists();
     await ensureRateSubmissionsTableExists();
-    let bidsCountMap = {};
-    let itemStatsMap = {};
-    try {
-      const [bidRows] = await pool.query(
-        "SELECT requirement_id, COUNT(DISTINCT transporter_id) as cnt FROM rate_submissions WHERE status IN ('Submitted', 'Active', 'Rate Frozen', 'Negotiating') GROUP BY requirement_id"
-      );
-      (bidRows || []).forEach((b) => {
-        if (b.requirement_id) bidsCountMap[b.requirement_id] = Number(b.cnt || 0);
-      });
 
-      const [itemBidRows] = await pool.query(
+    // ⚡ Fast parallel execution of parent requirements and grouped bid statistics
+    const [parentsResult, itemBidResult] = await Promise.all([
+      pool.query('SELECT * FROM transport_requirements ORDER BY created_at DESC LIMIT 300'),
+      pool.query(
         "SELECT requirement_id, item_id, COUNT(DISTINCT transporter_id) as cnt, MIN(rate_per_mt) as min_rate FROM rate_submissions WHERE status IN ('Submitted', 'Active', 'Rate Frozen', 'Negotiating') GROUP BY requirement_id, item_id"
-      );
-      (itemBidRows || []).forEach((b) => {
-        const stats = {
-          bids_count: Number(b.cnt || 0),
-          lowest_rate: b.min_rate ? Number(b.min_rate) : null
-        };
-        const comboKey = `${b.requirement_id}_${b.item_id}`;
-        itemStatsMap[comboKey] = stats;
-        if (b.item_id) itemStatsMap[b.item_id] = stats;
-      });
-    } catch (e) {}
+      )
+    ]);
 
-    const [parents] = await pool.query('SELECT * FROM transport_requirements ORDER BY created_at DESC LIMIT 300');
+    const parents = parentsResult[0] || [];
+    const itemBidRows = itemBidResult[0] || [];
+
     if (parents.length === 0) {
       return res.json({ success: true, count: 0, data: [], requirements: [], rate_requests: [] });
     }
+
+    const bidsCountMap = {};
+    const itemStatsMap = {};
+
+    itemBidRows.forEach((b) => {
+      const stats = {
+        bids_count: Number(b.cnt || 0),
+        lowest_rate: b.min_rate ? Number(b.min_rate) : null
+      };
+      const comboKey = `${b.requirement_id}_${b.item_id}`;
+      itemStatsMap[comboKey] = stats;
+      if (b.item_id) itemStatsMap[b.item_id] = stats;
+      if (b.requirement_id) {
+        bidsCountMap[b.requirement_id] = (bidsCountMap[b.requirement_id] || 0) + Number(b.cnt || 0);
+      }
+    });
 
     const parentIds = parents.map((p) => p.id);
     const [childRows] = await pool.query(
