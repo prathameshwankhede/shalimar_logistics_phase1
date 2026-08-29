@@ -1222,9 +1222,9 @@ async function handleTransporterResponse(req, res) {
            SET counter_offer_rate = ?,
                rate_per_mt = ?,
                total_amount = ?,
-               counter_offer_status = 'TRANSPORTER_COUNTERED',
-               bid_status = 'COUNTER_RESPONDED',
+               counter_offer_status = 'PENDING',
                counter_offer_by = 'TRANSPORTER',
+               bid_status = 'COUNTER_RESPONDED',
                counter_message = ?,
                counter_offer_at = NOW(),
                updated_at = NOW()

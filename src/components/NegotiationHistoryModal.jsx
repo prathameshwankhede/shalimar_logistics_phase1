@@ -84,20 +84,24 @@ export const NegotiationHistoryModal = ({ submission, isOpen, onClose }) => {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', maxHeight: '380px', overflowY: 'auto', paddingRight: '4px' }}>
             {history.map((step, idx) => {
               const isAccepted = step.action_type === 'COUNTER_ACCEPTED' || step.action_type === 'BID_FINALIZED';
-              const isAdmin = step.actor_type === 'ADMIN';
+              const isRejected = step.action_type === 'COUNTER_REJECTED';
+              const isTransCounter = step.action_type === 'TRANSPORTER_COUNTER' || step.action_type === 'TRANSPORTER_RESPONSE';
+              const isAdminCounter = step.action_type === 'ADMIN_COUNTER';
+              const isInitial = step.action_type === 'INITIAL_BID';
+
+              const badgeColor = isAccepted ? '#10b981' : isRejected ? '#ef4444' : isTransCounter ? '#0284c7' : isAdminCounter ? '#f59e0b' : '#10b981';
+              const badgeLabel = isAccepted ? '🏆 FINALIZED' : isRejected ? '❌ REJECTED' : isTransCounter ? '🔵 TRANSPORTER' : isAdminCounter ? '🟠 ADMIN' : '🟢 TRANSPORTER';
 
               return (
                 <div key={step.id || idx} style={{
                   background: isAccepted
                     ? 'rgba(16, 185, 129, 0.12)'
-                    : isAdmin
-                    ? 'rgba(245, 158, 11, 0.12)'
-                    : 'rgba(56, 189, 248, 0.12)',
-                  border: isAccepted
-                    ? '1px solid #10b981'
-                    : isAdmin
-                    ? '1px solid #f59e0b'
-                    : '1px solid #0284c7',
+                    : isRejected
+                    ? 'rgba(239, 68, 68, 0.12)'
+                    : isTransCounter
+                    ? 'rgba(56, 189, 248, 0.12)'
+                    : 'rgba(245, 158, 11, 0.12)',
+                  border: `1px solid ${badgeColor}`,
                   borderRadius: '10px',
                   padding: '12px 14px'
                 }}>
@@ -108,10 +112,10 @@ export const NegotiationHistoryModal = ({ submission, isOpen, onClose }) => {
                       textTransform: 'uppercase',
                       padding: '2px 8px',
                       borderRadius: '4px',
-                      background: isAdmin ? '#d97706' : '#0284c7',
+                      background: badgeColor,
                       color: '#ffffff'
                     }}>
-                      {isAdmin ? '🛡️ ADMIN' : '🚛 TRANSPORTER'}
+                      {badgeLabel}
                     </span>
                     <span style={{ fontSize: '0.74rem', color: '#94a3b8', display: 'flex', alignItems: 'center', gap: '4px' }}>
                       <Clock size={12} /> {new Date(step.created_at).toLocaleString()}
@@ -119,12 +123,12 @@ export const NegotiationHistoryModal = ({ submission, isOpen, onClose }) => {
                   </div>
 
                   <div style={{ fontSize: '0.9rem', fontWeight: '800', color: '#f8fafc', margin: '4px 0' }}>
-                    {step.action_type === 'INITIAL_BID' && `Initial Quote Submitted: ₹${step.new_rate}/MT`}
-                    {step.action_type === 'ADMIN_COUNTER' && `Admin Counter Offer: ₹${step.new_rate}/MT`}
-                    {step.action_type === 'TRANSPORTER_COUNTER' && `Transporter Counter Offer: ₹${step.new_rate}/MT`}
-                    {step.action_type === 'COUNTER_ACCEPTED' && `✓ Counter Offer Accepted @ ₹${step.new_rate}/MT`}
-                    {step.action_type === 'COUNTER_REJECTED' && `❌ Counter Offer Rejected`}
-                    {step.action_type === 'BID_FINALIZED' && `🏆 Bid Finalized @ ₹${step.new_rate}/MT`}
+                    {isInitial && `🟢 Transporter submitted original bid — ₹${step.new_rate}/MT`}
+                    {isAdminCounter && `🟠 Admin counter offered — ₹${step.new_rate}/MT`}
+                    {isTransCounter && `🔵 Transporter counter offered — ₹${step.new_rate}/MT`}
+                    {step.action_type === 'COUNTER_ACCEPTED' && `🟢 Counter offer accepted @ ₹${step.new_rate}/MT`}
+                    {step.action_type === 'COUNTER_REJECTED' && `❌ Counter offer rejected`}
+                    {step.action_type === 'BID_FINALIZED' && `🟢 Admin accepted & finalized @ ₹${step.new_rate}/MT`}
                   </div>
 
                   {step.message && (

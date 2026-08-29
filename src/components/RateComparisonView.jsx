@@ -141,9 +141,9 @@ export const RateComparisonView = ({ rateRequest, onBack }) => {
   const [finalizingId, setFinalizingId] = useState(null);
 
   // Admin Finalizes Agreed Rate 🏆
-  const handleAdminFinalizeBid = async (sub) => {
+  const handleAdminFinalizeBid = async (sub, customRate) => {
     if (!sub || !sub.id) return;
-    const agreedRate = sub.final_rate || sub.counter_offer_rate || sub.counter_rate || sub.rate_per_mt || sub.rate_per_unit;
+    const agreedRate = customRate || sub.final_rate || sub.counter_offer_rate || sub.counter_rate || sub.rate_per_mt || sub.rate_per_unit;
     const transporterName = sub.transporter_name || sub.company_name || 'this transporter';
 
     if (!window.confirm(`Confirm Finalize Rate:\n\nTransporter: ${transporterName}\nAgreed Rate: ₹${agreedRate}/MT\n\nDo you want to finalize this rate now?`)) {
@@ -155,12 +155,7 @@ export const RateComparisonView = ({ rateRequest, onBack }) => {
       await finalizeBid(sub.id, { final_rate: agreedRate });
       setNotice(`🏆 Bid finalized successfully at ₹${agreedRate}/MT for ${transporterName}!`);
       setTimeout(() => setNotice(''), 5000);
-      if (typeof refreshRequirements === 'function') {
-        await refreshRequirements();
-      }
-      if (typeof updateDB === 'function') {
-        await updateDB();
-      }
+      await safeRefreshRequirements();
     } catch (err) {
       console.error('Finalize bid error:', err);
       alert(err.message || 'Failed to finalize bid.');
@@ -466,58 +461,104 @@ export const RateComparisonView = ({ rateRequest, onBack }) => {
                     </td>
 
                     <td>
-                      {sub.counter_rate_per_unit || sub.counter_rate ? (
-                        <div style={{ background: isFrozen ? 'rgba(56, 189, 248, 0.15)' : 'rgba(245, 158, 11, 0.15)', padding: '6px 10px', borderRadius: '6px', border: isFrozen ? '1px solid #38bdf8' : '1px solid #f59e0b', display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
-                          <div>
-                            <span style={{ fontSize: '0.72rem', color: isFrozen ? '#38bdf8' : '#fbbf24', fontWeight: '700', display: 'block' }}>
-                              {isFrozen ? '❄️ ACCEPTED TARGET' : '💬 ADMIN COUNTER'}
-                            </span>
-                            <strong style={{ color: '#ffffff', fontSize: '1rem' }}>₹{sub.counter_rate_per_unit || sub.counter_rate}/MT</strong>
-                          </div>
-                          {!isFrozen && !existingAllocation && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setActiveCounterSub(sub);
-                                setCounterForm({ counter_rate: sub.counter_rate || sub.counter_rate_per_unit || '', note: '' });
-                              }}
-                              className="btn btn-secondary"
-                              style={{ padding: '2px 8px', fontSize: '0.72rem', border: '1px solid #f59e0b', color: '#fbbf24', borderRadius: '4px', cursor: 'pointer' }}
-                            >
-                              ✏ Edit
-                            </button>
-                          )}
-                        </div>
-                      ) : existingAllocation ? (
-                        <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>None Sent</span>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setActiveCounterSub(sub);
-                            setCounterForm({ counter_rate: sub.counter_rate || Math.round((sub.rate_per_unit || sub.rate_per_mt) * 0.92), note: '' });
-                          }}
-                          className="btn btn-primary"
-                          style={{
-                            padding: '6px 14px',
-                            fontSize: '0.8rem',
-                            fontWeight: '900',
-                            borderRadius: '6px',
-                            border: '1.5px solid #38bdf8',
-                            color: '#ffffff',
-                            background: 'linear-gradient(135deg, #0284c7 0%, #2563eb 100%)',
-                            boxShadow: '0 2px 6px rgba(2, 132, 199, 0.35)',
-                            cursor: 'pointer',
-                            whiteSpace: 'nowrap',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '6px'
-                          }}
-                          title="Send target counter rate to transporter"
-                        >
-                          <MessageSquare size={14} /> Counter Rate
-                        </button>
-                      )}
+                      {(() => {
+                        const isTransCounter = (sub.counter_offer_by === 'TRANSPORTER' || sub.bid_status === 'COUNTER_RESPONDED') && (sub.counter_offer_status === 'PENDING' || !sub.counter_offer_status) && !isFrozen;
+                        const hasCounter = sub.counter_offer_rate || sub.counter_rate;
+
+                        if (isTransCounter && hasCounter) {
+                          return (
+                            <div style={{ background: 'rgba(59, 130, 246, 0.15)', padding: '8px 12px', borderRadius: '8px', border: '1.5px solid #3b82f6', display: 'flex', flexDirection: 'column', gap: '4px', minWidth: '180px' }}>
+                              <span style={{ fontSize: '0.72rem', color: '#60a5fa', fontWeight: '800', display: 'block' }}>
+                                🚚 TRANSPORTER COUNTER OFFER
+                              </span>
+                              <div style={{ fontSize: '0.74rem', color: '#94a3b8' }}>Original: ₹{sub.original_rate || sub.rate_per_unit || sub.rate_per_mt}/MT</div>
+                              <strong style={{ color: '#ffffff', fontSize: '1.05rem' }}>₹{sub.counter_offer_rate || sub.counter_rate}/MT</strong>
+                              {!existingAllocation && (
+                                <div style={{ display: 'flex', gap: '6px', marginTop: '4px', flexWrap: 'wrap' }}>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleAdminFinalizeBid(sub, sub.counter_offer_rate || sub.counter_rate)}
+                                    className="btn btn-success"
+                                    style={{ padding: '3px 8px', fontSize: '0.72rem', background: '#16a34a', color: '#ffffff', border: 'none', borderRadius: '4px', fontWeight: '800', cursor: 'pointer' }}
+                                  >
+                                    ✓ Accept ₹{sub.counter_offer_rate || sub.counter_rate}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setActiveCounterSub(sub);
+                                      setCounterForm({ counter_rate: sub.counter_offer_rate || sub.counter_rate || '', note: '' });
+                                    }}
+                                    className="btn btn-primary"
+                                    style={{ padding: '3px 8px', fontSize: '0.72rem', background: '#0284c7', color: '#ffffff', border: 'none', borderRadius: '4px', fontWeight: '800', cursor: 'pointer' }}
+                                  >
+                                    ↔ Counter
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        }
+
+                        if (hasCounter) {
+                          return (
+                            <div style={{ background: isFrozen ? 'rgba(56, 189, 248, 0.15)' : 'rgba(245, 158, 11, 0.15)', padding: '6px 10px', borderRadius: '6px', border: isFrozen ? '1px solid #38bdf8' : '1px solid #f59e0b', display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+                              <div>
+                                <span style={{ fontSize: '0.72rem', color: isFrozen ? '#38bdf8' : '#fbbf24', fontWeight: '700', display: 'block' }}>
+                                  {isFrozen ? '❄️ FINAL / ACCEPTED' : '💬 ADMIN COUNTER'}
+                                </span>
+                                <strong style={{ color: '#ffffff', fontSize: '1rem' }}>₹{sub.counter_offer_rate || sub.counter_rate}/MT</strong>
+                              </div>
+                              {!isFrozen && !existingAllocation && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setActiveCounterSub(sub);
+                                    setCounterForm({ counter_rate: sub.counter_offer_rate || sub.counter_rate || '', note: '' });
+                                  }}
+                                  className="btn btn-secondary"
+                                  style={{ padding: '2px 8px', fontSize: '0.72rem', border: '1px solid #f59e0b', color: '#fbbf24', borderRadius: '4px', cursor: 'pointer' }}
+                                >
+                                  ✏ Edit
+                                </button>
+                              )}
+                            </div>
+                          );
+                        }
+
+                        if (existingAllocation) {
+                          return <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>None Sent</span>;
+                        }
+
+                        return (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setActiveCounterSub(sub);
+                              setCounterForm({ counter_rate: Math.round((sub.rate_per_unit || sub.rate_per_mt) * 0.92), note: '' });
+                            }}
+                            className="btn btn-primary"
+                            style={{
+                              padding: '6px 14px',
+                              fontSize: '0.8rem',
+                              fontWeight: '900',
+                              borderRadius: '6px',
+                              border: '1.5px solid #38bdf8',
+                              color: '#ffffff',
+                              background: 'linear-gradient(135deg, #0284c7 0%, #2563eb 100%)',
+                              boxShadow: '0 2px 6px rgba(2, 132, 199, 0.35)',
+                              cursor: 'pointer',
+                              whiteSpace: 'nowrap',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '6px'
+                            }}
+                            title="Send target counter rate to transporter"
+                          >
+                            <MessageSquare size={14} /> Counter Rate
+                          </button>
+                        );
+                      })()}
                     </td>
 
                     <td>

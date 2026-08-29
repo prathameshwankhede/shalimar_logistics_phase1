@@ -540,25 +540,28 @@ export const TransporterPortal = () => {
   const renderTransporterNegotiationCell = (myExistingBid, req) => {
     if (!myExistingBid) return null;
 
-    const bidStatus = (myExistingBid.bid_status || myExistingBid.status || '').toLowerCase();
     const bidStatusUpper = String(myExistingBid.bid_status || myExistingBid.status || '').toUpperCase();
     const counterOfferStatus = String(myExistingBid.counter_offer_status || '').toUpperCase();
+    const counterOfferBy = String(myExistingBid.counter_offer_by || '').toUpperCase();
 
-    const origRate = myExistingBid.original_rate || myExistingBid.original_rate_per_mt || myExistingBid.rate_per_mt || myExistingBid.rate_per_unit;
-    const currentRate = myExistingBid.final_rate || myExistingBid.final_rate_per_mt || myExistingBid.rate_per_mt || myExistingBid.rate_per_unit || myExistingBid.original_rate_per_mt || myExistingBid.original_rate;
-    const adminCounter = myExistingBid.counter_offer_rate || myExistingBid.counter_rate;
+    const origRate = myExistingBid.original_rate || myExistingBid.rate_per_mt || myExistingBid.rate_per_unit || 0;
+    const currentRate = myExistingBid.final_rate || myExistingBid.rate_per_mt || myExistingBid.rate_per_unit || origRate;
+    const adminCounter = myExistingBid.counter_offer_rate;
 
-    const isFinalized = bidStatus === 'counter_accepted' || bidStatus === 'finalized' || bidStatusUpper === 'FINALIZED' || bidStatusUpper === 'AWARDED' || myExistingBid.status === 'Rate Frozen' || req.status === 'Awarded';
+    const isFinalized = isBidFrozen(myExistingBid) || counterOfferStatus === 'ACCEPTED' || bidStatusUpper === 'COUNTER_ACCEPTED' || bidStatusUpper === 'FINALIZED' || Number(myExistingBid.final_rate) > 0;
     
-    const isCounteredByAdmin = (
-      (counterOfferStatus === 'PENDING' && Number(adminCounter) > 0) ||
-      bidStatus === 'countered_by_admin' ||
-      bidStatusUpper === 'COUNTER_OFFERED' ||
-      bidStatusUpper === 'COUNTERED_BY_ADMIN' ||
-      (Number(adminCounter) > 0 && !myExistingBid.final_rate && !isFinalized && counterOfferStatus !== 'REJECTED')
+    const isCounteredByAdmin = !isFinalized && (
+      (counterOfferBy === 'ADMIN' && counterOfferStatus === 'PENDING') ||
+      (bidStatusUpper === 'COUNTER_OFFERED' && counterOfferBy !== 'TRANSPORTER') ||
+      (!counterOfferBy && Number(adminCounter) > 0 && counterOfferStatus !== 'REJECTED')
     );
 
-    const isCounteredByTransporter = bidStatus === 'countered_by_transporter' || bidStatusUpper === 'COUNTER_RESPONDED' || counterOfferStatus === 'TRANSPORTER_COUNTERED';
+    const isCounteredByTransporter = !isFinalized && (
+      (counterOfferBy === 'TRANSPORTER' && (counterOfferStatus === 'PENDING' || bidStatusUpper === 'COUNTER_RESPONDED')) ||
+      bidStatusUpper === 'COUNTER_RESPONDED'
+    );
+
+    const isRejected = !isFinalized && (counterOfferStatus === 'REJECTED' || bidStatusUpper === 'COUNTER_REJECTED');
 
     const isResponding = submittingItems[`resp_${myExistingBid.id}`];
     const showCounterInput = activeTransporterCounterSubId === myExistingBid.id;
@@ -613,15 +616,16 @@ export const TransporterPortal = () => {
       }
     };
 
+    // CASE C — TRANSPORTER COUNTER ACCEPTED / FINALIZED
     if (isFinalized) {
       return (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-          <div style={{ background: '#dcfce7', border: '1.5px solid #16a34a', padding: '6px 12px', borderRadius: '8px', color: '#064e3b', fontSize: '0.88rem', fontWeight: '900', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-            🏆 FINAL AGREED RATE: ₹{myExistingBid.final_rate || currentRate}/MT
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+          <div style={{ background: '#dcfce7', border: '1.5px solid #16a34a', padding: '8px 14px', borderRadius: '10px', color: '#064e3b', fontSize: '0.92rem', fontWeight: '900', display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+            ✓ COUNTER OFFER ACCEPTED — Final Agreed Rate: ₹{myExistingBid.final_rate || currentRate}/MT
           </div>
-          <div style={{ color: '#047857', fontSize: '0.78rem', fontWeight: '900', display: 'flex', alignItems: 'center', gap: '6px' }}>
-            ✓ Bid Finalized
-            <button type="button" onClick={() => setSelectedHistorySub(myExistingBid)} style={{ background: 'none', border: 'none', color: '#0284c7', cursor: 'pointer', fontSize: '0.75rem', fontWeight: '700', textDecoration: 'underline' }}>
+          <div style={{ color: '#047857', fontSize: '0.8rem', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span>Status: Finalized / Accepted</span>
+            <button type="button" onClick={() => setSelectedHistorySub(myExistingBid)} style={{ background: 'none', border: 'none', color: '#0284c7', cursor: 'pointer', fontSize: '0.78rem', fontWeight: '700', textDecoration: 'underline' }}>
               📜 History
             </button>
           </div>
@@ -629,14 +633,15 @@ export const TransporterPortal = () => {
       );
     }
 
+    // CASE A — ADMIN COUNTER OFFER
     if (isCounteredByAdmin) {
       return (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', background: '#fffbeb', border: '1.5px solid #f59e0b', padding: '10px 14px', borderRadius: '10px', minWidth: '240px' }}>
-          <div style={{ fontSize: '0.78rem', color: '#78350f', fontWeight: '700' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', background: '#fffbeb', border: '1.5px solid #f59e0b', padding: '12px 16px', borderRadius: '12px', minWidth: '260px' }}>
+          <div style={{ fontSize: '0.82rem', color: '#78350f', fontWeight: '700' }}>
             Your Original Bid: <strong style={{ color: '#92400e' }}>₹{origRate}/MT</strong>
           </div>
-          <div style={{ fontSize: '0.95rem', fontWeight: '900', color: '#b45309', display: 'flex', alignItems: 'center', gap: '6px' }}>
-            ⚠ ADMIN COUNTER OFFER: <span style={{ background: '#fef3c7', padding: '3px 10px', borderRadius: '6px', border: '1.5px solid #f59e0b', fontSize: '1.05rem', color: '#92400e' }}>₹{adminCounter}/MT</span>
+          <div style={{ fontSize: '0.98rem', fontWeight: '900', color: '#b45309', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            ⚠ ADMIN COUNTER OFFER: <span style={{ background: '#fef3c7', padding: '4px 12px', borderRadius: '6px', border: '1.5px solid #f59e0b', fontSize: '1.1rem', color: '#92400e' }}>₹{adminCounter}/MT</span>
           </div>
 
           {showCounterInput ? (
@@ -649,24 +654,24 @@ export const TransporterPortal = () => {
                 className="form-control"
                 value={transporterCounterRateInput}
                 onChange={(e) => setTransporterCounterRateInput(e.target.value)}
-                style={{ width: '100px', height: '34px', fontSize: '0.85rem', fontWeight: '800' }}
+                style={{ width: '110px', height: '36px', fontSize: '0.9rem', fontWeight: '800' }}
                 required
               />
-              <button type="submit" disabled={isResponding} className="btn btn-primary" style={{ padding: '5px 12px', fontSize: '0.78rem', height: '34px' }}>
+              <button type="submit" disabled={isResponding} className="btn btn-primary" style={{ padding: '6px 14px', fontSize: '0.82rem', height: '36px' }}>
                 {isResponding ? '⏳...' : 'Send Counter'}
               </button>
-              <button type="button" onClick={() => setActiveTransporterCounterSubId(null)} className="btn" style={{ padding: '5px 10px', fontSize: '0.78rem', height: '34px', background: '#cbd5e1' }}>
+              <button type="button" onClick={() => setActiveTransporterCounterSubId(null)} className="btn" style={{ padding: '6px 12px', fontSize: '0.82rem', height: '36px', background: '#cbd5e1' }}>
                 Cancel
               </button>
             </form>
           ) : (
-            <div style={{ display: 'flex', gap: '6px', marginTop: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
+            <div style={{ display: 'flex', gap: '8px', marginTop: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
               <button
                 type="button"
                 disabled={isResponding}
                 onClick={handleAcceptAdminCounter}
                 className="btn btn-success"
-                style={{ padding: '6px 14px', fontSize: '0.8rem', fontWeight: '900', borderRadius: '8px', background: '#16a34a', color: '#ffffff', border: 'none', cursor: isResponding ? 'not-allowed' : 'pointer' }}
+                style={{ padding: '7px 16px', fontSize: '0.84rem', fontWeight: '900', borderRadius: '8px', background: '#16a34a', color: '#ffffff', border: 'none', cursor: isResponding ? 'not-allowed' : 'pointer' }}
               >
                 {isResponding ? '⏳...' : `✓ Accept Counter Offer (₹${adminCounter})`}
               </button>
@@ -675,7 +680,7 @@ export const TransporterPortal = () => {
                 disabled={isResponding}
                 onClick={handleRejectAdminCounter}
                 className="btn btn-danger"
-                style={{ padding: '6px 12px', fontSize: '0.8rem', fontWeight: '800', borderRadius: '8px', background: '#ef4444', color: '#ffffff', border: 'none', cursor: isResponding ? 'not-allowed' : 'pointer' }}
+                style={{ padding: '7px 14px', fontSize: '0.82rem', fontWeight: '800', borderRadius: '8px', background: '#ef4444', color: '#ffffff', border: 'none', cursor: isResponding ? 'not-allowed' : 'pointer' }}
               >
                 ✕ Reject Counter Offer
               </button>
@@ -686,11 +691,11 @@ export const TransporterPortal = () => {
                   setTransporterCounterRateInput(String(Math.round((Number(origRate || 0) + Number(adminCounter || 0)) / 2)));
                 }}
                 className="btn btn-primary"
-                style={{ padding: '6px 12px', fontSize: '0.78rem', fontWeight: '800', borderRadius: '8px', background: '#0284c7' }}
+                style={{ padding: '7px 14px', fontSize: '0.82rem', fontWeight: '800', borderRadius: '8px', background: '#0284c7', color: '#ffffff', border: 'none' }}
               >
-                ✏ Counter Offer
+                ↔ Counter Offer
               </button>
-              <button type="button" onClick={() => setSelectedHistorySub(myExistingBid)} style={{ background: 'none', border: 'none', color: '#0284c7', cursor: 'pointer', fontSize: '0.75rem', fontWeight: '700', textDecoration: 'underline' }}>
+              <button type="button" onClick={() => setSelectedHistorySub(myExistingBid)} style={{ background: 'none', border: 'none', color: '#0284c7', cursor: 'pointer', fontSize: '0.8rem', fontWeight: '700', textDecoration: 'underline' }}>
                 📜 History
               </button>
             </div>
@@ -699,18 +704,49 @@ export const TransporterPortal = () => {
       );
     }
 
+    // CASE B — TRANSPORTER HAS SENT COUNTER (Waiting for Admin Response)
     if (isCounteredByTransporter) {
       return (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', background: '#f0f9ff', border: '1.5px solid #0284c7', padding: '8px 12px', borderRadius: '10px' }}>
-          <div style={{ fontSize: '0.76rem', color: '#0369a1' }}>
-            Your Original Bid: <strong>₹{origRate}</strong> | Admin Counter: <strong>₹{adminCounter || '-'}</strong>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', background: '#eff6ff', border: '1.5px solid #3b82f6', padding: '12px 16px', borderRadius: '12px', minWidth: '260px' }}>
+          <div style={{ fontSize: '0.82rem', color: '#1e40af', fontWeight: '700' }}>
+            Your Original Bid: <strong style={{ color: '#1e3a8a' }}>₹{origRate}/MT</strong>
           </div>
-          <div style={{ fontSize: '0.88rem', fontWeight: '900', color: '#0284c7' }}>
-            Your Revised Offer: ₹{currentRate}/MT
+          <div style={{ fontSize: '0.98rem', fontWeight: '900', color: '#1d4ed8', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            📤 YOUR COUNTER OFFER: <span style={{ background: '#dbeafe', padding: '4px 12px', borderRadius: '6px', border: '1.5px solid #3b82f6', fontSize: '1.1rem', color: '#1e40af' }}>₹{adminCounter || currentRate}/MT</span>
           </div>
-          <div style={{ fontSize: '0.76rem', color: '#64748b', fontWeight: '700', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <span>Status: Waiting for Admin Decision</span>
-            <button type="button" onClick={() => setSelectedHistorySub(myExistingBid)} style={{ background: 'none', border: 'none', color: '#0284c7', cursor: 'pointer', fontSize: '0.75rem', fontWeight: '700', textDecoration: 'underline' }}>
+          <div style={{ fontSize: '0.85rem', color: '#d97706', fontWeight: '800', display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '4px' }}>
+            <span>⏳ Waiting for Admin Response</span>
+            <button type="button" onClick={() => setSelectedHistorySub(myExistingBid)} style={{ background: 'none', border: 'none', color: '#0284c7', cursor: 'pointer', fontSize: '0.8rem', fontWeight: '700', textDecoration: 'underline' }}>
+              📜 Negotiation History
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    // CASE D — COUNTER REJECTED
+    if (isRejected) {
+      return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', background: '#fef2f2', border: '1.5px solid #ef4444', padding: '10px 14px', borderRadius: '10px', minWidth: '240px' }}>
+          <div style={{ fontSize: '0.9rem', fontWeight: '900', color: '#b91c1c' }}>
+            ✕ Counter Offer Rejected
+          </div>
+          <div style={{ fontSize: '0.8rem', color: '#7f1d1d' }}>
+            Your Original Quote: <strong>₹{origRate}/MT</strong>
+          </div>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '4px' }}>
+            <button
+              type="button"
+              onClick={() => {
+                setActiveTransporterCounterSubId(myExistingBid.id);
+                setTransporterCounterRateInput(String(origRate));
+              }}
+              className="btn btn-primary"
+              style={{ padding: '6px 12px', fontSize: '0.78rem', fontWeight: '800', borderRadius: '8px', background: '#0284c7' }}
+            >
+              ↔ Submit New Quote
+            </button>
+            <button type="button" onClick={() => setSelectedHistorySub(myExistingBid)} style={{ background: 'none', border: 'none', color: '#0284c7', cursor: 'pointer', fontSize: '0.78rem', fontWeight: '700', textDecoration: 'underline' }}>
               📜 History
             </button>
           </div>

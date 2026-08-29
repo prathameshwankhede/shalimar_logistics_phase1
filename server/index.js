@@ -1,4 +1,4 @@
-// Hostinger Passenger Process Reload Signal v1.8.2 - Remove is_frozen dependency & Canonical bid_status Lifecycle
+// Hostinger Passenger Process Reload Signal v1.8.3 - Transporter & Admin Counter Offer Author Flow Active
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
