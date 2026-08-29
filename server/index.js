@@ -1,4 +1,4 @@
-// Hostinger Passenger Process Reload Signal v1.2.1 - Hide Parent Requirements Table When Batch Folder Is Opened
+// Hostinger Passenger Process Reload Signal v1.2.2 - Hide Route & Locations on Parent Batch Directory Rows
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
