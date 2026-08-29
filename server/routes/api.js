@@ -159,9 +159,10 @@ function formatParentRequirementDto(parentRow, childItems = [], bidsCount = 0, i
 
   const totalQty = itemsFormatted.reduce((acc, curr) => acc + curr.quantity_mt, 0);
 
+  const isBatch = itemsFormatted.length > 0;
   const firstItem = itemsFormatted[0] || {};
-  const pickup = parentRow.pickup_origin || firstItem.pickup_origin || '';
-  const drop = parentRow.drop_location || firstItem.drop_location || '';
+  const pickup = parentRow.pickup_origin || (isBatch ? '' : (firstItem.pickup_origin || ''));
+  const drop = parentRow.drop_location || (isBatch ? '' : (firstItem.drop_location || ''));
   const reqNo = parentRow.req_no || parentRow.id || '';
   const targetDateStr = parentRow.target_date ? (parentRow.target_date instanceof Date ? parentRow.target_date.toISOString().split('T')[0] : String(parentRow.target_date).split('T')[0]) : new Date().toISOString().split('T')[0];
 
@@ -170,7 +171,7 @@ function formatParentRequirementDto(parentRow, childItems = [], bidsCount = 0, i
     req_no: reqNo,
     request_no: reqNo,
     batch_no: reqNo,
-    title: parentRow.title || `${pickup} ➔ ${drop}`,
+    title: parentRow.title || (isBatch ? `📦 Master Batch Folder (${itemsFormatted.length} Requirements)` : (pickup && drop ? `${pickup} ➔ ${drop}` : reqNo)),
     pickup_origin: pickup,
     origin_city: pickup,
     drop_location: drop,

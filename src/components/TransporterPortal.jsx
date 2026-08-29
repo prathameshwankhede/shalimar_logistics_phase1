@@ -1079,18 +1079,18 @@ export const TransporterPortal = () => {
                                   <div style={{ fontWeight: '900', color: 'var(--text-main)', fontSize: '0.98rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
                                     📦 Master Batch Folder ({group.items.length} Requirements)
                                   </div>
-                                  <div style={{ fontSize: '0.82rem', color: 'var(--text-sub)', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}>
-                                    <MapPin size={13} color="#0284c7" /> 📍 {firstItem.origin_city} ➔ 🎯 <strong style={{ color: '#d97706', fontWeight: '900', fontSize: '0.95rem', letterSpacing: '0.01em' }}>{firstItem.dest_city}</strong>
+                                  <div style={{ fontSize: '0.8rem', color: '#94a3b8', marginTop: '2px' }}>
+                                    Click anywhere on this batch row to open sub-indents
                                   </div>
                                 </td>
 
                                 <td>
                                   <div style={{ fontWeight: '800', color: '#0284c7', fontSize: '0.95rem' }}>{(totalBatchQty || 0).toLocaleString()} MT Total</div>
-                                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{group.items.length} x {firstItem.required_qty} MT ({firstItem.material_type})</div>
+                                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{group.items.length} Cargo Items</div>
                                 </td>
 
                                 <td>
-                                  <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>{firstItem.target_date}</div>
+                                  <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>-</div>
                                 </td>
 
                                 <td>
@@ -1179,7 +1179,7 @@ export const TransporterPortal = () => {
                                             </button>
 
                                            <span style={{ fontSize: '0.78rem', background: '#e0f2fe', color: '#0284c7', border: '1px solid #7dd3fc', padding: '4px 12px', borderRadius: '20px', fontWeight: '800' }}>
-                                             📍 {firstItem?.origin_city || 'Origin'} ➔ 🎯 <strong style={{ color: '#d97706', fontWeight: '900' }}>{firstItem?.dest_city || 'Destination'}</strong>
+                                             📦 Multi-Route Sub-Indents ({group.items.length} Items)
                                            </span>
                                            <span style={{ fontSize: '0.78rem', background: '#dcfce7', color: '#059669', border: '1px solid #6ee7b7', padding: '4px 12px', borderRadius: '20px', fontWeight: '800' }}>
                                              ⚖️ {(totalBatchQty || 0).toLocaleString()} MT Batch Total
