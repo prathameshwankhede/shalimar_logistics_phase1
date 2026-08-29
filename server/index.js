@@ -1,4 +1,4 @@
-// Hostinger Passenger Process Reload Signal v1.2.6 - Hide Location & FirstChild Fallbacks from Transporter Master Batch Row
+// Hostinger Passenger Process Reload Signal v1.2.7 - Remove Detailed Cards View Mode & Keep Only 1-Line Express Table
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
