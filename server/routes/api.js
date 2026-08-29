@@ -420,7 +420,7 @@ async function handleGetRequirements(req, res) {
     const [parentsResult, itemBidResult] = await Promise.all([
       pool.query('SELECT * FROM transport_requirements ORDER BY created_at DESC LIMIT 300'),
       pool.query(
-        "SELECT requirement_id, item_id, COUNT(DISTINCT transporter_id) as cnt, MIN(rate_per_mt) as min_rate FROM rate_submissions WHERE status IN ('Submitted', 'Active', 'Rate Frozen', 'Negotiating') GROUP BY requirement_id, item_id"
+        "SELECT requirement_id, item_id, COUNT(DISTINCT transporter_id) as cnt, MIN(rate_per_mt) as min_rate FROM rate_submissions WHERE UPPER(COALESCE(bid_status, '')) IN ('SUBMITTED', 'COUNTER_OFFERED', 'COUNTER_RESPONDED', 'COUNTER_ACCEPTED', 'FINALIZED') GROUP BY requirement_id, item_id"
       )
     ]);
 
@@ -1291,6 +1291,7 @@ async function handleFinalizeBid(req, res) {
     }
 
     const sub = rows[0];
+    const prevRate = parseFloat(sub.counter_offer_rate || sub.rate_per_mt || 0);
     const agreedRate = parseFloat(final_rate || sub.final_rate || sub.counter_offer_rate || sub.rate_per_mt);
     if (isNaN(agreedRate) || agreedRate <= 0) {
       return res.status(400).json({ success: false, error: 'final_rate must be a positive number.' });
