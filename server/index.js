@@ -1,4 +1,4 @@
-// Hostinger Passenger Process Reload Signal v1.6.6 - Normalized Freight Rate Validation
+// Hostinger Passenger Process Reload Signal v1.6.7 - MySQL-Backed Transporter Dashboard Summary Counters
 import express from 'express';
 import cors from 'cors';
 import path from 'path';

@@ -1230,10 +1230,77 @@ async function handleGetNegotiationHistory(req, res) {
   }
 }
 
+// GET /api/transporter/dashboard-summary — MySQL-Backed Transporter Counters
+async function handleGetTransporterDashboardSummary(req, res) {
+  try {
+    await ensureRateSubmissionsTableExists();
+
+    const authenticatedTransporterId = req.user.transporter_id || req.user.id;
+    let targetTransporterId = authenticatedTransporterId;
+
+    if (req.user.role === 'admin' && req.query.transporter_id) {
+      targetTransporterId = req.query.transporter_id;
+    }
+
+    // Resolve all transporter identifiers (id, code, username)
+    let transIds = [targetTransporterId];
+    try {
+      const [tRows] = await pool.query(
+        'SELECT id, code, username, company_name FROM transporters WHERE id = ? OR code = ? OR username = ? LIMIT 1',
+        [targetTransporterId, targetTransporterId, targetTransporterId]
+      );
+      if (tRows && tRows.length > 0) {
+        const t = tRows[0];
+        transIds = [t.id, t.code, t.username, targetTransporterId].filter(Boolean);
+      }
+    } catch (e) {}
+
+    // 1. Submitted Bids Count: all quotes submitted by this transporter
+    const [subCountRows] = await pool.query(
+      `SELECT COUNT(*) AS total_submitted_bids 
+       FROM rate_submissions 
+       WHERE transporter_id IN (?) 
+         AND (rate_per_mt IS NOT NULL OR rate_per_unit IS NOT NULL)`,
+      [transIds]
+    );
+
+    // 2. Awarded Contracts Count: all finalized / awarded bids for this transporter
+    const [contractCountRows] = await pool.query(
+      `SELECT COUNT(*) AS total_contracts 
+       FROM rate_submissions 
+       WHERE transporter_id IN (?) 
+         AND (
+           UPPER(bid_status) = 'FINALIZED' OR 
+           UPPER(bid_status) = 'AWARDED' OR 
+           UPPER(bid_status) = 'COUNTER_ACCEPTED' OR 
+           UPPER(status) = 'FINALIZED' OR 
+           UPPER(status) = 'AWARDED' OR 
+           UPPER(status) = 'RATE FROZEN' OR 
+           is_frozen = 1
+         )`,
+      [transIds]
+    );
+
+    const submittedBids = Number(subCountRows[0]?.total_submitted_bids || 0);
+    const contracts = Number(contractCountRows[0]?.total_contracts || 0);
+
+    return res.json({
+      success: true,
+      transporter_id: targetTransporterId,
+      submittedBids,
+      contracts
+    });
+  } catch (err) {
+    console.error('❌ GET /api/transporter/dashboard-summary Error:', err.message);
+    return res.status(500).json({ success: false, error: { code: 'DATABASE_ERROR', message: err.message } });
+  }
+}
+
 // -------------------------------------------------------------
 // Layered Controller Routes (Targeted Minimal DTO Endpoints)
 // -------------------------------------------------------------
 router.get('/dashboard', authenticateToken, handleGetDashboard);
+router.get('/transporter/dashboard-summary', authenticateToken, handleGetTransporterDashboardSummary);
 router.get('/requirements', authenticateToken, handleGetRequirements);
 router.get('/rate-requests', authenticateToken, handleGetRequirements);
 router.get('/requirements/:id/rates', authenticateToken, handleGetRequirementRates);

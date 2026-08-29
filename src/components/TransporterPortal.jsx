@@ -1,9 +1,9 @@
 // src/components/TransporterPortal.jsx
 // High-Speed 1-Line Express Freight Bidding UI with Corner Bids History Tab ⚡🚛
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { submitBid, submitTransporterResponse } from '../api/rateSubmissionApi';
+import { submitBid, submitTransporterResponse, fetchTransporterDashboardSummary } from '../api/rateSubmissionApi';
 import { NegotiationHistoryModal } from './NegotiationHistoryModal';
 import { ContractModal } from './ContractModal';
 import { ERPPaymentModal } from './ERPPaymentModal';
@@ -31,9 +31,34 @@ import {
 export const TransporterPortal = () => {
   const { currentUser, currentTransporter, db, updateDB, quickSwitchUser, addSecurityLog, refreshRequirements, refreshDB } = useAuth();
 
+  // 📊 MYSQL-BACKED DASHBOARD SUMMARY COUNTERS
+  const [dashboardSummary, setDashboardSummary] = useState({
+    submittedBids: 0,
+    contracts: 0
+  });
+
+  const refreshDashboardSummary = async () => {
+    try {
+      const res = await fetchTransporterDashboardSummary();
+      if (res && res.success) {
+        setDashboardSummary({
+          submittedBids: Number(res.submittedBids || 0),
+          contracts: Number(res.contracts || 0)
+        });
+      }
+    } catch (e) {
+      console.error('Failed to load dashboard summary:', e);
+    }
+  };
+
+  useEffect(() => {
+    refreshDashboardSummary();
+  }, [currentTransporter]);
+
   // 🛡️ SAFE DATA REFRESH HELPER: Guarantees no ReferenceError or unhandled rejection during refresh
   const safeRefreshRequirements = async () => {
     try {
+      refreshDashboardSummary();
       if (typeof refreshRequirements === 'function') {
         return await refreshRequirements();
       } else if (typeof refreshDB === 'function') {
@@ -1045,11 +1070,15 @@ export const TransporterPortal = () => {
 
             <div style={{ background: 'rgba(255,255,255,0.05)', padding: '10px 16px', borderRadius: '10px', textAlign: 'right' }}>
               <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>MY SUBMITTED BIDS</div>
-              <div style={{ fontSize: '1.2rem', fontWeight: '800', color: '#34d399' }}>{mySubmissions.length} Bids</div>
+              <div style={{ fontSize: '1.2rem', fontWeight: '800', color: '#34d399' }}>
+                {dashboardSummary.submittedBids !== undefined ? dashboardSummary.submittedBids : mySubmissions.length} Bids
+              </div>
             </div>
             <div style={{ background: 'rgba(255,255,255,0.05)', padding: '10px 16px', borderRadius: '10px', textAlign: 'right' }}>
               <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>MY CONTRACTS</div>
-              <div style={{ fontSize: '1.2rem', fontWeight: '800', color: '#38bdf8' }}>{myAllocations.length} Total</div>
+              <div style={{ fontSize: '1.2rem', fontWeight: '800', color: '#38bdf8' }}>
+                {dashboardSummary.contracts !== undefined ? dashboardSummary.contracts : myAllocations.length} Total
+              </div>
             </div>
           </div>
         </div>
