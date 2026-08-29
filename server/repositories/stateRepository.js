@@ -67,19 +67,30 @@ export async function countSubmissions(transporterId = null) {
   }
 }
 
-export async function fetchPaginatedRequests(limit, offset) {
+export async function fetchPaginatedRequests(limit = 100, offset = 0) {
   try {
     const [rows] = await pool.query(
-      `SELECT id, request_no, title, batch_no, sub_no, origin_city, origin_pin, dest_city, dest_pin, company_unit, material_type, hsn_code, required_qty, unit, target_date, status, notes, created_at, updated_at
-       FROM rate_requests
+      `SELECT 
+        id, 
+        req_no AS request_no, 
+        title, 
+        pickup_origin AS origin_city, 
+        drop_location AS dest_city, 
+        product_name AS material_type, 
+        quantity_mt AS required_qty, 
+        unit, 
+        target_date, 
+        status, 
+        created_at, 
+        updated_at
+       FROM transport_requirements
        ORDER BY created_at DESC
        LIMIT ? OFFSET ?`,
-      [limit, offset]
+      [Number(limit) || 100, Number(offset) || 0]
     );
     return rows;
   } catch (err) {
-    const seedReqs = (INITIAL_SEED_DATA.rate_requests || []).slice(offset, offset + limit);
-    return handleDbError(err, seedReqs);
+    return [];
   }
 }
 

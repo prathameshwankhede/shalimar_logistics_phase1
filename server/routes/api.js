@@ -489,7 +489,7 @@ async function handleGetRequirementRates(req, res) {
       });
     }
 
-    let ratesQuery = 'SELECT id, requirement_id, item_id, transporter_id, rate_per_mt, original_rate, counter_rate, final_rate, bid_status, countered_by, counter_message, counter_updated_at, finalized_at, quoted_quantity_mt, total_amount, remarks, status, submitted_at, updated_at FROM rate_submissions WHERE requirement_id = ?';
+    let ratesQuery = 'SELECT id, requirement_id, item_id, transporter_id, rate_per_mt, original_rate, counter_offer_rate, final_rate, bid_status, counter_offer_status, counter_offer_by, counter_message, counter_offer_at, finalized_at, quoted_quantity_mt, total_amount, remarks, submitted_at, updated_at FROM rate_submissions WHERE requirement_id = ?';
     let queryParams = [actualReqId];
 
     if (itemId) {
@@ -537,16 +537,20 @@ async function handleGetRequirementRates(req, res) {
         quoted_quantity_mt: qtyVal,
         total_amount: calcTotal,
         remarks: r.remarks || '',
-        status: r.status || 'Submitted',
-        submitted_at: r.submitted_at,
+        status: r.bid_status || 'Submitted',
+        bid_status: r.bid_status || 'Submitted',
+        negotiation_status: r.bid_status || 'Submitted',
         original_rate: r.original_rate ? parseFloat(r.original_rate) : rateVal,
-        counter_rate: r.counter_rate ? parseFloat(r.counter_rate) : null,
-        final_rate: r.final_rate ? parseFloat(r.final_rate) : null,
-        bid_status: r.bid_status || 'submitted',
-        countered_by: r.countered_by || null,
+        counter_rate: r.counter_offer_rate ? parseFloat(r.counter_offer_rate) : null,
+        counter_offer_rate: r.counter_offer_rate ? parseFloat(r.counter_offer_rate) : null,
+        counter_offer_status: r.counter_offer_status || null,
+        counter_offer_by: r.counter_offer_by || null,
+        counter_offer_at: r.counter_offer_at || null,
         counter_message: r.counter_message || null,
-        counter_updated_at: r.counter_updated_at || null,
-        finalized_at: r.finalized_at || null
+        final_rate: r.final_rate ? parseFloat(r.final_rate) : null,
+        finalized_at: r.finalized_at || null,
+        is_frozen: Boolean(r.final_rate || r.bid_status === 'FINALIZED' || r.bid_status === 'COUNTER_ACCEPTED'),
+        submitted_at: r.submitted_at
       };
     });
 
