@@ -1434,15 +1434,123 @@ router.get('/transporters', authenticateToken, handleGetTransporters);
 router.get('/master-data', authenticateToken, handleGetMasterData);
 router.get('/diag/schema', async (req, res) => {
   try {
-    const [rateSubCols] = await pool.query('DESCRIBE rate_submissions');
-    const [reqCols] = await pool.query('DESCRIBE transport_requirements');
-    const [itemCols] = await pool.query('DESCRIBE transport_requirement_items');
+    // 1. All tables
+    const [tablesRows] = await pool.query('SHOW TABLES');
+    const dbName = pool.pool.config.connectionConfig.database;
+    const tableNames = tablesRows.map(r => Object.values(r)[0]);
+
+    const tableDetails = {};
+    const tableIndexes = {};
+    const tableCreateSql = {};
+
+    for (const tName of tableNames) {
+      try {
+        const [cols] = await pool.query(`DESCRIBE \`${tName}\``);
+        tableDetails[tName] = cols;
+      } catch (e) {
+        tableDetails[tName] = { error: e.message };
+      }
+
+      try {
+        const [idx] = await pool.query(`SHOW INDEX FROM \`${tName}\``);
+        tableIndexes[tName] = idx;
+      } catch (e) {
+        tableIndexes[tName] = { error: e.message };
+      }
+
+      try {
+        const [createRows] = await pool.query(`SHOW CREATE TABLE \`${tName}\``);
+        tableCreateSql[tName] = createRows[0] ? Object.values(createRows[0])[1] : null;
+      } catch (e) {
+        tableCreateSql[tName] = { error: e.message };
+      }
+    }
+
+    // 2. Foreign keys via information_schema
+    const [fkRows] = await pool.query(`
+      SELECT 
+        TABLE_NAME, COLUMN_NAME, CONSTRAINT_NAME, REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME
+      FROM information_schema.KEY_COLUMN_USAGE
+      WHERE TABLE_SCHEMA = DATABASE() AND REFERENCED_TABLE_NAME IS NOT NULL
+    `);
+
+    // 3. Read-only Data Consistency Checks
+    const [duplicateBids] = await pool.query(`
+      SELECT requirement_id, item_id, transporter_id, COUNT(*) AS count
+      FROM rate_submissions
+      GROUP BY requirement_id, COALESCE(item_id, 'MAIN'), transporter_id
+      HAVING count > 1
+    `).catch(e => [[{ error: e.message }]]);
+
+    const [orphanSubsReq] = await pool.query(`
+      SELECT COUNT(*) AS count
+      FROM rate_submissions s
+      LEFT JOIN transport_requirements r ON r.id = s.requirement_id
+      WHERE r.id IS NULL
+    `).catch(e => [[{ error: e.message }]]);
+
+    const [orphanSubsItem] = await pool.query(`
+      SELECT COUNT(*) AS count
+      FROM rate_submissions s
+      LEFT JOIN transport_requirement_items i ON i.id = s.item_id
+      WHERE s.item_id IS NOT NULL AND s.item_id != 'MAIN' AND i.id IS NULL
+    `).catch(e => [[{ error: e.message }]]);
+
+    const [orphanSubsTrans] = await pool.query(`
+      SELECT COUNT(*) AS count
+      FROM rate_submissions s
+      LEFT JOIN transporters t ON (t.id = s.transporter_id OR t.code = s.transporter_id OR t.username = s.transporter_id)
+      WHERE t.id IS NULL
+    `).catch(e => [[{ error: e.message }]]);
+
+    const [statusDistribution] = await pool.query(`
+      SELECT bid_status, negotiation_status, status, counter_offer_status, COUNT(*) as count
+      FROM rate_submissions
+      GROUP BY bid_status, negotiation_status, status, counter_offer_status
+    `).catch(e => [[{ error: e.message }]]);
+
+    const [finalizedWithoutRate] = await pool.query(`
+      SELECT COUNT(*) AS count
+      FROM rate_submissions
+      WHERE (UPPER(bid_status) IN ('FINALIZED', 'COUNTER_ACCEPTED') OR UPPER(status) IN ('FINALIZED', 'ACCEPTED'))
+        AND (final_rate IS NULL OR final_rate <= 0)
+    `).catch(e => [[{ error: e.message }]]);
+
+    const [counterWithoutRate] = await pool.query(`
+      SELECT COUNT(*) AS count
+      FROM rate_submissions
+      WHERE (UPPER(bid_status) = 'COUNTER_OFFERED' OR UPPER(counter_offer_status) = 'PENDING')
+        AND (counter_offer_rate IS NULL AND counter_rate IS NULL)
+    `).catch(e => [[{ error: e.message }]]);
+
+    // 4. Row counts for all tables
+    const tableCounts = {};
+    for (const tName of tableNames) {
+      try {
+        const [cRows] = await pool.query(`SELECT COUNT(*) AS count FROM \`${tName}\``);
+        tableCounts[tName] = cRows[0].count;
+      } catch (e) {
+        tableCounts[tName] = 0;
+      }
+    }
+
     res.json({
       success: true,
-      tables: {
-        rate_submissions: rateSubCols.map(c => ({ Field: c.Field, Type: c.Type, Null: c.Null, Key: c.Key, Default: c.Default })),
-        transport_requirements: reqCols.map(c => ({ Field: c.Field, Type: c.Type })),
-        transport_requirement_items: itemCols.map(c => ({ Field: c.Field, Type: c.Type }))
+      database: dbName,
+      tables: tableNames,
+      tableCounts,
+      tableDetails,
+      tableIndexes,
+      tableCreateSql,
+      foreignKeys: fkRows,
+      consistency: {
+        duplicateBids,
+        orphanSubsReq: orphanSubsReq[0]?.count || 0,
+        orphanSubsItem: orphanSubsItem[0]?.count || 0,
+        orphanSubsTrans: orphanSubsTrans[0]?.count || 0,
+        statusDistribution,
+        finalizedWithoutRate: finalizedWithoutRate[0]?.count || 0,
+        counterWithoutRate: counterWithoutRate[0]?.count || 0
       }
     });
   } catch (err) {
