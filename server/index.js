@@ -1,4 +1,4 @@
-// Hostinger Passenger Process Reload Signal v1.5.0 - Counter Offer Exclusively Inside Batch Sub-indents
+// Hostinger Passenger Process Reload Signal v1.5.1 - Simplified Finalize Rate Action Column
 import express from 'express';
 import cors from 'cors';
 import path from 'path';

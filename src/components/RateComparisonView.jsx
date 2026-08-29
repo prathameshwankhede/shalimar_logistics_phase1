@@ -124,16 +124,34 @@ export const RateComparisonView = ({ rateRequest, onBack }) => {
     }
   };
 
+  const [finalizingId, setFinalizingId] = useState(null);
+
   // Admin Finalizes Agreed Rate 🏆
   const handleAdminFinalizeBid = async (sub) => {
+    if (!sub || !sub.id) return;
+    const agreedRate = sub.counter_rate || sub.counter_rate_per_unit || sub.rate_per_unit || sub.rate_per_mt;
+    const transporterName = sub.transporter_name || sub.company_name || 'this transporter';
+
+    if (!window.confirm(`Confirm Finalize Rate:\n\nTransporter: ${transporterName}\nAgreed Rate: ₹${agreedRate}/MT\n\nDo you want to finalize this rate now?`)) {
+      return;
+    }
+
     try {
-      const agreedRate = sub.counter_rate || sub.rate_per_unit || sub.rate_per_mt;
+      setFinalizingId(sub.id);
       await finalizeBid(sub.id, { final_rate: agreedRate });
-      setNotice(`🏆 Bid finalized at ₹${agreedRate}/MT!`);
+      setNotice(`🏆 Bid finalized successfully at ₹${agreedRate}/MT for ${transporterName}!`);
       setTimeout(() => setNotice(''), 5000);
-      await refreshRequirements();
+      if (typeof refreshRequirements === 'function') {
+        await refreshRequirements();
+      }
+      if (typeof updateDB === 'function') {
+        await updateDB();
+      }
     } catch (err) {
+      console.error('Finalize bid error:', err);
       alert(err.message || 'Failed to finalize bid.');
+    } finally {
+      setFinalizingId(null);
     }
   };
 
@@ -392,7 +410,7 @@ export const RateComparisonView = ({ rateRequest, onBack }) => {
                 <th>Total Value ({rateRequest?.required_qty} MT)</th>
                 <th>Status & L1 Flag</th>
                 <th>Remarks / Negotiation Note</th>
-                <th style={{ textAlign: 'right' }}>Actions</th>
+                <th style={{ textAlign: 'center' }}>Action</th>
               </tr>
             </thead>
             <tbody>
@@ -524,49 +542,52 @@ export const RateComparisonView = ({ rateRequest, onBack }) => {
                       </div>
                     </td>
 
-                    <td style={{ textAlign: 'right' }}>
-                      {isSelected ? (
-                        <span className="badge badge-awarded" style={{ padding: '6px 12px' }}>
-                          ✓ Selected
+                    <td className="actions-cell" style={{ textAlign: 'center', verticalAlign: 'middle' }}>
+                      {sub.bid_status === 'finalized' || sub.is_frozen || isFrozen ? (
+                        <span
+                          className="badge badge-success"
+                          style={{
+                            background: '#dcfce7',
+                            color: '#166534',
+                            border: '1px solid #86efac',
+                            padding: '6px 14px',
+                            borderRadius: '20px',
+                            fontWeight: '900',
+                            fontSize: '0.82rem',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px'
+                          }}
+                        >
+                          ✓ Rate Finalized
                         </span>
-                      ) : existingAllocation ? (
-                        <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Contract Closed</span>
                       ) : (
-                        <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
-                          {/* Finalize Bid Button */}
-                          {sub.bid_status !== 'finalized' && (
-                            <button
-                              type="button"
-                              onClick={() => handleAdminFinalizeBid(sub)}
-                              className="btn btn-primary"
-                              style={{ padding: '6px 10px', fontSize: '0.78rem', background: '#059669', border: 'none' }}
-                              title="Finalize agreed rate for contract award"
-                            >
-                              <Award size={14} /> Finalize Rate
-                            </button>
-                          )}
-
-                          {/* View Negotiation History */}
-                          <button
-                            type="button"
-                            onClick={() => setSelectedHistorySub(sub)}
-                            className="btn btn-secondary"
-                            style={{ padding: '6px 10px', fontSize: '0.78rem', background: '#1e293b', border: '1px solid #334155', color: '#38bdf8' }}
-                            title="View negotiation timeline history"
-                          >
-                            📜 History
-                          </button>
-
-                          {/* Award Contract Button */}
-                          <button
-                            type="button"
-                            onClick={() => handleAwardContract(sub)}
-                            className={isFrozen ? 'btn btn-success' : isL1 ? 'btn btn-success' : 'btn btn-primary'}
-                            style={{ padding: '6px 12px', fontSize: '0.78rem' }}
-                          >
-                            <Award size={14} /> Award Contract
-                          </button>
-                        </div>
+                        <button
+                          type="button"
+                          className="finalize-rate-btn btn btn-primary"
+                          onClick={() => handleAdminFinalizeBid(sub)}
+                          disabled={finalizingId === sub.id}
+                          style={{
+                            padding: '8px 18px',
+                            fontSize: '0.82rem',
+                            fontWeight: '900',
+                            background: 'linear-gradient(135deg, #059669 0%, #10b981 100%)',
+                            border: '1px solid #34d399',
+                            boxShadow: '0 2px 8px rgba(16, 185, 129, 0.35)',
+                            color: '#ffffff',
+                            borderRadius: '8px',
+                            cursor: 'pointer',
+                            whiteSpace: 'nowrap',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            margin: '0 auto'
+                          }}
+                          title="Finalize agreed rate with transporter"
+                        >
+                          <Award size={15} />
+                          <span>{finalizingId === sub.id ? 'Finalizing...' : 'Finalize Rate'}</span>
+                        </button>
                       )}
                     </td>
                   </tr>
