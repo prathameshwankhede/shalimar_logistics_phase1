@@ -229,18 +229,16 @@ export const TransporterPortal = () => {
       ? ''
       : String(value).trim().toLowerCase();
 
-  // 🏆 Central Bid Rate Resolver (Extracts valid positive numeric rate from any bid record)
+  // 🏆 Central Bid Rate Resolver (Extracts valid positive numeric rate from canonical bid fields)
   const getBidRate = (bid) => {
     if (!bid) return null;
 
     const value =
       bid.final_rate ??
-      bid.final_rate_per_mt ??
       bid.rate_per_mt ??
-      bid.rate_per_unit ??
-      bid.original_rate_per_mt ??
       bid.original_rate ??
-      bid.counter_rate;
+      bid.counter_offer_rate ??
+      bid.rate_per_unit;
 
     const rate = Number(String(value ?? '').replace(/[₹,\s]/g, ''));
 
@@ -843,11 +841,10 @@ export const TransporterPortal = () => {
         rate_per_unit: rateVal,
         rate_per_mt: rateVal,
         original_rate: rateVal,
-        original_rate_per_mt: rateVal,
         quoted_quantity_mt: qtyVal,
         total_amount: totalCalcAmount,
-        status: 'Submitted',
         bid_status: 'Submitted',
+        status: 'Submitted',
         negotiation_status: 'Submitted',
         submitted_at: new Date().toISOString()
       };

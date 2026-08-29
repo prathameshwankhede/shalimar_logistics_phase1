@@ -223,27 +223,42 @@ export async function ensureRateSubmissionsTableExists() {
       "quoted_quantity_mt DECIMAL(12,3) DEFAULT NULL",
       "total_amount DECIMAL(14,2) DEFAULT NULL",
       "remarks TEXT DEFAULT NULL",
-      "status VARCHAR(50) DEFAULT 'Submitted'",
       "submitted_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP",
       "original_rate DECIMAL(12,2) DEFAULT NULL",
-      "counter_rate DECIMAL(12,2) DEFAULT NULL",
       "counter_offer_rate DECIMAL(12,2) DEFAULT NULL",
       "counter_offer_status VARCHAR(50) DEFAULT NULL",
       "counter_offer_at DATETIME DEFAULT NULL",
       "counter_offer_by VARCHAR(50) DEFAULT NULL",
-      "final_rate DECIMAL(12,2) DEFAULT NULL",
-      "bid_status VARCHAR(50) DEFAULT 'Submitted'",
-      "negotiation_status VARCHAR(50) DEFAULT 'Submitted'",
-      "countered_by VARCHAR(50) DEFAULT NULL",
       "counter_message TEXT DEFAULT NULL",
-      "counter_updated_at DATETIME DEFAULT NULL",
-      "finalized_at DATETIME DEFAULT NULL"
+      "final_rate DECIMAL(12,2) DEFAULT NULL",
+      "finalized_at DATETIME DEFAULT NULL",
+      "bid_status VARCHAR(50) DEFAULT 'Submitted'"
     ];
     for (const colDef of cols) {
       await pool.query(`ALTER TABLE rate_submissions ADD COLUMN ${colDef}`).catch(() => {});
     }
 
+    // Backfill canonical fields from any existing legacy columns before dropping
+    await pool.query(`
+      UPDATE rate_submissions
+      SET 
+        counter_offer_rate = COALESCE(counter_offer_rate, counter_rate),
+        counter_offer_by = COALESCE(counter_offer_by, countered_by),
+        counter_offer_at = COALESCE(counter_offer_at, counter_updated_at),
+        original_rate = COALESCE(original_rate, original_rate_per_mt, rate_per_mt),
+        final_rate = COALESCE(final_rate, final_rate_per_mt),
+        bid_status = CASE 
+          WHEN UPPER(COALESCE(bid_status, '')) IN ('FINALIZED', 'AWARDED') OR UPPER(COALESCE(status, '')) IN ('FINALIZED', 'RATE FROZEN', 'AWARDED') THEN 'FINALIZED'
+          WHEN UPPER(COALESCE(bid_status, '')) = 'COUNTER_ACCEPTED' THEN 'COUNTER_ACCEPTED'
+          WHEN UPPER(COALESCE(bid_status, '')) = 'COUNTER_REJECTED' THEN 'COUNTER_REJECTED'
+          WHEN UPPER(COALESCE(bid_status, '')) IN ('COUNTER_OFFERED', 'COUNTERED_BY_ADMIN') OR UPPER(COALESCE(counter_offer_status, '')) = 'PENDING' THEN 'COUNTER_OFFERED'
+          WHEN UPPER(COALESCE(bid_status, '')) IN ('COUNTER_RESPONDED', 'COUNTERED_BY_TRANSPORTER') THEN 'COUNTER_RESPONDED'
+          ELSE 'Submitted'
+        END
+    `).catch(() => {});
+
     await pool.query('ALTER TABLE rate_submissions ADD INDEX idx_rate_item (item_id)').catch(() => {});
+    await pool.query('ALTER TABLE rate_submissions ADD INDEX idx_rate_counter_status (bid_status, counter_offer_status)').catch(() => {});
     await pool.query('ALTER TABLE rate_submissions CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci').catch(() => {});
     await pool.query('ALTER TABLE transporters CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci').catch(() => {});
     await pool.query('ALTER TABLE transport_requirements CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci').catch(() => {});
@@ -689,18 +704,18 @@ async function handleCreateRateSubmission(req, res) {
     await ensureRateNegotiationsTableExists();
 
     await pool.query(
-      `INSERT INTO rate_submissions (id, requirement_id, item_id, transporter_id, rate_per_mt, original_rate, quoted_quantity_mt, total_amount, remarks, status, bid_status, negotiation_status, submitted_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Submitted', 'Submitted', NOW())
+      `INSERT INTO rate_submissions (id, requirement_id, item_id, transporter_id, rate_per_mt, original_rate, quoted_quantity_mt, total_amount, remarks, bid_status, submitted_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Submitted', NOW(), NOW())
        ON DUPLICATE KEY UPDATE
        rate_per_mt = VALUES(rate_per_mt),
        original_rate = COALESCE(original_rate, VALUES(rate_per_mt)),
        quoted_quantity_mt = VALUES(quoted_quantity_mt),
        total_amount = VALUES(total_amount),
        remarks = VALUES(remarks),
-       status = VALUES(status),
+       bid_status = VALUES(bid_status),
        submitted_at = NOW(),
        updated_at = NOW()`,
-      [subId, actualReqId, actualItemId, actualTransId, rateVal, rateVal, qtyVal, totalAmount, rem, subStatus]
+      [subId, actualReqId, actualItemId, actualTransId, rateVal, rateVal, qtyVal, totalAmount, rem]
     );
 
     try {
@@ -750,18 +765,21 @@ async function handleCreateRateSubmission(req, res) {
         COALESCE(t.code, '') AS transporter_code,
         s.rate_per_mt,
         s.rate_per_mt AS rate_per_unit,
-        s.rate_per_mt AS final_rate,
-        s.rate_per_mt AS final_rate_per_mt,
         s.quoted_quantity_mt,
         s.total_amount,
         s.remarks,
         s.remarks AS comments,
-        s.status,
-        s.bid_status,
-        s.negotiation_status,
         s.original_rate,
-        s.original_rate AS original_rate_per_mt,
-        s.counter_rate,
+        s.counter_offer_rate,
+        s.counter_offer_status,
+        s.counter_offer_by,
+        s.counter_offer_at,
+        s.counter_message,
+        s.final_rate,
+        s.finalized_at,
+        s.bid_status,
+        s.bid_status AS status,
+        s.bid_status AS negotiation_status,
         s.submitted_at,
         s.updated_at,
         COALESCE(r.req_no, r.id, '') AS request_no,
@@ -852,25 +870,21 @@ async function handleAdminCounter(req, res) {
         return res.status(400).json({ success: false, error: 'Cannot send counter offer for a finalized or awarded bid.' });
       }
 
-      const prevRate = parseFloat(sub.counter_rate || sub.rate_per_mt || sub.original_rate || 0);
+      const prevRate = parseFloat(sub.counter_offer_rate || sub.rate_per_mt || sub.original_rate || 0);
       const origRate = sub.original_rate ? parseFloat(sub.original_rate) : parseFloat(sub.rate_per_mt);
 
       const [updateRes] = await conn.query(
         `UPDATE rate_submissions
          SET original_rate = COALESCE(original_rate, ?),
              counter_offer_rate = ?,
-             counter_rate = ?,
              counter_offer_status = 'PENDING',
              bid_status = 'COUNTER_OFFERED',
-             negotiation_status = 'COUNTER_OFFERED',
              counter_offer_by = 'ADMIN',
-             countered_by = 'ADMIN',
              counter_message = ?,
              counter_offer_at = NOW(),
-             counter_updated_at = NOW(),
              updated_at = NOW()
          WHERE id = ?`,
-        [origRate, counterRateVal, counterRateVal, remText, id]
+        [origRate, counterRateVal, remText, id]
       );
 
       console.log(`💬 [ADMIN COUNTER] Updated bid ID: ${id}, rate: ₹${counterRateVal}/MT, affectedRows: ${updateRes.affectedRows}`);
@@ -962,8 +976,7 @@ async function handleAdminCounterAll(req, res) {
       // Find all submitted quotes for this requirement & item
       let quotesQuery = `SELECT * FROM rate_submissions 
                          WHERE requirement_id = ? 
-                           AND UPPER(COALESCE(bid_status, '')) NOT IN ('FINALIZED', 'AWARDED')
-                           AND UPPER(COALESCE(status, '')) NOT IN ('RATE FROZEN', 'AWARDED')`;
+                           AND UPPER(COALESCE(bid_status, '')) NOT IN ('FINALIZED', 'AWARDED')`;
       let queryParams = [actualReqId];
 
       if (actualItemId && actualItemId !== 'MAIN') {
@@ -979,8 +992,7 @@ async function handleAdminCounterAll(req, res) {
         const [fallbackQuotes] = await conn.query(
           `SELECT * FROM rate_submissions 
            WHERE requirement_id = ? 
-             AND UPPER(COALESCE(bid_status, '')) NOT IN ('FINALIZED', 'AWARDED')
-             AND UPPER(COALESCE(status, '')) NOT IN ('RATE FROZEN', 'AWARDED')`,
+             AND UPPER(COALESCE(bid_status, '')) NOT IN ('FINALIZED', 'AWARDED')`,
           [actualReqId]
         );
         targetQuotes = fallbackQuotes;
@@ -996,25 +1008,21 @@ async function handleAdminCounterAll(req, res) {
       let updatedCount = 0;
 
       for (const sub of targetQuotes) {
-        const prevRate = parseFloat(sub.counter_rate || sub.rate_per_mt || 0);
-        const origRate = sub.original_rate ? parseFloat(sub.original_rate) : parseFloat(sub.rate_per_mt || sub.rate_per_unit || 0);
+        const prevRate = parseFloat(sub.counter_offer_rate || sub.rate_per_mt || 0);
+        const origRate = sub.original_rate ? parseFloat(sub.original_rate) : parseFloat(sub.rate_per_mt || 0);
 
         const [uRes] = await conn.query(
           `UPDATE rate_submissions
            SET original_rate = COALESCE(original_rate, ?),
                counter_offer_rate = ?,
-               counter_rate = ?,
                counter_offer_status = 'PENDING',
                bid_status = 'COUNTER_OFFERED',
-               negotiation_status = 'COUNTER_OFFERED',
                counter_offer_by = 'ADMIN',
-               countered_by = 'ADMIN',
                counter_message = ?,
                counter_offer_at = NOW(),
-               counter_updated_at = NOW(),
                updated_at = NOW()
            WHERE id = ?`,
-          [origRate, counterRateVal, counterRateVal, remText, sub.id]
+          [origRate, counterRateVal, remText, sub.id]
         );
 
         console.log(`💬 [ADMIN BULK COUNTER] Updated bid ID: ${sub.id}, rate: ₹${counterRateVal}/MT, affectedRows: ${uRes.affectedRows}`);
@@ -1093,17 +1101,17 @@ async function handleTransporterResponse(req, res) {
         }
       }
 
-      if (sub.bid_status === 'FINALIZED' || sub.bid_status === 'finalized' || sub.status === 'Rate Frozen' || sub.status === 'Awarded') {
+      if (sub.bid_status === 'FINALIZED' || sub.bid_status === 'finalized') {
         await conn.rollback();
         conn.release();
         return res.status(400).json({ success: false, error: 'This bid is finalized and cannot be modified.' });
       }
 
-      const prevRate = parseFloat(sub.counter_offer_rate || sub.counter_rate || sub.rate_per_mt || 0);
+      const prevRate = parseFloat(sub.counter_offer_rate || sub.rate_per_mt || 0);
       const actionUpper = String(action || '').toUpperCase();
 
       if (actionUpper === 'ACCEPT') {
-        const agreedRate = sub.counter_offer_rate ? parseFloat(sub.counter_offer_rate) : (sub.counter_rate ? parseFloat(sub.counter_rate) : parseFloat(sub.rate_per_mt));
+        const agreedRate = sub.counter_offer_rate ? parseFloat(sub.counter_offer_rate) : parseFloat(sub.rate_per_mt);
         const qtyVal = parseFloat(sub.quoted_quantity_mt || 0);
         const calcTotal = qtyVal ? parseFloat((agreedRate * qtyVal).toFixed(2)) : null;
 
@@ -1113,7 +1121,6 @@ async function handleTransporterResponse(req, res) {
                rate_per_mt = ?,
                total_amount = ?,
                bid_status = 'COUNTER_ACCEPTED',
-               negotiation_status = 'COUNTER_ACCEPTED',
                counter_offer_status = 'ACCEPTED',
                finalized_at = NOW(),
                updated_at = NOW()
@@ -1152,8 +1159,6 @@ async function handleTransporterResponse(req, res) {
           `UPDATE rate_submissions
            SET counter_offer_status = 'REJECTED',
                bid_status = 'COUNTER_REJECTED',
-               negotiation_status = 'COUNTER_REJECTED',
-               counter_updated_at = NOW(),
                updated_at = NOW()
            WHERE id = ?`,
           [id]
@@ -1192,18 +1197,16 @@ async function handleTransporterResponse(req, res) {
         const [uRes] = await conn.query(
           `UPDATE rate_submissions
            SET counter_offer_rate = ?,
-               counter_rate = ?,
                rate_per_mt = ?,
                total_amount = ?,
                counter_offer_status = 'TRANSPORTER_COUNTERED',
                bid_status = 'COUNTER_RESPONDED',
-               negotiation_status = 'COUNTER_RESPONDED',
-               countered_by = 'TRANSPORTER',
+               counter_offer_by = 'TRANSPORTER',
                counter_message = ?,
-               counter_updated_at = NOW(),
+               counter_offer_at = NOW(),
                updated_at = NOW()
            WHERE id = ?`,
-          [newProposedRate, newProposedRate, newProposedRate, calcTotal, remText, id]
+          [newProposedRate, newProposedRate, calcTotal, remText, id]
         );
 
         console.log(`💬 [TRANSPORTER COUNTER] Bid ID ${id} proposed revised rate ₹${newProposedRate}/MT, affectedRows: ${uRes.affectedRows}`);
@@ -1265,27 +1268,24 @@ async function handleFinalizeBid(req, res) {
     }
 
     const sub = rows[0];
-    const agreedRate = parseFloat(final_rate || sub.final_rate || sub.counter_rate || sub.rate_per_mt);
+    const agreedRate = parseFloat(final_rate || sub.final_rate || sub.counter_offer_rate || sub.rate_per_mt);
     if (isNaN(agreedRate) || agreedRate <= 0) {
       return res.status(400).json({ success: false, error: 'final_rate must be a positive number.' });
     }
 
     const qtyVal = parseFloat(sub.quoted_quantity_mt || 0);
     const calcTotal = qtyVal ? parseFloat((agreedRate * qtyVal).toFixed(2)) : null;
-    const prevRate = parseFloat(sub.rate_per_mt || 0);
 
     await pool.query(
       `UPDATE rate_submissions
        SET final_rate = ?,
-           final_rate_per_mt = ?,
            rate_per_mt = ?,
            total_amount = ?,
            bid_status = 'FINALIZED',
-           negotiation_status = 'FINALIZED',
            finalized_at = NOW(),
            updated_at = NOW()
        WHERE id = ?`,
-      [agreedRate, agreedRate, agreedRate, calcTotal, id]
+      [agreedRate, agreedRate, calcTotal, id]
     );
 
     const negId = `neg_${Date.now()}_${Math.random().toString(36).substring(2,7)}`;

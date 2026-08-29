@@ -142,7 +142,7 @@ export const RateComparisonView = ({ rateRequest, onBack }) => {
   // Admin Finalizes Agreed Rate 🏆
   const handleAdminFinalizeBid = async (sub) => {
     if (!sub || !sub.id) return;
-    const agreedRate = sub.counter_rate || sub.counter_rate_per_unit || sub.rate_per_unit || sub.rate_per_mt;
+    const agreedRate = sub.final_rate || sub.counter_offer_rate || sub.counter_rate || sub.rate_per_mt || sub.rate_per_unit;
     const transporterName = sub.transporter_name || sub.company_name || 'this transporter';
 
     if (!window.confirm(`Confirm Finalize Rate:\n\nTransporter: ${transporterName}\nAgreed Rate: ₹${agreedRate}/MT\n\nDo you want to finalize this rate now?`)) {
