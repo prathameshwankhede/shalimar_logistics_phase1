@@ -163,12 +163,11 @@ export const AdminDashboard = () => {
     }
   };
 
-  const renderCounterOfferCell = (reqId, itemId, itemBids, openCompareModal) => {
-    const targetItemId = itemId || 'MAIN';
-    const key = `${reqId}_${targetItemId}`;
+  const renderCounterOfferCell = (reqId, itemId, itemBids, openCompareModal, reqCode) => {
+    const quoteCount = itemBids ? itemBids.length : 0;
 
-    if (!itemBids || itemBids.length === 0) {
-      return <span style={{ fontSize: '0.78rem', color: '#64748b' }}>No Bids Yet</span>;
+    if (quoteCount === 0) {
+      return <span className="no-bids" style={{ fontSize: '0.78rem', color: '#64748b' }}>No Bids Yet</span>;
     }
 
     const anyFinalized = itemBids.some(b => b.bid_status === 'finalized' || b.bid_status === 'FINALIZED' || b.status === 'Rate Frozen');
@@ -180,9 +179,9 @@ export const AdminDashboard = () => {
 
     if (anyFinalized) {
       return (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', alignItems: 'flex-start' }}>
+        <div className="counter-finalized" style={{ display: 'flex', flexDirection: 'column', gap: '2px', alignItems: 'flex-start' }}>
           <span className="badge badge-success" style={{ fontSize: '0.76rem', background: '#dcfce7', color: '#166534', border: '1px solid #86efac', padding: '4px 10px', borderRadius: '6px', fontWeight: '900' }}>
-            🏆 Final Rate: ₹{latestCounter || 'Agreed'}/MT
+            🏆 Final Rate ₹{latestCounter || 'Agreed'}/MT
           </span>
         </div>
       );
@@ -190,113 +189,78 @@ export const AdminDashboard = () => {
 
     if (allResponded) {
       return (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'flex-start' }}>
-          <span style={{ fontSize: '0.76rem', background: '#dcfce7', color: '#047857', border: '1px solid #86efac', padding: '3px 8px', borderRadius: '6px', fontWeight: '900', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-            ✓ All Responses Received
-          </span>
+        <div className="counter-responded" style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'flex-start' }}>
           <button
             type="button"
             onClick={openCompareModal}
             className="btn btn-primary"
-            style={{ padding: '3px 10px', fontSize: '0.74rem', background: '#0284c7', color: '#ffffff', borderRadius: '6px', fontWeight: '800' }}
+            style={{ padding: '4px 12px', fontSize: '0.78rem', background: '#0284c7', color: '#ffffff', borderRadius: '6px', fontWeight: '800', border: 'none', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
           >
-            Compare Responses
+            ✓ All Responses Received
           </button>
+          {latestCounter && <span style={{ fontSize: '0.74rem', color: '#38bdf8', fontWeight: '800' }}>₹{latestCounter}/MT</span>}
         </div>
       );
     }
 
     if (someResponded) {
       return (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'flex-start' }}>
-          <div style={{ fontSize: '0.78rem', color: '#38bdf8', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '4px' }}>
-            🔄 {respondedCount}/{itemBids.length} Responded
-            {latestCounter && <strong style={{ color: '#fbbf24' }}>₹{latestCounter}/MT</strong>}
-          </div>
+        <div className="counter-responded" style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'flex-start' }}>
           <button
             type="button"
             onClick={openCompareModal}
             className="btn btn-primary"
-            style={{ padding: '3px 10px', fontSize: '0.74rem', background: '#0284c7', color: '#ffffff', borderRadius: '6px', fontWeight: '800' }}
+            style={{ padding: '4px 12px', fontSize: '0.78rem', background: '#0284c7', color: '#ffffff', borderRadius: '6px', fontWeight: '800', border: 'none', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
           >
-            View Responses
+            🔄 Response Received ({respondedCount}/{quoteCount})
+          </button>
+          {latestCounter && <span style={{ fontSize: '0.74rem', color: '#38bdf8', fontWeight: '800' }}>₹{latestCounter}/MT</span>}
+        </div>
+      );
+    }
+
+    if (isCounterSent) {
+      return (
+        <div className="counter-pending" style={{ display: 'flex', flexDirection: 'column', gap: '2px', alignItems: 'flex-start' }}>
+          <span style={{ fontSize: '0.76rem', background: 'rgba(245, 158, 11, 0.2)', color: '#fbbf24', border: '1px solid #f59e0b', padding: '3px 8px', borderRadius: '6px', fontWeight: '800', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+            ⏳ Counter Pending
+          </span>
+          <strong style={{ fontSize: '0.8rem', color: '#fbbf24' }}>₹{latestCounter}/MT</strong>
+          <button
+            type="button"
+            onClick={openCompareModal}
+            style={{ background: 'none', border: 'none', color: '#38bdf8', fontSize: '0.72rem', cursor: 'pointer', textDecoration: 'underline', padding: 0, marginTop: '2px' }}
+          >
+            Manage Counters ({quoteCount})
           </button>
         </div>
       );
     }
 
-    if (isCounterSent && !editingCounterKeys[key]) {
-      return (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'flex-start' }}>
-          <div style={{ fontSize: '0.78rem', color: '#fbbf24', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '4px' }}>
-            💬 Counter Sent: <strong>₹{latestCounter}/MT</strong> → {itemBids.length} Transporter(s)
-          </div>
-          <div style={{ display: 'flex', gap: '6px' }}>
-            <button
-              type="button"
-              onClick={() => {
-                setAdminCounterInputs(prev => ({ ...prev, [key]: latestCounter || '' }));
-                setEditingCounterKeys(prev => ({ ...prev, [key]: true }));
-              }}
-              className="btn btn-secondary"
-              style={{ padding: '3px 8px', fontSize: '0.72rem', border: '1px solid #f59e0b', color: '#fbbf24', borderRadius: '6px', fontWeight: '800' }}
-            >
-              ✏ Edit Counter
-            </button>
-            <button
-              type="button"
-              onClick={openCompareModal}
-              className="btn btn-secondary"
-              style={{ padding: '3px 8px', fontSize: '0.72rem', border: '1px solid #38bdf8', color: '#38bdf8', borderRadius: '6px', fontWeight: '800' }}
-            >
-              Compare ({itemBids.length})
-            </button>
-          </div>
-        </div>
-      );
-    }
-
+    // Default actionable button when quotes exist but no counter offer sent yet
     return (
-      <form onSubmit={(e) => handleSendBulkCounter(e, reqId, targetItemId, itemBids.length)} style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
-        <div style={{ position: 'relative' }}>
-          <span style={{ position: 'absolute', left: '8px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8', fontSize: '0.85rem' }}>₹</span>
-          <input
-            type="number"
-            inputMode="decimal"
-            min="1"
-            step="0.01"
-            placeholder="Rate"
-            value={adminCounterInputs[key] !== undefined ? adminCounterInputs[key] : (latestCounter || '')}
-            onChange={(e) => {
-              const val = e.target.value;
-              setAdminCounterInputs(prev => ({ ...prev, [key]: val }));
-            }}
-            disabled={isSendingCounter[key]}
-            style={{ paddingLeft: '22px', fontSize: '0.85rem', fontWeight: '800', height: '34px', width: '95px', background: '#0f172a', border: '1px solid #38bdf8', color: '#ffffff', borderRadius: '6px' }}
-            required
-          />
-        </div>
-        <button
-          type="submit"
-          disabled={isSendingCounter[key] || !adminCounterInputs[key] || Number(adminCounterInputs[key]) <= 0}
-          className="btn btn-primary"
-          style={{
-            padding: '4px 10px',
-            fontSize: '0.78rem',
-            height: '34px',
-            borderRadius: '6px',
-            fontWeight: '900',
-            whiteSpace: 'nowrap',
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '4px',
-            background: 'linear-gradient(135deg, #0284c7 0%, #2563eb 100%)',
-            border: '1px solid #38bdf8'
-          }}
-        >
-          {isSendingCounter[key] ? '⏳ Sending...' : `📤 Send to All (${itemBids.length})`}
-        </button>
-      </form>
+      <button
+        type="button"
+        className="counter-rate-btn btn"
+        onClick={openCompareModal}
+        aria-label={`Send counter rate for ${reqCode || reqId}`}
+        style={{
+          padding: '6px 14px',
+          fontSize: '0.78rem',
+          fontWeight: '800',
+          borderRadius: '6px',
+          border: '1px solid #38bdf8',
+          color: '#38bdf8',
+          background: 'rgba(56, 189, 248, 0.15)',
+          cursor: 'pointer',
+          whiteSpace: 'nowrap',
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: '4px'
+        }}
+      >
+        💬 Counter Rate
+      </button>
     );
   };
 
@@ -2494,6 +2458,19 @@ export const AdminDashboard = () => {
                                       )}
                                     </td>
 
+                                    {/* 💬 COUNTER OFFER */}
+                                    <td className="counter-offer-cell" style={{ padding: '14px 16px' }}>
+                                      {renderCounterOfferCell(openedReq.id || reqNoStr, item.id || subCode, bids, () => setSelectedRequestForComparison({
+                                        ...openedReq,
+                                        item_id: item.id,
+                                        sub_indent_id: item.id,
+                                        sub_indent_no: subCode,
+                                        selectedItem: item,
+                                        required_qty: Number(item.quantity_mt || item.required_qty || 0),
+                                        title: `${subCode} (${item.pickup_origin || pickupStr} ➔ ${item.drop_location || dropStr})`
+                                      }), subCode)}
+                                    </td>
+
                                     <td style={{ padding: '14px 16px' }}>
                                       {awardedTransporter ? (
                                         <div>
@@ -2715,6 +2692,11 @@ export const AdminDashboard = () => {
                                       </div>
                                     )}
                                   </div>
+                                </td>
+
+                                {/* 5.5. 💬 COUNTER OFFER */}
+                                <td className="counter-offer-cell">
+                                  {renderCounterOfferCell(req.id || reqNoStr, 'MAIN', bids, () => setSelectedRequestForComparison(req), reqNoStr)}
                                 </td>
 
                                 {/* 6. BIDDING & APPROVAL REPORT */}

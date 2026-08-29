@@ -1,4 +1,4 @@
-// Hostinger Passenger Process Reload Signal v1.4.5 - Direct Admin Counter Offer Input & Bulk Counter Engine
+// Hostinger Passenger Process Reload Signal v1.4.6 - Counter Rate Button in Counter Offer Column
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
