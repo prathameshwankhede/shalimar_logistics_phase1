@@ -257,8 +257,27 @@ export async function ensureRateSubmissionsTableExists() {
         END
     `).catch(() => {});
 
+    // Phase 6: Drop Deprecated Legacy Columns safely
+    const legacyColsToDrop = [
+      'original_rate_per_mt',
+      'final_rate_per_mt',
+      'counter_rate',
+      'countered_by',
+      'counter_updated_at',
+      'negotiation_status',
+      'status'
+    ];
+    for (const legacyCol of legacyColsToDrop) {
+      await pool.query(`ALTER TABLE rate_submissions DROP COLUMN \`${legacyCol}\``).catch(() => {});
+    }
+
+    // Phase 7: Ensure All Required Indexes Exist
+    await pool.query('ALTER TABLE rate_submissions ADD INDEX idx_rate_requirement (requirement_id)').catch(() => {});
+    await pool.query('ALTER TABLE rate_submissions ADD INDEX idx_rate_transporter (transporter_id)').catch(() => {});
     await pool.query('ALTER TABLE rate_submissions ADD INDEX idx_rate_item (item_id)').catch(() => {});
     await pool.query('ALTER TABLE rate_submissions ADD INDEX idx_rate_counter_status (bid_status, counter_offer_status)').catch(() => {});
+    await pool.query('ALTER TABLE rate_submissions ADD UNIQUE KEY uq_req_item_trans (requirement_id, item_id, transporter_id)').catch(() => {});
+
     await pool.query('ALTER TABLE rate_submissions CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci').catch(() => {});
     await pool.query('ALTER TABLE transporters CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci').catch(() => {});
     await pool.query('ALTER TABLE transport_requirements CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci').catch(() => {});

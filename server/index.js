@@ -1,4 +1,4 @@
-// Hostinger Passenger Process Reload Signal v1.7.9 - Complete Production Database Schema Audit API
+// Hostinger Passenger Process Reload Signal v1.8.1 - Clean Canonical rate_submissions Schema Active
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
