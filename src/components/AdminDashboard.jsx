@@ -4781,21 +4781,7 @@ export const AdminDashboard = () => {
                 </div>
               </div>
 
-              <div style={{ marginBottom: '20px' }}>
-                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: '700', color: '#cbd5e1', marginBottom: '6px' }}>
-                  Negotiation Note (Optional)
-                </label>
-                <textarea
-                  className="form-control"
-                  rows="2"
-                  placeholder="e.g. Target budget is ₹50/MT for immediate allocation."
-                  value={counterModalState.remarks}
-                  onChange={(e) => setCounterModalState(prev => ({ ...prev, remarks: e.target.value }))}
-                  style={{ width: '100%', fontSize: '0.85rem', background: '#0f172a', border: '1px solid #334155', color: '#ffffff', borderRadius: '8px', padding: '10px' }}
-                ></textarea>
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '20px' }}>
                 <button
                   type="button"
                   onClick={() => setCounterModalState(prev => ({ ...prev, isOpen: false }))}

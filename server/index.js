@@ -1,4 +1,4 @@
-// Hostinger Passenger Process Reload Signal v1.6.0 - High Performance Parallel Loading & Query Optimization
+// Hostinger Passenger Process Reload Signal v1.6.1 - Remove Negotiation Note from Counter Modal
 import express from 'express';
 import cors from 'cors';
 import path from 'path';

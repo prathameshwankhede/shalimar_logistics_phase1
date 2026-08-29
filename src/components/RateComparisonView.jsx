@@ -588,18 +588,7 @@ export const RateComparisonView = ({ rateRequest, onBack }) => {
                 />
               </div>
 
-              <div className="form-group">
-                <label className="form-label">Negotiation Message / Note for Transporter</label>
-                <textarea
-                  className="form-control"
-                  rows="3"
-                  placeholder="e.g. Target budget is ₹460/MT for bulk delivery. Please confirm if acceptable."
-                  value={counterForm.note}
-                  onChange={(e) => setCounterForm({ ...counterForm, note: e.target.value })}
-                ></textarea>
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '16px' }}>
                 <button type="button" onClick={() => setActiveCounterSub(null)} className="btn btn-secondary">
                   Cancel
                 </button>
