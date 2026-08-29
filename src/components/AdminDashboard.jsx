@@ -4,7 +4,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { createRateRequest, createRequirement, updateRequirement, deleteRequirement, deleteRequirementItem } from '../api/rateRequestApi';
-import { sendAdminCounterAll } from '../api/rateSubmissionApi';
+import { sendAdminCounterAll, finalizeBid } from '../api/rateSubmissionApi';
 import { createTransporter, updateTransporterStatus, resetTransporterPassword, deleteTransporter } from '../api/transporterApi';
 import { createProduct, updateProduct, deleteProduct, createCompanyUnit, updateCompanyUnit, deleteCompanyUnit } from '../api/masterDataApi';
 import { downloadFullBackupApi, restoreBackupApi, downloadReportApi, clearAllDataApi } from '../api/backupApi';
@@ -187,6 +187,51 @@ export const AdminDashboard = () => {
       alert(err.message || 'Failed to send counter offer.');
     } finally {
       setIsSendingCounter(prev => ({ ...prev, [key]: false }));
+    }
+  };
+
+  const [isFinalizingKey, setIsFinalizingKey] = useState(null);
+
+  const handleFinalizeRateForItem = async (req, item, subCode, bids) => {
+    const reqId = req.id || req.req_no || req.request_no;
+    const itemId = item.id || subCode || 'MAIN';
+    const key = `${reqId}_${itemId}`;
+
+    if (!bids || bids.length === 0) {
+      alert(`No transporter quotes submitted yet for ${subCode || reqId}. Cannot finalize rate.`);
+      return;
+    }
+
+    // Find accepted counter bid, or lowest bid
+    const acceptedBid = bids.find(b => b.bid_status === 'counter_accepted' || b.bid_status === 'COUNTER_ACCEPTED');
+    const finalizedBid = bids.find(b => b.bid_status === 'finalized' || b.bid_status === 'FINALIZED' || b.status === 'Rate Frozen');
+    const lowestBid = bids.slice().sort((a, b) => (Number(a.rate_per_mt || a.rate_per_unit) || 0) - (Number(b.rate_per_mt || b.rate_per_unit) || 0))[0];
+
+    const targetBid = acceptedBid || finalizedBid || (bids.length === 1 ? bids[0] : lowestBid);
+
+    if (!targetBid) {
+      alert(`Unable to identify quote for ${subCode || reqId}. Please compare quotes first.`);
+      return;
+    }
+
+    const agreedRate = targetBid.counter_rate || targetBid.counter_rate_per_unit || targetBid.rate_per_unit || targetBid.rate_per_mt;
+    const transporterName = targetBid.transporter_name || targetBid.company_name || targetBid.transporter_id || 'Transporter';
+
+    const confirmMsg = `🏅 Confirm Finalize Rate for ${subCode || reqId}:\n\nTransporter: ${transporterName}\nAgreed Rate: ₹${agreedRate}/MT\n\nDo you want to finalize this agreed rate now?`;
+    if (!window.confirm(confirmMsg)) return;
+
+    try {
+      setIsFinalizingKey(key);
+      await finalizeBid(targetBid.id, { final_rate: agreedRate });
+      alert(`🏆 Rate successfully finalized at ₹${agreedRate}/MT for ${transporterName} on ${subCode || reqId}!`);
+      if (typeof updateDB === 'function') {
+        await updateDB();
+      }
+    } catch (err) {
+      console.error('Finalize rate error:', err);
+      alert(err.message || 'Failed to finalize rate.');
+    } finally {
+      setIsFinalizingKey(null);
     }
   };
 
@@ -2435,6 +2480,7 @@ export const AdminDashboard = () => {
                                 <th style={{ color: '#f8fafc', padding: '14px 16px', fontSize: '0.8rem', fontWeight: '900', borderBottom: '2px solid #334155' }}>📊 BID & APPROVAL REPORT</th>
                                 <th style={{ color: '#f8fafc', padding: '14px 16px', fontSize: '0.8rem', fontWeight: '900', borderBottom: '2px solid #334155' }}>STATUS</th>
                                 <th style={{ color: '#f8fafc', padding: '14px 16px', fontSize: '0.8rem', fontWeight: '900', borderBottom: '2px solid #334155', textAlign: 'center' }}>ACTIONS</th>
+                                <th className="finalize-rate-header" style={{ color: '#f8fafc', padding: '14px 16px', fontSize: '0.8rem', fontWeight: '900', borderBottom: '2px solid #334155', textAlign: 'center' }}>🏅 FINALIZE RATE</th>
                               </tr>
                             </thead>
                             <tbody>
@@ -2570,6 +2616,41 @@ export const AdminDashboard = () => {
                                         📉 Compare Quotes ({bidsCount})
                                       </button>
                                     </td>
+
+                                    <td className="finalize-rate-cell" style={{ padding: '14px 16px', textAlign: 'center' }}>
+                                      {bids && bids.some(b => b.bid_status === 'finalized' || b.bid_status === 'FINALIZED' || b.status === 'Rate Frozen') ? (
+                                        <span className="rate-finalized-badge badge badge-success" style={{ background: '#dcfce7', color: '#166534', border: '1px solid #86efac', padding: '6px 12px', borderRadius: '20px', fontWeight: '900', fontSize: '0.8rem' }}>
+                                          ✓ Rate Finalized
+                                        </span>
+                                      ) : (
+                                        <button
+                                          type="button"
+                                          className="finalize-rate-btn btn btn-primary"
+                                          onClick={() => handleFinalizeRateForItem(openedReq, item, subCode, bids)}
+                                          disabled={isFinalizingKey === `${openedReq.id || reqNoStr}_${item.id || subCode}` || bidsCount === 0}
+                                          style={{
+                                            padding: '8px 16px',
+                                            fontSize: '0.82rem',
+                                            fontWeight: '900',
+                                            background: 'linear-gradient(135deg, #059669 0%, #10b981 100%)',
+                                            border: '1px solid #34d399',
+                                            boxShadow: '0 2px 8px rgba(16, 185, 129, 0.35)',
+                                            color: '#ffffff',
+                                            borderRadius: '8px',
+                                            cursor: bidsCount === 0 ? 'not-allowed' : 'pointer',
+                                            opacity: bidsCount === 0 ? 0.6 : 1,
+                                            whiteSpace: 'nowrap',
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: '6px'
+                                          }}
+                                          title="Finalize agreed rate for this sub-indent"
+                                        >
+                                          <Award size={15} />
+                                          <span>{isFinalizingKey === `${openedReq.id || reqNoStr}_${item.id || subCode}` ? 'Finalizing...' : '🏅 Finalize Rate'}</span>
+                                        </button>
+                                      )}
+                                    </td>
                                   </tr>
                                 );
                               })}
@@ -2635,6 +2716,7 @@ export const AdminDashboard = () => {
                           <th>📊 Bidding & Approval Report</th>
                           <th>Status</th>
                           <th style={{ textAlign: 'right' }}>Actions</th>
+                          <th className="finalize-rate-header" style={{ textAlign: 'center' }}>🏅 FINALIZE RATE</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -2883,6 +2965,63 @@ export const AdminDashboard = () => {
                                     </button>
                                   </div>
                                 </td>
+
+                                {/* 9. FINALIZE RATE */}
+                                <td className="finalize-rate-cell" style={{ textAlign: 'center' }}>
+                                  {isBatch ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => toggleBatchExpand(reqNoStr)}
+                                      className="btn btn-secondary"
+                                      style={{
+                                        padding: '6px 12px',
+                                        fontSize: '0.78rem',
+                                        fontWeight: '800',
+                                        borderRadius: '6px',
+                                        border: '1px solid #10b981',
+                                        color: '#10b981',
+                                        background: 'rgba(16, 185, 129, 0.1)',
+                                        cursor: 'pointer',
+                                        whiteSpace: 'nowrap',
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '4px'
+                                      }}
+                                      title="Open batch to finalize individual sub-indents"
+                                    >
+                                      🏅 Batch Sub-Items ({childItems.length})
+                                    </button>
+                                  ) : bids && bids.some(b => b.bid_status === 'finalized' || b.bid_status === 'FINALIZED' || b.status === 'Rate Frozen') ? (
+                                    <span className="rate-finalized-badge badge badge-success" style={{ background: '#dcfce7', color: '#166534', border: '1px solid #86efac', padding: '6px 12px', borderRadius: '20px', fontWeight: '900', fontSize: '0.8rem' }}>
+                                      ✓ Rate Finalized
+                                    </span>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      className="finalize-rate-btn btn btn-primary"
+                                      onClick={() => handleFinalizeRateForItem(req, childItems[0] || req, reqNoStr, bids)}
+                                      disabled={isFinalizingKey === `${req.id || reqNoStr}_MAIN` || bids.length === 0}
+                                      style={{
+                                        padding: '6px 14px',
+                                        fontSize: '0.8rem',
+                                        fontWeight: '900',
+                                        background: 'linear-gradient(135deg, #059669 0%, #10b981 100%)',
+                                        border: '1px solid #34d399',
+                                        color: '#ffffff',
+                                        borderRadius: '8px',
+                                        cursor: bids.length === 0 ? 'not-allowed' : 'pointer',
+                                        opacity: bids.length === 0 ? 0.6 : 1,
+                                        whiteSpace: 'nowrap',
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '6px'
+                                      }}
+                                    >
+                                      <Award size={14} />
+                                      <span>🏅 Finalize Rate</span>
+                                    </button>
+                                  )}
+                                </td>
                               </tr>
                             );
                           });
@@ -2890,7 +3029,7 @@ export const AdminDashboard = () => {
 
                         {db.rate_requests.length === 0 && (
                           <tr>
-                            <td colSpan="7" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>
+                            <td colSpan="10" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>
                               No transport requirements created yet. Click 'Create Requirement' above.
                             </td>
                           </tr>

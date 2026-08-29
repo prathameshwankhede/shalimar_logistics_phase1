@@ -410,7 +410,6 @@ export const RateComparisonView = ({ rateRequest, onBack }) => {
                 <th>Total Value ({rateRequest?.required_qty} MT)</th>
                 <th>Status & L1 Flag</th>
                 <th>Remarks / Negotiation Note</th>
-                <th style={{ textAlign: 'center' }}>Action</th>
               </tr>
             </thead>
             <tbody>
@@ -541,62 +540,13 @@ export const RateComparisonView = ({ rateRequest, onBack }) => {
                         )}
                       </div>
                     </td>
-
-                    <td className="actions-cell" style={{ textAlign: 'center', verticalAlign: 'middle' }}>
-                      {sub.bid_status === 'finalized' || sub.is_frozen || isFrozen ? (
-                        <span
-                          className="badge badge-success"
-                          style={{
-                            background: '#dcfce7',
-                            color: '#166534',
-                            border: '1px solid #86efac',
-                            padding: '6px 14px',
-                            borderRadius: '20px',
-                            fontWeight: '900',
-                            fontSize: '0.82rem',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '4px'
-                          }}
-                        >
-                          ✓ Rate Finalized
-                        </span>
-                      ) : (
-                        <button
-                          type="button"
-                          className="finalize-rate-btn btn btn-primary"
-                          onClick={() => handleAdminFinalizeBid(sub)}
-                          disabled={finalizingId === sub.id}
-                          style={{
-                            padding: '8px 18px',
-                            fontSize: '0.82rem',
-                            fontWeight: '900',
-                            background: 'linear-gradient(135deg, #059669 0%, #10b981 100%)',
-                            border: '1px solid #34d399',
-                            boxShadow: '0 2px 8px rgba(16, 185, 129, 0.35)',
-                            color: '#ffffff',
-                            borderRadius: '8px',
-                            cursor: 'pointer',
-                            whiteSpace: 'nowrap',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '6px',
-                            margin: '0 auto'
-                          }}
-                          title="Finalize agreed rate with transporter"
-                        >
-                          <Award size={15} />
-                          <span>{finalizingId === sub.id ? 'Finalizing...' : 'Finalize Rate'}</span>
-                        </button>
-                      )}
-                    </td>
                   </tr>
                 );
               })}
 
               {submissions.length === 0 && (
                 <tr>
-                  <td colSpan="7" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>
+                  <td colSpan="6" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>
                     No quotes submitted yet by transporters for this requirement.
                   </td>
                 </tr>
