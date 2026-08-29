@@ -1,4 +1,4 @@
-// Hostinger Passenger Process Reload Signal v1.2.5 - Remove Compare Rates Button from Parent Batch Rows
+// Hostinger Passenger Process Reload Signal v1.2.6 - Hide Location & FirstChild Fallbacks from Transporter Master Batch Row
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
