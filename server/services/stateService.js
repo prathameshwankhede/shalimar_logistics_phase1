@@ -45,22 +45,35 @@ export async function getRateRequests(page = 1, limit = 20) {
 }
 
 export async function getRateSubmissions(user) {
-  const isTransporter = user.role === 'transporter';
-  const transporterId = isTransporter ? user.transporter_id : null;
+  const isTransporter = user && user.role === 'transporter';
+  const transporterId = isTransporter ? (user.transporter_id || user.username || user.code || user.id) : null;
 
   const rows = await stateRepo.fetchSubmissions(transporterId);
   return rows.map(b => ({
     id: b.id,
-    rate_request_id: b.request_id,
-    request_no: b.request_no,
+    requirement_id: b.requirement_id || b.rate_request_id || b.request_id,
+    rate_request_id: b.requirement_id || b.rate_request_id || b.request_id,
+    item_id: b.item_id || 'MAIN',
+    request_no: b.request_no || b.sub_indent_no || '',
+    sub_indent_no: b.sub_indent_no || '',
     transporter_id: b.transporter_id,
-    transporter_name: b.transporter_name,
-    rate_per_unit: Number(b.rate_per_unit),
-    vehicle_type: b.vehicle_type,
-    comments: b.comments,
-    status: b.status,
+    transporter_name: b.transporter_name || b.transporter_id,
+    transporter_code: b.transporter_code || '',
+    rate_per_unit: Number(b.rate_per_mt || b.rate_per_unit || 0),
+    rate_per_mt: Number(b.rate_per_mt || b.rate_per_unit || 0),
+    quoted_quantity_mt: Number(b.quoted_quantity_mt || 0),
+    total_amount: Number(b.total_amount || 0),
+    status: b.status || 'Submitted',
+    bid_status: b.bid_status || b.status || 'submitted',
+    negotiation_status: b.negotiation_status || b.status || 'Submitted',
+    original_rate: b.original_rate ? Number(b.original_rate) : Number(b.rate_per_mt || 0),
     counter_rate: b.counter_rate ? Number(b.counter_rate) : null,
-    is_frozen: Boolean(b.is_frozen),
+    final_rate: b.final_rate ? Number(b.final_rate) : null,
+    is_frozen: Boolean(b.is_frozen || b.bid_status === 'finalized' || b.status === 'Rate Frozen'),
+    countered_by: b.countered_by || null,
+    counter_message: b.counter_message || null,
+    counter_updated_at: b.counter_updated_at || null,
+    finalized_at: b.finalized_at || null,
     submitted_at: b.submitted_at ? new Date(b.submitted_at).toISOString() : new Date().toISOString()
   }));
 }

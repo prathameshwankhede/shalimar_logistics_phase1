@@ -85,16 +85,54 @@ export async function fetchPaginatedRequests(limit, offset) {
 
 export async function fetchSubmissions(transporterId = null) {
   try {
-    let query = `SELECT id, request_id, request_no, transporter_id, transporter_name, rate_per_unit, vehicle_type, comments, status, counter_rate, is_frozen, submitted_at FROM rate_submissions`;
+    let query = `
+      SELECT 
+        s.id,
+        s.requirement_id,
+        s.requirement_id AS rate_request_id,
+        s.requirement_id AS request_id,
+        s.item_id,
+        s.transporter_id,
+        COALESCE(t.company_name, s.transporter_id) AS transporter_name,
+        COALESCE(t.code, '') AS transporter_code,
+        s.rate_per_mt,
+        s.rate_per_mt AS rate_per_unit,
+        s.quoted_quantity_mt,
+        s.total_amount,
+        s.remarks,
+        s.remarks AS comments,
+        s.status,
+        s.bid_status,
+        s.negotiation_status,
+        s.original_rate,
+        s.original_rate_per_mt,
+        s.counter_rate,
+        s.final_rate,
+        s.final_rate_per_mt,
+        s.is_frozen,
+        s.countered_by,
+        s.counter_message,
+        s.counter_updated_at,
+        s.finalized_at,
+        s.submitted_at,
+        s.updated_at,
+        COALESCE(r.req_no, r.id, '') AS request_no,
+        COALESCE(i.sub_indent_no, '') AS sub_indent_no
+      FROM rate_submissions s
+      LEFT JOIN transporters t ON (t.id = s.transporter_id OR t.code = s.transporter_id OR t.username = s.transporter_id)
+      LEFT JOIN transport_requirements r ON r.id = s.requirement_id
+      LEFT JOIN transport_requirement_items i ON i.id = s.item_id
+    `;
     const params = [];
     if (transporterId) {
-      query += ` WHERE transporter_id = ?`;
-      params.push(transporterId);
+      query += ` WHERE s.transporter_id = ? OR t.code = ? OR t.username = ? OR t.id = ?`;
+      params.push(transporterId, transporterId, transporterId, transporterId);
     }
-    query += ` ORDER BY submitted_at DESC LIMIT 100`;
+    query += ` ORDER BY s.submitted_at DESC LIMIT 500`;
     const [rows] = await pool.query(query, params);
     return rows;
   } catch (err) {
+    console.warn('fetchSubmissions query notice:', err.message);
     let seedSubs = INITIAL_SEED_DATA.rate_submissions || [];
     if (transporterId) {
       seedSubs = seedSubs.filter(s => s.transporter_id === transporterId);

@@ -185,20 +185,31 @@ export const TransporterPortal = () => {
     );
   }
 
-  // DATA ISOLATION: Fetch data associated with this Transporter ID, Code, or Username (Case-Insensitive 🛡️)
+  // DATA ISOLATION: Fetch data associated with this Transporter ID, Code, Username, or Company Name (Case-Insensitive 🛡️)
   const mySubmissions = (db.rate_submissions || []).filter((s) => {
     const sId = String(s.transporter_id || '').toLowerCase();
+    const sCode = String(s.transporter_code || '').toLowerCase();
+    const sName = String(s.transporter_name || '').toLowerCase();
     const cId = String(currentTransporter?.id || '').toLowerCase();
     const cCode = String(currentTransporter?.code || '').toLowerCase();
     const cUser = String(currentTransporter?.username || '').toLowerCase();
-    return (cId && sId === cId) || (cCode && sId === cCode) || (cUser && sId === cUser);
+    const cName = String(currentTransporter?.company_name || '').toLowerCase();
+
+    return (cId && sId === cId) || 
+           (cCode && sId === cCode) || 
+           (cUser && sId === cUser) || 
+           (cName && sId === cName) ||
+           (cCode && sCode && sCode === cCode) ||
+           (cName && sName && (sName === cName || sName.includes(cName) || cName.includes(sName)));
   });
   const myAllocations = (db.allocations || []).filter((a) => {
     const aId = String(a.transporter_id || '').toLowerCase();
+    const aName = String(a.transporter_name || '').toLowerCase();
     const cId = String(currentTransporter?.id || '').toLowerCase();
     const cCode = String(currentTransporter?.code || '').toLowerCase();
     const cUser = String(currentTransporter?.username || '').toLowerCase();
-    return (cId && aId === cId) || (cCode && aId === cCode) || (cUser && aId === cUser);
+    const cName = String(currentTransporter?.company_name || '').toLowerCase();
+    return (cId && aId === cId) || (cCode && aId === cCode) || (cUser && aId === cUser) || (cName && aName && aName.includes(cName));
   });
   const myDispatches = (db.truck_dispatches || []).filter((d) => {
     const dId = String(d.transporter_id || '').toLowerCase();
