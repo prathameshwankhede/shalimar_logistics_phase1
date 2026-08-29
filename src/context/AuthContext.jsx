@@ -150,6 +150,32 @@ export const AuthProvider = ({ children }) => {
     return { ...(targetDb || {}), security_audit_logs: logs };
   };
 
+const updateLocalRateSubmission = (savedBid) => {
+  if (!savedBid) return;
+  setDb((prevDb) => {
+    const list = Array.isArray(prevDb?.rate_submissions) ? prevDb.rate_submissions : [];
+    const existingIndex = list.findIndex(
+      (bid) =>
+        String(bid.id) === String(savedBid.id) ||
+        (
+          String(bid.requirement_id) === String(savedBid.requirement_id) &&
+          String(bid.item_id || 'MAIN') === String(savedBid.item_id || 'MAIN') &&
+          String(bid.transporter_id) === String(savedBid.transporter_id)
+        )
+    );
+
+    let updated;
+    if (existingIndex >= 0) {
+      updated = [...list];
+      updated[existingIndex] = { ...updated[existingIndex], ...savedBid };
+    } else {
+      updated = [savedBid, ...list];
+    }
+
+    return { ...(prevDb || {}), rate_submissions: updated };
+  });
+};
+
 const updateDB = async (newDb) => {
   if (!newDb) return;
   
@@ -334,6 +360,7 @@ const updateDB = async (newDb) => {
         refreshDB,
         refreshRequirements,
         updateDB,
+        updateLocalRateSubmission,
         resetAllData,
         addSecurityLog
       }}

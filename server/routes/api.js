@@ -737,25 +737,74 @@ async function handleCreateRateSubmission(req, res) {
       console.warn('History insertion notice:', hErr.message);
     }
 
-    const submissionObj = {
+    const [freshRows] = await pool.query(
+      `SELECT 
+        s.id,
+        s.requirement_id,
+        s.requirement_id AS rate_request_id,
+        s.requirement_id AS request_id,
+        s.item_id,
+        s.transporter_id,
+        COALESCE(t.company_name, s.transporter_id) AS transporter_name,
+        COALESCE(t.code, '') AS transporter_code,
+        s.rate_per_mt,
+        s.rate_per_mt AS rate_per_unit,
+        s.quoted_quantity_mt,
+        s.total_amount,
+        s.remarks,
+        s.remarks AS comments,
+        s.status,
+        s.bid_status,
+        s.negotiation_status,
+        s.original_rate,
+        s.original_rate_per_mt,
+        s.counter_rate,
+        s.final_rate,
+        s.final_rate_per_mt,
+        s.is_frozen,
+        s.submitted_at,
+        s.updated_at,
+        COALESCE(r.req_no, r.id, '') AS request_no,
+        COALESCE(i.sub_indent_no, '') AS sub_indent_no
+      FROM rate_submissions s
+      LEFT JOIN transporters t ON (t.id = s.transporter_id OR t.code = s.transporter_id OR t.username = s.transporter_id)
+      LEFT JOIN transport_requirements r ON r.id = s.requirement_id
+      LEFT JOIN transport_requirement_items i ON i.id = s.item_id
+      WHERE s.id = ? OR (s.requirement_id = ? AND s.item_id = ? AND s.transporter_id = ?)
+      ORDER BY s.updated_at DESC LIMIT 1`,
+      [subId, actualReqId, actualItemId, actualTransId]
+    );
+
+    const savedSubmission = (freshRows && freshRows[0]) ? freshRows[0] : {
       id: subId,
       requirement_id: actualReqId,
+      rate_request_id: actualReqId,
+      request_id: actualReqId,
+      item_id: actualItemId,
+      sub_indent_id: actualItemId,
+      request_no: req.body.request_no || req.body.sub_indent_no || '',
+      sub_indent_no: req.body.sub_indent_no || req.body.request_no || '',
       transporter_id: actualTransId,
       transporter_name: transName,
       rate_per_mt: rateVal,
       rate_per_unit: rateVal,
+      original_rate: rateVal,
+      original_rate_per_mt: rateVal,
       quoted_quantity_mt: qtyVal,
       total_amount: totalAmount,
       remarks: rem,
       status: subStatus,
+      bid_status: 'Submitted',
+      negotiation_status: 'Submitted',
       submitted_at: new Date().toISOString()
     };
 
     return res.json({
       success: true,
       message: 'Rate submitted successfully',
-      submission: submissionObj,
-      bid: submissionObj
+      data: savedSubmission,
+      submission: savedSubmission,
+      bid: savedSubmission
     });
   } catch (err) {
     console.error('❌ POST /api/rate-submissions Error:', err.message);

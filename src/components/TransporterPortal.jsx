@@ -29,7 +29,7 @@ import {
 } from 'lucide-react';
 
 export const TransporterPortal = () => {
-  const { currentUser, currentTransporter, db, updateDB, quickSwitchUser, addSecurityLog, refreshRequirements, refreshDB } = useAuth();
+  const { currentUser, currentTransporter, db, updateDB, updateLocalRateSubmission, quickSwitchUser, addSecurityLog, refreshRequirements, refreshDB } = useAuth();
 
   // 📊 MYSQL-BACKED DASHBOARD SUMMARY COUNTERS
   const [dashboardSummary, setDashboardSummary] = useState({
@@ -223,78 +223,151 @@ export const TransporterPortal = () => {
     );
   }
 
-  // DATA ISOLATION: Fetch data associated with this Transporter ID, Code, Username, or Company Name (Case-Insensitive 🛡️)
-  const myIdentities = new Set([
-    String(currentTransporter?.id || '').trim().toLowerCase(),
-    String(currentTransporter?.code || '').trim().toLowerCase(),
-    String(currentTransporter?.username || '').trim().toLowerCase(),
-    String(currentTransporter?.company_name || '').trim().toLowerCase(),
-    String(currentUser?.id || '').trim().toLowerCase(),
-    String(currentUser?.username || '').trim().toLowerCase(),
-    String(currentUser?.transporter_id || '').trim().toLowerCase(),
-    String(currentUser?.username || '').replace(/^(usr_|trans_)/i, '').trim().toLowerCase(),
-    String(currentUser?.id || '').replace(/^(usr_|trans_)/i, '').trim().toLowerCase(),
-    String(currentTransporter?.id || '').replace(/^(usr_|trans_)/i, '').trim().toLowerCase()
-  ].filter(Boolean));
+  // 🔧 Universal Normalized Key Helper
+  const normalizeKey = (value) =>
+    value === null || value === undefined
+      ? ''
+      : String(value).trim().toLowerCase();
 
-  const isTransporterMatch = (s) => {
-    const sId = String(s.transporter_id || '').trim().toLowerCase();
-    const sCode = String(s.transporter_code || '').trim().toLowerCase();
-    const sName = String(s.transporter_name || '').trim().toLowerCase();
-    const sCleanId = sId.replace(/^(usr_|trans_)/i, '');
+  // 🏆 Central Bid Rate Resolver (Extracts valid positive numeric rate from any bid record)
+  const getBidRate = (bid) => {
+    if (!bid) return null;
 
-    return myIdentities.has(sId) || 
-           myIdentities.has(sCode) || 
-           myIdentities.has(sName) || 
-           myIdentities.has(sCleanId) ||
-           Array.from(myIdentities).some(id => sName.includes(id) || id.includes(sName));
+    const value =
+      bid.final_rate ??
+      bid.final_rate_per_mt ??
+      bid.rate_per_mt ??
+      bid.rate_per_unit ??
+      bid.original_rate_per_mt ??
+      bid.original_rate ??
+      bid.counter_rate;
+
+    const rate = Number(String(value ?? '').replace(/[₹,\s]/g, ''));
+
+    return Number.isFinite(rate) && rate > 0 ? rate : null;
   };
 
-  const mySubmissions = (db.rate_submissions || []).filter(isTransporterMatch);
+  // 🎯 ONE CENTRAL BID MATCHER (Guarantees 100% accurate match across batch sub-indents & standalone requirements)
+  const findMyBid = (req, submissionsList = db.rate_submissions, transporter = currentTransporter, user = currentUser) => {
+    if (!req || !Array.isArray(submissionsList)) return null;
 
-  // 🎯 ROBUST UNIVERSAL BID MATCHER: Guarantees 100% accurate match across batch sub-indents & standalone requirements
-  const findMyBid = (req) => {
-    if (!req) return null;
-    const reqParentId = String(req.requirement_id || req.parent_req_no || req.id || '').trim().toLowerCase();
-    const reqParentNo = String(req.parent_req_no || req.req_no || req.batch_no || '').trim().toLowerCase();
-    const reqItemId = String(req.item_id || req.sub_indent_id || '').trim().toLowerCase();
-    const reqSubNo = String(req.sub_indent_no || req.request_no || req.title || '').trim().toLowerCase();
+    const transporterKeys = [
+      transporter?.id,
+      transporter?.transporter_id,
+      transporter?.code,
+      transporter?.username,
+      transporter?.company_name,
+      user?.id,
+      user?.username,
+      user?.transporter_id,
+      transporter?.id ? String(transporter.id).replace(/^(usr_|trans_)/i, '') : null,
+      user?.id ? String(user.id).replace(/^(usr_|trans_)/i, '') : null
+    ]
+      .filter(Boolean)
+      .map(normalizeKey);
 
-    return (db.rate_submissions || []).find((s) => {
-      // 1. Transporter Identity Check
-      if (!isTransporterMatch(s)) return false;
+    const reqKeys = [
+      req.id,
+      req.requirement_id,
+      req.req_no,
+      req.request_no,
+      req.parent_req_no,
+      req.batch_no,
+      req.requisition_code
+    ]
+      .filter(Boolean)
+      .map(normalizeKey);
 
-      const sReqId = String(s.requirement_id || s.rate_request_id || s.request_id || '').trim().toLowerCase();
-      const sReqNo = String(s.request_no || '').trim().toLowerCase();
-      const sItemId = String(s.item_id || '').trim().toLowerCase();
-      const sSubNo = String(s.sub_indent_no || '').trim().toLowerCase();
+    const itemKeys = [
+      req.item_id,
+      req.sub_indent_id,
+      req.sub_indent_no,
+      req.request_no,
+      req.requisition_code,
+      req.id
+    ]
+      .filter(Boolean)
+      .map(normalizeKey);
 
-      // 2. Direct Sub-Indent Code match (e.g. SNPL/26-27/REQ-0001/01)
-      if (reqSubNo && (sSubNo === reqSubNo || sReqNo === reqSubNo || sItemId === reqSubNo)) {
-        return true;
-      }
+    return submissionsList.find((bid) => {
+      if (!bid) return false;
 
-      // 3. Direct Item ID match
-      if (reqItemId && (sItemId === reqItemId || sSubNo === reqItemId)) {
-        return true;
-      }
+      const bidTransporterKeys = [
+        bid.transporter_id,
+        bid.transporter_code,
+        bid.transporter_username,
+        bid.transporter_name,
+        bid.transporter_id ? String(bid.transporter_id).replace(/^(usr_|trans_)/i, '') : null
+      ]
+        .filter(Boolean)
+        .map(normalizeKey);
 
-      // 4. Parent Requirement ID / No match
-      const matchesReq = (reqParentId && (sReqId === reqParentId || sReqNo === reqParentId)) ||
-                         (reqParentNo && (sReqId === reqParentNo || sReqNo === reqParentNo)) ||
-                         (reqSubNo && (sSubNo === reqSubNo || sReqNo === reqSubNo));
+      const transporterMatch =
+        transporterKeys.length === 0 ||
+        transporterKeys.some(key => bidTransporterKeys.includes(key)) ||
+        transporterKeys.some(key => bidTransporterKeys.some(bKey => bKey.includes(key) || key.includes(bKey)));
 
-      if (matchesReq) {
-        if (!reqItemId || reqItemId === reqParentId) return true;
-        if (sItemId && (sItemId === reqItemId || sItemId === reqSubNo)) return true;
-        if (sSubNo && (sSubNo === reqSubNo || sSubNo === reqItemId)) return true;
-        if (sReqNo && sReqNo === reqSubNo) return true;
-        return true;
-      }
+      if (!transporterMatch) return false;
 
-      return false;
-    });
+      const bidReqKeys = [
+        bid.requirement_id,
+        bid.rate_request_id,
+        bid.request_id,
+        bid.parent_req_no,
+        bid.req_no,
+        bid.batch_no,
+        bid.request_no
+      ]
+        .filter(Boolean)
+        .map(normalizeKey);
+
+      const bidItemKeys = [
+        bid.item_id,
+        bid.sub_indent_id,
+        bid.sub_indent_no,
+        bid.request_no,
+        bid.requisition_code
+      ]
+        .filter(Boolean)
+        .map(normalizeKey);
+
+      const requirementMatch =
+        reqKeys.some(key => bidReqKeys.includes(key));
+
+      const itemMatch =
+        itemKeys.some(key => bidItemKeys.includes(key));
+
+      return requirementMatch || itemMatch;
+    }) || null;
   };
+
+  const mySubmissions = (db.rate_submissions || []).filter(bid => {
+    if (!bid) return false;
+    const transporterKeys = [
+      currentTransporter?.id,
+      currentTransporter?.transporter_id,
+      currentTransporter?.code,
+      currentTransporter?.username,
+      currentTransporter?.company_name,
+      currentUser?.id,
+      currentUser?.username,
+      currentUser?.transporter_id,
+      currentTransporter?.id ? String(currentTransporter.id).replace(/^(usr_|trans_)/i, '') : null,
+      currentUser?.id ? String(currentUser.id).replace(/^(usr_|trans_)/i, '') : null
+    ].filter(Boolean).map(normalizeKey);
+
+    const bidTransporterKeys = [
+      bid.transporter_id,
+      bid.transporter_code,
+      bid.transporter_username,
+      bid.transporter_name,
+      bid.transporter_id ? String(bid.transporter_id).replace(/^(usr_|trans_)/i, '') : null
+    ].filter(Boolean).map(normalizeKey);
+
+    return transporterKeys.length === 0 ||
+      transporterKeys.some(key => bidTransporterKeys.includes(key)) ||
+      transporterKeys.some(key => bidTransporterKeys.some(bKey => bKey.includes(key) || key.includes(bKey)));
+  });
   const myAllocations = (db.allocations || []).filter((a) => {
     const aId = String(a.transporter_id || '').toLowerCase();
     const aName = String(a.transporter_name || '').toLowerCase();
@@ -722,44 +795,38 @@ export const TransporterPortal = () => {
         throw new Error(result?.error?.message || result?.message || 'Quote submission failed');
       }
 
-      // ⚡ 1. Optimistic Local State Update for instantaneous UI feedback
-      const serverSub = result.submission || {
+      // ⚡ 1. Immediate Local State Update using the EXACT server response
+      const savedBid = result?.data || result?.submission || result?.bid || {
         id: `sub_${transId}_${targetItemId}_${Date.now()}`,
         requirement_id: parentReqId,
         rate_request_id: parentReqId,
         item_id: targetItemId,
+        sub_indent_id: targetItemId,
         request_no: subIndentNo,
         sub_indent_no: subIndentNo,
         transporter_id: transId,
         transporter_name: currentTransporter?.company_name || transId,
         rate_per_unit: rateVal,
         rate_per_mt: rateVal,
+        original_rate: rateVal,
+        original_rate_per_mt: rateVal,
         quoted_quantity_mt: qtyVal,
         total_amount: totalCalcAmount,
         status: 'Submitted',
-        bid_status: 'submitted',
+        bid_status: 'Submitted',
+        negotiation_status: 'Submitted',
         submitted_at: new Date().toISOString()
       };
 
-      if (typeof updateDB === 'function') {
-        updateDB({
-          ...db,
-          rate_submissions: [
-            serverSub,
-            ...(db.rate_submissions || []).filter(s => !(
-              (String(s.transporter_id) === String(transId) || String(s.transporter_id) === String(currentTransporter?.code)) &&
-              (String(s.requirement_id) === String(parentReqId) || String(s.rate_request_id) === String(parentReqId)) &&
-              (String(s.item_id) === String(targetItemId) || String(s.request_no) === String(subIndentNo))
-            ))
-          ]
-        });
+      if (typeof updateLocalRateSubmission === 'function') {
+        updateLocalRateSubmission(savedBid);
       }
 
       setSuccessNotice(`⚡ Quote rate ₹${rateVal.toLocaleString()}/MT submitted for ${subIndentNo}!`);
       setQuickRates((prev) => ({ ...prev, [rateKey]: '', [req.id]: '' }));
       setTimeout(() => setSuccessNotice(''), 5000);
 
-      // ⚡ 2. Safely re-fetch fresh MySQL database state so hasSubmittedQuote becomes true instantly
+      // ⚡ 2. Safely re-fetch fresh MySQL database state so hasSubmittedQuote remains permanently true
       await safeRefreshRequirements();
 
       // ♿ ACCESSIBILITY: Auto-advance focus to the next unsubmitted item input
@@ -1469,8 +1536,9 @@ export const TransporterPortal = () => {
                                            </thead>
                                            <tbody>
                                              {(group.items || []).map((req, rIdx) => {
-                                                const myExistingBid = findMyBid(req);
-                                                const hasSubmittedQuote = Boolean(myExistingBid);
+                                                const myExistingBid = findMyBid(req, db.rate_submissions, currentTransporter, currentUser);
+                                                const currentBidRate = getBidRate(myExistingBid);
+                                                const hasSubmittedQuote = currentBidRate !== null;
                                                 const isAwarded = req.status === 'Awarded';
                                                 const subKey = getSubIndentKey(req);
                                                 const isSubmitting = submittingItems[subKey] || submittingItems[req.id];
@@ -1708,8 +1776,9 @@ export const TransporterPortal = () => {
 
                         // SINGLE ITEM ROW
                       const req = group.items[0];
-                      const myExistingBid = findMyBid(req);
-                      const hasSubmittedQuote = Boolean(myExistingBid);
+                      const myExistingBid = findMyBid(req, db.rate_submissions, currentTransporter, currentUser);
+                      const currentBidRate = getBidRate(myExistingBid);
+                      const hasSubmittedQuote = currentBidRate !== null;
                       const isAwarded = req.status === 'Awarded';
                       const isSubmitting = submittingItems[req.id];
                       const currentInputRate = quickRates[req.id] || '';
