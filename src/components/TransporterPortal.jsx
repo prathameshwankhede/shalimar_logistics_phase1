@@ -77,10 +77,10 @@ export const TransporterPortal = () => {
     return String(req.id);
   };
 
-  const handleBatchSubmitAll = (batchKey, items) => {
+  const handleBatchSubmitAll = async (batchKey, items) => {
     const openItems = (items || []).filter((req) => req.status !== 'Awarded');
     
-    // Check which items have rates typed in quickRates using getSubIndentKey
+    // Check which unquoted items have rates typed in quickRates using getSubIndentKey
     const filledItems = openItems.filter((req) => {
       const key = getSubIndentKey(req);
       const val = parseFloat(quickRates[key]);
@@ -88,85 +88,48 @@ export const TransporterPortal = () => {
     });
 
     if (filledItems.length === 0) {
-      alert('Please enter rate (₹/MT) for at least one sub-indent in this batch to submit.');
+      alert('Please enter rate (₹/MT) for at least one sub-indent in this batch before submitting.');
       return;
     }
 
-    let updatedSubmissions = [...(db.rate_submissions || [])];
     const transId = currentTransporter?.id || currentTransporter?.code || currentTransporter?.username || 'transporter';
 
-    filledItems.forEach((req) => {
-      const key = getSubIndentKey(req);
-      const rateVal = parseFloat(quickRates[key]);
-      const parentReqId = req.requirement_id || req.id;
-      const targetItemId = req.item_id || req.sub_indent_id || req.id;
-      const subIndentNo = req.sub_indent_no || req.request_no || req.id;
-      const qtyVal = Number(req.required_qty || req.quantity_mt || 0);
-      const totalCalcAmount = parseFloat((rateVal * qtyVal).toFixed(2));
+    try {
+      for (const req of filledItems) {
+        const key = getSubIndentKey(req);
+        const rateVal = parseFloat(quickRates[key]);
+        const parentReqId = req.requirement_id || req.id;
+        const targetItemId = req.item_id || req.sub_indent_id || req.id;
+        const subIndentNo = req.sub_indent_no || req.request_no || req.id;
+        const qtyVal = Number(req.required_qty || req.quantity_mt || 0);
+        const totalCalcAmount = parseFloat((rateVal * qtyVal).toFixed(2));
 
-      const existingIdx = updatedSubmissions.findIndex(
-        (s) => (String(s.requirement_id || s.rate_request_id) === String(parentReqId) || String(s.rate_request_id) === String(req.parent_req_no)) &&
-               (String(s.item_id) === String(targetItemId) || String(s.item_id) === String(subIndentNo)) &&
-               (String(s.transporter_id) === String(transId) || String(s.transporter_id) === String(currentTransporter?.code) || String(s.transporter_id) === String(currentTransporter?.username))
-      );
+        await submitBid({
+          requirement_id: parentReqId,
+          rate_request_id: parentReqId,
+          item_id: targetItemId,
+          request_no: subIndentNo,
+          transporter_id: transId,
+          transporter_name: currentTransporter?.company_name || transId,
+          rate_per_unit: rateVal,
+          rate_per_mt: rateVal,
+          quoted_quantity_mt: qtyVal,
+          total_amount: totalCalcAmount,
+          status: 'Submitted'
+        });
 
-      const subObj = {
-        ...(existingIdx >= 0 ? updatedSubmissions[existingIdx] : {}),
-        id: existingIdx >= 0 ? updatedSubmissions[existingIdx].id : `sub_${(transId).toLowerCase()}_${targetItemId}_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
-        requirement_id: parentReqId,
-        rate_request_id: parentReqId,
-        item_id: targetItemId,
-        transporter_id: transId,
-        transporter_name: currentTransporter?.company_name || transId,
-        rate_per_unit: rateVal,
-        rate_per_mt: rateVal,
-        quoted_quantity_mt: qtyVal,
-        total_estimated_amount: totalCalcAmount,
-        total_amount: totalCalcAmount,
-        transit_days: '2',
-        status: 'Submitted',
-        submitted_at: new Date().toISOString()
-      };
-
-      if (existingIdx >= 0) {
-        updatedSubmissions[existingIdx] = subObj;
-      } else {
-        updatedSubmissions.unshift(subObj);
+        setQuickRates((prev) => ({ ...prev, [key]: '' }));
       }
 
-      // Persist bid directly to MySQL rate_submissions table via API
-      submitBid({
-        id: subObj.id,
-        requirement_id: parentReqId,
-        rate_request_id: parentReqId,
-        item_id: targetItemId,
-        request_no: subIndentNo,
-        transporter_id: transId,
-        transporter_name: currentTransporter?.company_name || transId,
-        rate_per_unit: rateVal,
-        rate_per_mt: rateVal,
-        quoted_quantity_mt: qtyVal,
-        total_amount: totalCalcAmount,
-        status: 'Submitted'
-      }).catch(err => console.error('Batch bid persistence warning:', err.message));
+      setSuccessNotice(`🚀 Submitted quotes for ${filledItems.length} items in Batch ${batchKey} successfully!`);
+      setTimeout(() => setSuccessNotice(''), 4000);
 
-      setQuickRates((prev) => ({ ...prev, [key]: '' }));
-    });
-
-    const updatedDb = addSecurityLog(
-      {
-        ...db,
-        rate_submissions: updatedSubmissions
-      },
-      `SUBMIT_BATCH_ALL_QUOTES (${filledItems.length} quotes submitted for Batch ${batchKey})`,
-      currentTransporter.company_name,
-      'transporter',
-      'BATCH_BIDS_SUBMITTED 🚀'
-    );
-
-    updateDB(updatedDb);
-    setSuccessNotice(`🚀 Submitted quotes for ${filledItems.length} items in Batch ${batchKey} successfully!`);
-    setTimeout(() => setSuccessNotice(''), 4000);
+      // ⚡ Instantly refresh fresh MySQL database state so all submitted items update immediately
+      await refreshRequirements();
+    } catch (err) {
+      console.error('Batch submit all error:', err);
+      alert(err.message || 'Error submitting batch quotes.');
+    }
   };
 
   // Form states for submitting rate in modal
@@ -1057,28 +1020,6 @@ export const TransporterPortal = () => {
                                          </div>
 
                                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-                                           {/* ⚡ 1-CLICK BULK BATCH QUOTE ALL CONTROL BAR */}
-                                            <button
-                                              type="button"
-                                              onClick={() => handleBatchSubmitAll(group.batchKey, group.items)}
-                                              className="btn btn-primary"
-                                              style={{
-                                                padding: '6px 14px',
-                                                fontSize: '0.82rem',
-                                                fontWeight: '900',
-                                                background: 'linear-gradient(135deg, #0284c7 0%, #059669 100%)',
-                                                border: 'none',
-                                                borderRadius: '10px',
-                                                cursor: 'pointer',
-                                                display: 'inline-flex',
-                                                alignItems: 'center',
-                                                gap: '6px'
-                                              }}
-                                              title="Submit individual typed rates for all batch sub-indents in 1-Click"
-                                            >
-                                              <Send size={15} /> 🚀 Submit All Batch Bids ({group.items.length})
-                                            </button>
-
                                            <span style={{ fontSize: '0.78rem', background: '#e0f2fe', color: '#0284c7', border: '1px solid #7dd3fc', padding: '4px 12px', borderRadius: '20px', fontWeight: '800' }}>
                                              📦 Multi-Route Sub-Indents ({group.items.length} Items)
                                            </span>
@@ -1270,6 +1211,79 @@ export const TransporterPortal = () => {
                                           </tbody>
                                         </table>
                                       </div>
+
+                                      {/* BATCH QUOTE ACTION FOOTER BELOW TABLE 🚀 */}
+                                      {(() => {
+                                        const unquotedItems = (group.items || []).filter((reqItem) => {
+                                          const parentId = String(reqItem.requirement_id || reqItem.parent_req_no || reqItem.id || '').trim();
+                                          const itemId = String(reqItem.item_id || reqItem.sub_indent_no || reqItem.request_no || '').trim();
+
+                                          const isQuoted = (mySubmissions || []).some((s) => {
+                                            const sReqId = String(s.requirement_id || s.rate_request_id || '').trim();
+                                            const sItemId = String(s.item_id || '').trim();
+                                            const matchesReq = sReqId === parentId || sReqId === String(reqItem.parent_req_no || '').trim() || sReqId === String(reqItem.id || '').trim();
+                                            const matchesItem = (itemId && sItemId === itemId) ||
+                                                                (reqItem.item_id && sItemId === String(reqItem.item_id).trim()) ||
+                                                                (reqItem.sub_indent_no && sItemId === String(reqItem.sub_indent_no).trim()) ||
+                                                                (reqItem.request_no && sItemId === String(reqItem.request_no).trim());
+                                            return matchesReq && matchesItem;
+                                          });
+                                          return !isQuoted && reqItem.status !== 'Awarded';
+                                        });
+
+                                        const unquotedCount = unquotedItems.length;
+
+                                        return (
+                                          <div style={{
+                                            marginTop: '16px',
+                                            paddingTop: '16px',
+                                            borderTop: '2px dashed #cbd5e1',
+                                            textAlign: 'center',
+                                            background: unquotedCount > 0 ? 'linear-gradient(180deg, #f8fafc 0%, #ffffff 100%)' : '#f0fdf4',
+                                            borderRadius: '12px',
+                                            padding: '16px',
+                                            border: unquotedCount > 0 ? '1px dashed #94a3b8' : '1px solid #bbf7d0'
+                                          }}>
+                                            <div style={{ fontSize: '0.82rem', fontWeight: '900', color: unquotedCount > 0 ? '#0284c7' : '#047857', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                                              ⚡ BATCH QUOTE ACTION
+                                            </div>
+                                            <div style={{ fontSize: '0.78rem', color: unquotedCount > 0 ? '#64748b' : '#15803d', marginTop: '2px', marginBottom: '12px', fontWeight: '600' }}>
+                                              {unquotedCount > 0
+                                                ? 'Type rates into the input boxes above and submit all pending quotes together in 1-Click'
+                                                : `All ${group.items.length} sub-indents in this batch have active quotes recorded.`}
+                                            </div>
+
+                                            {unquotedCount > 0 ? (
+                                              <button
+                                                type="button"
+                                                onClick={() => handleBatchSubmitAll(group.batchKey, group.items)}
+                                                className="btn btn-primary"
+                                                style={{
+                                                  padding: '10px 24px',
+                                                  fontSize: '0.88rem',
+                                                  fontWeight: '900',
+                                                  background: 'linear-gradient(135deg, #0284c7 0%, #059669 100%)',
+                                                  border: 'none',
+                                                  borderRadius: '10px',
+                                                  cursor: 'pointer',
+                                                  display: 'inline-flex',
+                                                  alignItems: 'center',
+                                                  gap: '8px',
+                                                  boxShadow: '0 4px 14px rgba(2, 132, 199, 0.35)'
+                                                }}
+                                                title="Submit individual typed rates for all pending batch sub-indents in 1-Click"
+                                              >
+                                                <Send size={16} /> 🚀 Submit All Batch Bids ({unquotedCount})
+                                              </button>
+                                            ) : (
+                                              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: '#dcfce7', color: '#047857', border: '1.5px solid #16a34a', padding: '8px 18px', borderRadius: '10px', fontWeight: '900', fontSize: '0.88rem' }}>
+                                                ✓ All Batch Quotes Submitted
+                                              </div>
+                                            )}
+                                          </div>
+                                        );
+                                      })()}
+
                                     </div>
                                   </td>
                                 </tr>
