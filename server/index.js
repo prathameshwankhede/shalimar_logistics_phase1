@@ -1,4 +1,4 @@
-// Hostinger Passenger Process Reload Signal v1.2.0 - Admin Compare Quotes Sub-Indent Item Filtering & Distinct Transporter Count Fix
+// Hostinger Passenger Process Reload Signal v1.2.1 - Hide Parent Requirements Table When Batch Folder Is Opened
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
