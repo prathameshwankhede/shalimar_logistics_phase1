@@ -1,4 +1,4 @@
-// Hostinger Passenger Process Reload Signal v1.3.1 - Restore Quote Button & Live Current Bid Rate Preview
+// Hostinger Passenger Process Reload Signal v1.4.0 - Admin Counter Offer & Bid Negotiation System
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
