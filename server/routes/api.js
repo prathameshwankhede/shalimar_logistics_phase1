@@ -2487,6 +2487,12 @@ router.get('/audit-orphan-data', authenticateToken, requireRole('admin'), async 
         rate_submissions: rsDdl[0]['Create Table'] || rsDdl[0]['CREATE TABLE']
       }
     });
+  } catch (err) {
+    console.error('Audit orphan data error:', err.message);
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 router.get('/audit-quote-details', authenticateToken, requireRole('admin'), async (req, res) => {
   try {
     await ensureRateSubmissionsTableExists();
