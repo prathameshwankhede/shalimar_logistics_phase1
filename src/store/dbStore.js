@@ -317,6 +317,19 @@ export async function loadDBFromSupabase() {
       console.warn('Live requirements fetch notice:', err.message);
     }
 
+    // Always fetch live rate submissions list from MySQL database
+    try {
+      const liveSubmissions = await fetchRateSubmissions();
+      if (Array.isArray(liveSubmissions)) {
+        data = {
+          ...(data || EMPTY_STATE),
+          rate_submissions: liveSubmissions
+        };
+      }
+    } catch (err) {
+      console.warn('Live rate submissions fetch notice:', err.message);
+    }
+
     return data;
   } catch (e) {
     console.error('API loadDBFromSupabase error:', e.message);

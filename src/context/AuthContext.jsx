@@ -48,163 +48,126 @@ export const AuthProvider = ({ children }) => {
     return null;
   });
 
-  const mergeDbStates = (cloudDb, prevDb) => {
-    if (!cloudDb) return prevDb;
-    if (!prevDb) return cloudDb;
-
-    // 🛡️ MYSQL IS SINGLE SOURCE OF TRUTH FOR PRODUCTION DATA
-    const userMap = new Map();
-    (prevDb.users || []).forEach((u) => userMap.set(String(u.id || u.username), u));
-    (cloudDb.users || []).forEach((u) => userMap.set(String(u.id || u.username), u));
-
-    const logMap = new Map();
-    (prevDb.security_audit_logs || []).forEach((l) => logMap.set(String(l.id), l));
-    (cloudDb.security_audit_logs || []).forEach((l) => logMap.set(String(l.id), l));
-
-    return {
-      ...prevDb,
-      ...cloudDb,
-      _updatedAt: Math.max(cloudDb._updatedAt || 0, prevDb._updatedAt || 0, Date.now()),
-      transporters: cloudDb.transporters || [],
-      company_units_plants: cloudDb.company_units_plants || cloudDb.company_units || cloudDb.company_masters || [],
-      company_units: cloudDb.company_units_plants || cloudDb.company_units || cloudDb.company_masters || [],
-      company_masters: cloudDb.company_units_plants || cloudDb.company_units || cloudDb.company_masters || [],
-      products: cloudDb.products || [],
-      product_masters: cloudDb.product_masters || cloudDb.products || [],
-      rate_requests: cloudDb.rate_requests || [],
-      transport_requirements: cloudDb.transport_requirements || cloudDb.rate_requests || [],
-      rate_submissions: cloudDb.rate_submissions || [],
-      allocations: cloudDb.allocations || [],
-      contracts: cloudDb.contracts || [],
-      truck_dispatches: cloudDb.truck_dispatches || [],
-      users: Array.from(userMap.values()),
-      security_audit_logs: Array.from(logMap.values()).slice(0, 100)
-    };
-  };
-
   // Listen to Window Storage & BroadcastChannel for real-time cross-device sync
   useEffect(() => {
     let isMounted = true;
 
-    const fetchSharedServerDb = async () => {
-      try {
-        const sharedDb = await loadDBFromSupabase();
-
-        if (sharedDb && isMounted) {
-          setDb((prevDb) => mergeDbStates(sharedDb, prevDb));
-        }
-      } catch (e) {
-        console.error('API load failed:', e);
-      }
-    };
-
-    fetchSharedServerDb();
-
-    const handleStorageChange = () => {
-      fetchSharedServerDb();
-    };
-
-    let bc = null;
-    if (typeof BroadcastChannel !== 'undefined') {
-      try {
-        bc = new BroadcastChannel('transflow_live_sync_v1');
-        bc.onmessage = () => {
-          fetchSharedServerDb();
-        };
-      } catch (e) {}
-    }
-
-    const interval = setInterval(fetchSharedServerDb, 3000);
-
-    window.addEventListener('storage', handleStorageChange);
-    return () => {
-      isMounted = false;
-      window.removeEventListener('storage', handleStorageChange);
-      if (bc) bc.close();
-      clearInterval(interval);
-    };
-  }, []);
-
-  // Save session state
-  useEffect(() => {
-    if (currentUser) {
-      try {
-        sessionStorage.setItem(USER_SESSION_KEY, JSON.stringify(currentUser));
-      } catch (e) {
-        console.error('Failed to save session token', e);
-      }
-    } else {
-      sessionStorage.removeItem(USER_SESSION_KEY);
-    }
-  }, [currentUser]);
-
-  const refreshRequirements = async () => {
-    console.time('MYSQL_TO_UI_REFRESH');
+  const fetchSharedServerDb = async () => {
     try {
       const sharedDb = await loadDBFromSupabase();
-      if (sharedDb) {
-        setDb((prevDb) => mergeDbStates(sharedDb, prevDb));
+
+      if (sharedDb && isMounted) {
+        setDb(sharedDb);
       }
-      return sharedDb;
     } catch (e) {
-      console.error('refreshRequirements Error:', e.message);
-    } finally {
-      console.timeEnd('MYSQL_TO_UI_REFRESH');
+      console.error('API load failed:', e);
     }
   };
 
-  const refreshDB = async () => {
-    return await refreshRequirements();
+  fetchSharedServerDb();
+
+  const handleStorageChange = () => {
+    fetchSharedServerDb();
   };
 
-  const addSecurityLog = (targetDb, action, username, role, status = 'AUTHENTICATED 🛡️') => {
-    const newLog = {
-      id: `sec_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
-      action,
-      username: username || 'Guest',
-      role: role || 'user',
-      ip: '192.168.1.105 (Secure MIDC Network)',
-      status,
-      timestamp: new Date().toISOString()
-    };
-    const logs = [newLog, ...(targetDb.security_audit_logs || [])].slice(0, 100);
-    return { ...targetDb, security_audit_logs: logs };
-  };
-
-  const updateDB = async (newDb) => {
-    if (!newDb) return;
-    
-    let updatedData = null;
-    setDb((prevDb) => {
-      const mergedData = mergeDbStates(newDb, prevDb);
-      updatedData = { ...mergedData, _updatedAt: Date.now() + 1000 };
-      return updatedData;
-    });
-
-    if (updatedData) {
-      try {
-        const mergedResult = await saveDB(updatedData);
-        if (mergedResult) {
-          setDb((latestPrev) => mergeDbStates(mergedResult, latestPrev));
-        }
-      } catch (e) {
-        console.error('MySQL save failed in updateDB:', e);
-      }
-    }
-
+  let bc = null;
+  if (typeof BroadcastChannel !== 'undefined') {
     try {
-      if (typeof BroadcastChannel !== 'undefined') {
-        const bc = new BroadcastChannel('transflow_live_sync_v1');
-        bc.postMessage({ type: 'SYNC_DB', timestamp: Date.now() });
-        bc.close();
-      }
+      bc = new BroadcastChannel('transflow_live_sync_v1');
+      bc.onmessage = () => {
+        fetchSharedServerDb();
+      };
+    } catch (e) {}
+  }
+
+  const interval = setInterval(fetchSharedServerDb, 3000);
+
+  window.addEventListener('storage', handleStorageChange);
+  return () => {
+    isMounted = false;
+    window.removeEventListener('storage', handleStorageChange);
+    if (bc) bc.close();
+    clearInterval(interval);
+  };
+}, []);
+
+// Save session state
+useEffect(() => {
+  if (currentUser) {
+    try {
+      sessionStorage.setItem(USER_SESSION_KEY, JSON.stringify(currentUser));
     } catch (e) {
-      // ignore
+      console.error('Failed to save session token', e);
+    }
+  } else {
+    sessionStorage.removeItem(USER_SESSION_KEY);
+  }
+}, [currentUser]);
+
+const refreshRequirements = async () => {
+  console.time('MYSQL_TO_UI_REFRESH');
+
+  try {
+    const freshDb = await loadDBFromSupabase();
+
+    if (freshDb) {
+      // IMPORTANT:
+      // MySQL/API response is the single source of truth.
+      // Do NOT merge old React state into fresh server data.
+      setDb(freshDb);
     }
 
-    // ⚡ Immediately re-fetch fresh MySQL state after mutation
-    await refreshRequirements();
+    return freshDb;
+  } catch (e) {
+    console.error('refreshRequirements Error:', e);
+    throw e;
+  } finally {
+    console.timeEnd('MYSQL_TO_UI_REFRESH');
+  }
+};
+
+const refreshDB = async () => {
+  return await refreshRequirements();
+};
+
+const addSecurityLog = (targetDb, action, username, role, status = 'AUTHENTICATED 🛡️') => {
+  const newLog = {
+    id: `sec_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+    action,
+    username: username || 'Guest',
+    role: role || 'user',
+    ip: '192.168.1.105 (Secure MIDC Network)',
+    status,
+    timestamp: new Date().toISOString()
   };
+  const logs = [newLog, ...(targetDb.security_audit_logs || [])].slice(0, 100);
+  return { ...targetDb, security_audit_logs: logs };
+};
+
+const updateDB = async (newDb) => {
+  if (!newDb) return;
+  
+  setDb(newDb);
+
+  try {
+    await saveDB(newDb);
+  } catch (e) {
+    console.error('MySQL save failed in updateDB:', e);
+  }
+
+  try {
+    if (typeof BroadcastChannel !== 'undefined') {
+      const bc = new BroadcastChannel('transflow_live_sync_v1');
+      bc.postMessage({ type: 'SYNC_DB', timestamp: Date.now() });
+      bc.close();
+    }
+  } catch (e) {
+    // ignore
+  }
+
+  // ⚡ Immediately re-fetch fresh MySQL state after mutation
+  await refreshRequirements();
+};
 
   const login = async (username, password) => {
     const cleanUser = (username || '').trim().toLowerCase();
