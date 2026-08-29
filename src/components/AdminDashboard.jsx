@@ -2627,14 +2627,16 @@ export const AdminDashboard = () => {
                                     >
                                       <FileText size={14} /> Particular Report
                                     </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => setSelectedRequestForComparison(req)}
-                                      className="btn btn-primary"
-                                      style={{ padding: '6px 12px', fontSize: '0.78rem', fontWeight: '800', borderRadius: '8px' }}
-                                    >
-                                      <TrendingDown size={14} /> Compare Rates ({displayBidCount})
-                                    </button>
+                                    {!isBatch && (
+                                      <button
+                                        type="button"
+                                        onClick={() => setSelectedRequestForComparison(req)}
+                                        className="btn btn-primary"
+                                        style={{ padding: '6px 12px', fontSize: '0.78rem', fontWeight: '800', borderRadius: '8px' }}
+                                      >
+                                        <TrendingDown size={14} /> Compare Rates ({displayBidCount})
+                                      </button>
+                                    )}
                                     <button
                                       type="button"
                                       onClick={() => handleOpenEditModal(req)}
