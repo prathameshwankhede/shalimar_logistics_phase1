@@ -1,4 +1,4 @@
-// Hostinger Passenger Process Reload Signal v1.4.0 - Admin Counter Offer & Bid Negotiation System
+// Hostinger Passenger Process Reload Signal v1.4.1 - Rate Negotiations Table & Database Transaction Endpoints
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
