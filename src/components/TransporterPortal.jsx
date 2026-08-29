@@ -508,23 +508,30 @@ export const TransporterPortal = () => {
       );
     }
 
-    // DEFAULT STATUS = 'submitted' — Render ONLY the exact Current Bid pill badge
+    // DEFAULT STATUS = 'submitted' — Render ONLY the exact Current Bid pill badge (matching Image 2)
     return (
       <div className="current-bid-preview submitted" style={{
-        background: '#e0f2fe',
-        border: '1px solid #7dd3fc',
-        padding: '6px 14px',
-        borderRadius: '10px',
-        color: '#0284c7',
-        fontSize: '0.88rem',
-        fontWeight: '700',
+        background: '#dcfce7',
+        border: '1.5px solid #16a34a',
+        padding: '6px 16px',
+        borderRadius: '12px',
+        color: '#065f46',
+        fontSize: '0.95rem',
+        fontWeight: '800',
         display: 'inline-flex',
         alignItems: 'center',
-        gap: '6px',
-        whiteSpace: 'nowrap'
+        justifyContent: 'space-between',
+        minWidth: '180px',
+        gap: '24px',
+        whiteSpace: 'nowrap',
+        boxShadow: '0 1px 3px rgba(22, 163, 74, 0.12)'
       }}>
-        <span style={{ color: '#0284c7', fontWeight: '700' }}>✓ Current Bid:</span>
-        <strong style={{ color: '#0369a1', fontWeight: '800' }}>₹{currentRate}/MT</strong>
+        <span style={{ color: '#047857', fontWeight: '800', fontSize: '0.95rem', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+          ✓ Current Bid:
+        </span>
+        <strong style={{ color: '#064e3b', fontWeight: '900', fontSize: '1.15rem', letterSpacing: '-0.01em' }}>
+          ₹{currentRate}/MT
+        </strong>
       </div>
     );
   };
@@ -555,6 +562,37 @@ export const TransporterPortal = () => {
       const totalCalcAmount = parseFloat((rateVal * qtyVal).toFixed(2));
       const transId = currentTransporter?.id || currentTransporter?.code || currentTransporter?.username || 'transporter';
 
+      const newSub = {
+        id: `sub_${transId}_${Date.now()}`,
+        requirement_id: parentReqId,
+        rate_request_id: parentReqId,
+        item_id: targetItemId,
+        request_no: subIndentNo,
+        transporter_id: transId,
+        transporter_name: currentTransporter?.company_name || transId,
+        rate_per_unit: rateVal,
+        rate_per_mt: rateVal,
+        quoted_quantity_mt: qtyVal,
+        total_amount: totalCalcAmount,
+        status: 'Submitted',
+        bid_status: 'submitted',
+        submitted_at: new Date().toISOString()
+      };
+
+      if (typeof updateDB === 'function') {
+        updateDB({
+          ...db,
+          rate_submissions: [
+            newSub,
+            ...(db.rate_submissions || []).filter(s => !(
+              (String(s.transporter_id) === String(transId) || String(s.transporter_id) === String(currentTransporter?.code)) &&
+              (String(s.requirement_id) === String(parentReqId) || String(s.rate_request_id) === String(parentReqId)) &&
+              (String(s.item_id) === String(targetItemId) || String(s.request_no) === String(subIndentNo))
+            ))
+          ]
+        });
+      }
+
       // Persist bid directly to MySQL rate_submissions table via API
       await submitBid({
         requirement_id: parentReqId,
@@ -571,7 +609,7 @@ export const TransporterPortal = () => {
       });
 
       setSuccessNotice(`⚡ Quote rate ₹${rateVal.toLocaleString()}/MT submitted for ${subIndentNo}!`);
-      setQuickRates((prev) => ({ ...prev, [rateKey]: '' }));
+      setQuickRates((prev) => ({ ...prev, [rateKey]: '', [req.id]: '' }));
       setTimeout(() => setSuccessNotice(''), 5000);
 
       // ⚡ Immediately re-fetch fresh MySQL database state so hasSubmittedQuote becomes true instantly
@@ -1541,14 +1579,22 @@ export const TransporterPortal = () => {
 
                       const myExistingBid = (mySubmissions || []).find((s) => {
                         const sReqId = String(s.requirement_id || s.rate_request_id || '').trim();
-                        const sItemId = String(s.item_id || '').trim();
+                        const sItemId = String(s.item_id || s.request_no || '').trim();
+                        const sReqNo = String(s.request_no || '').trim();
+                        const reqNo = String(req.request_no || req.title || '').trim();
 
-                        const matchesReq = sReqId === reqParentId || sReqId === String(req.parent_req_no || '').trim() || sReqId === String(req.id || '').trim();
+                        const matchesReq = sReqId === reqParentId || 
+                                           sReqId === String(req.parent_req_no || '').trim() || 
+                                           sReqId === String(req.id || '').trim() ||
+                                           (sReqNo && reqNo && sReqNo === reqNo);
 
-                        const matchesItem = (reqItemId && sItemId === reqItemId) ||
+                        const matchesItem = !req.item_id ||
+                                            sItemId === reqItemId ||
+                                            sItemId === String(req.id || '').trim() ||
                                             (req.item_id && sItemId === String(req.item_id).trim()) ||
                                             (req.sub_indent_no && sItemId === String(req.sub_indent_no).trim()) ||
-                                            (req.request_no && sItemId === String(req.request_no).trim());
+                                            (req.request_no && sItemId === String(req.request_no).trim()) ||
+                                            (sReqNo && reqNo && sReqNo === reqNo);
 
                         return matchesReq && matchesItem;
                       });
