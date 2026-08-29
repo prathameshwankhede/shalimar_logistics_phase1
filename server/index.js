@@ -1,4 +1,4 @@
-// Hostinger Passenger Process Reload Signal v1.2.8 - Prevent Duplicate Quotes & Enforce Submitted State Per Sub-Indent
+// Hostinger Passenger Process Reload Signal v1.2.9 - Relocate Submit All Batch Bids Button to Bottom Footer
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
