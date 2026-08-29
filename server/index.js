@@ -1,4 +1,4 @@
-// Hostinger Passenger Process Reload Signal v1.1.9 - Audit Route Closure Fix
+// Hostinger Passenger Process Reload Signal v1.2.0 - Admin Compare Quotes Sub-Indent Item Filtering & Distinct Transporter Count Fix
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
