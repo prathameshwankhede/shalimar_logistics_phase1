@@ -2586,7 +2586,15 @@ export const AdminDashboard = () => {
                                                 <td style={{ padding: '14px 16px', textAlign: 'center' }}>
                                                   <button
                                                     type="button"
-                                                    onClick={() => setSelectedRequestForComparison(req)}
+                                                    onClick={() => setSelectedRequestForComparison({
+                                                      ...req,
+                                                      item_id: item.id,
+                                                      sub_indent_id: item.id,
+                                                      sub_indent_no: subCode,
+                                                      selectedItem: item,
+                                                      required_qty: Number(item.quantity_mt || item.required_qty || 0),
+                                                      title: `${subCode} (${item.pickup_origin || pickupStr} ➔ ${item.drop_location || dropStr})`
+                                                    })}
                                                     className="btn btn-primary"
                                                     style={{
                                                       background: '#2563eb',

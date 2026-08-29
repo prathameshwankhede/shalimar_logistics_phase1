@@ -22,6 +22,9 @@ export const RateComparisonView = ({ rateRequest, onBack }) => {
 
   const [notice, setNotice] = useState('');
 
+  const selectedItemId = rateRequest?.item_id || rateRequest?.sub_indent_id || rateRequest?.selectedItemId || rateRequest?.selectedItem?.id;
+  const selectedSubNo = rateRequest?.sub_indent_no || rateRequest?.selectedItem?.sub_indent_no || rateRequest?.sub_code;
+
   useEffect(() => {
     let isMounted = true;
     const loadRates = async () => {
@@ -29,7 +32,7 @@ export const RateComparisonView = ({ rateRequest, onBack }) => {
       try {
         setLoadingRates(true);
         const reqId = rateRequest.id || rateRequest.req_no;
-        const itemId = rateRequest.item_id || rateRequest.sub_indent_id;
+        const itemId = selectedItemId || selectedSubNo;
         const res = await getRequirementRates(reqId, itemId);
         if (res && res.success && Array.isArray(res.rates) && isMounted) {
           setLiveRates(res.rates);
@@ -41,30 +44,34 @@ export const RateComparisonView = ({ rateRequest, onBack }) => {
       }
     };
     loadRates();
-  }, [rateRequest?.id, rateRequest?.req_no, rateRequest?.item_id, rateRequest?.sub_indent_id]);
+  }, [rateRequest?.id, rateRequest?.req_no, selectedItemId, selectedSubNo]);
 
   // Fetch all submissions for this rate request (MySQL Live + Local Fallback 🛡️)
-  const selectedItemId = rateRequest?.item_id || rateRequest?.sub_indent_id;
   const rawSubmissions = liveRates.length > 0 ? liveRates : (db.rate_submissions || []);
   const submissions = rawSubmissions.filter((s) => {
     const matchesReq =
       String(s.rate_request_id) === String(rateRequest?.id) ||
       String(s.rate_request_id) === String(rateRequest?.request_no) ||
+      String(s.rate_request_id) === String(rateRequest?.req_no) ||
       String(s.requirement_id) === String(rateRequest?.id) ||
-      String(s.requirement_id) === String(rateRequest?.request_no);
+      String(s.requirement_id) === String(rateRequest?.request_no) ||
+      String(s.requirement_id) === String(rateRequest?.req_no);
     if (!matchesReq) return false;
-    if (selectedItemId) {
+    if (selectedItemId || selectedSubNo) {
       return (
         String(s.item_id) === String(selectedItemId) ||
-        String(s.item_id) === String(rateRequest?.sub_code) ||
-        String(s.item_id) === String(rateRequest?.sub_indent_no)
+        String(s.item_id) === String(selectedSubNo)
       );
     }
     return true;
   });
 
+  // Calculate unique transporter count for current sub-indent
+  const uniqueTransporters = new Set(submissions.map((s) => s.transporter_id).filter(Boolean));
+  const uniqueTransportersCount = uniqueTransporters.size;
+
   // Identify lowest rate (L1)
-  const validRates = submissions.map((s) => s.rate_per_unit).filter((r) => r && !isNaN(r));
+  const validRates = submissions.map((s) => parseFloat(s.rate_per_mt || s.rate_per_unit || 0)).filter((r) => r > 0);
   const lowestRate = validRates.length > 0 ? Math.min(...validRates) : null;
   const highestRate = validRates.length > 0 ? Math.max(...validRates) : null;
   const potentialSavings = lowestRate && highestRate ? (highestRate - lowestRate) * (rateRequest?.required_qty || 0) : 0;
@@ -408,7 +415,7 @@ export const RateComparisonView = ({ rateRequest, onBack }) => {
               <div>
                 <span style={{ fontSize: '0.85rem', fontWeight: '700', color: '#ffffff' }}>Rate Negotiation & Comparison Engine</span>
                 <p style={{ fontSize: '0.78rem', color: 'var(--text-sub)' }}>
-                  Total {submissions.length} Transporters submitted quotes. Lowest quote: <strong>₹{lowestRate}/MT</strong>.
+                  Total {uniqueTransportersCount} Transporter(s) submitted quote(s). Lowest quote: <strong>₹{lowestRate}/MT</strong>.
                 </p>
               </div>
             </div>

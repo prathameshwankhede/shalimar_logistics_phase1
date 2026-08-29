@@ -21,15 +21,22 @@ async function runQuoteAudit() {
     headers: { 'Authorization': `Bearer ${token}` }
   });
 
-  const data = await res.json();
-  console.log('--- ALL SUBMISSIONS IN MYSQL ---');
-  console.log(JSON.stringify(data.all_submissions, null, 2));
+  console.log(`HTTP STATUS: ${res.status}`);
+  const text = await res.text();
+  console.log('RAW RESPONSE:');
+  console.log(text.substring(0, 500));
 
-  console.log('\n--- DUPLICATES (COUNT > 1 FOR req_id + item_id + trans_id) ---');
-  console.log(JSON.stringify(data.duplicates, null, 2));
+  if (res.ok) {
+    const data = JSON.parse(text);
+    console.log('\n--- ALL SUBMISSIONS IN MYSQL ---');
+    console.log(JSON.stringify(data.all_submissions, null, 2));
 
-  console.log('\n--- INDEXES ON rate_submissions ---');
-  console.log(JSON.stringify(data.indexes, null, 2));
+    console.log('\n--- DUPLICATES (COUNT > 1 FOR req_id + item_id + trans_id) ---');
+    console.log(JSON.stringify(data.duplicates, null, 2));
+
+    console.log('\n--- INDEXES ON rate_submissions ---');
+    console.log(JSON.stringify(data.indexes, null, 2));
+  }
 }
 
 runQuoteAudit().catch(err => console.error('Audit Script Error:', err));
