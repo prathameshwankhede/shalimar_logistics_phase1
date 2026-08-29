@@ -2646,8 +2646,8 @@ export const AdminDashboard = () => {
                                           }}
                                           title="Finalize agreed rate for this sub-indent"
                                         >
-                                          <Award size={15} />
-                                          <span>{isFinalizingKey === `${openedReq.id || reqNoStr}_${item.id || subCode}` ? 'Finalizing...' : '🏅 Finalize Rate'}</span>
+                                          <span style={{ fontSize: '0.9rem' }}>🏅</span>
+                                          <span>{isFinalizingKey === `${openedReq.id || reqNoStr}_${item.id || subCode}` ? 'Finalizing...' : 'Finalize Rate'}</span>
                                         </button>
                                       )}
                                     </td>
@@ -3017,8 +3017,8 @@ export const AdminDashboard = () => {
                                         gap: '6px'
                                       }}
                                     >
-                                      <Award size={14} />
-                                      <span>🏅 Finalize Rate</span>
+                                      <span style={{ fontSize: '0.85rem' }}>🏅</span>
+                                      <span>Finalize Rate</span>
                                     </button>
                                   )}
                                 </td>

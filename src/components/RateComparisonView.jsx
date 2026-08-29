@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { Award, CheckCircle2, TrendingDown, Clock, Sparkles, MessageSquare, Snowflake, Send, X, AlertCircle, Lock, FileText, Printer } from 'lucide-react';
+import { CheckCircle2, TrendingDown, Clock, Sparkles, MessageSquare, Snowflake, Send, X, AlertCircle, Lock, FileText, Printer } from 'lucide-react';
 import { ParticularBidReportModal } from './ParticularBidReportModal';
 import { NegotiationHistoryModal } from './NegotiationHistoryModal';
 import { getRequirementRates, awardRequirementRate, sendAdminCounter, finalizeBid } from '../api/rateSubmissionApi';

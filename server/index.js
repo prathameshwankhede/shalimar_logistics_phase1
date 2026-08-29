@@ -1,4 +1,4 @@
-// Hostinger Passenger Process Reload Signal v1.5.3 - Auth Base URL & Token Store Fix
+// Hostinger Passenger Process Reload Signal v1.5.4 - Fix ReferenceError Award is not defined
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
