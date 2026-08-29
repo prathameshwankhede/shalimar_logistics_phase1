@@ -1305,6 +1305,7 @@ async function handleFinalizeBid(req, res) {
        SET final_rate = ?,
            rate_per_mt = ?,
            total_amount = ?,
+           counter_offer_status = 'ACCEPTED',
            bid_status = 'FINALIZED',
            finalized_at = NOW(),
            updated_at = NOW()
