@@ -64,25 +64,8 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-// Diagnostic schema inspection endpoint
-app.get('/api/diag/schema', async (req, res) => {
-  try {
-    const { pool } = await import('./config/db.js');
-    const [rateSubCols] = await pool.query('DESCRIBE rate_submissions');
-    const [reqCols] = await pool.query('DESCRIBE transport_requirements');
-    const [itemCols] = await pool.query('DESCRIBE transport_requirement_items');
-    res.json({
-      success: true,
-      tables: {
-        rate_submissions: rateSubCols.map(c => ({ Field: c.Field, Type: c.Type, Null: c.Null, Key: c.Key, Default: c.Default })),
-        transport_requirements: reqCols.map(c => ({ Field: c.Field, Type: c.Type })),
-        transport_requirement_items: itemCols.map(c => ({ Field: c.Field, Type: c.Type }))
-      }
-    });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
+// Hostinger Passenger Process Reload Signal v1.8.0 - Full Production Database Schema Audit
+
 
 // Static File Serving for Hostinger Production Build (dist folder)
 const distPath = path.resolve(__dirname, '../dist');
