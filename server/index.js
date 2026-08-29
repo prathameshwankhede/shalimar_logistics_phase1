@@ -1,4 +1,4 @@
-// Hostinger Passenger Process Reload Signal v1.2.2 - Hide Route & Locations on Parent Batch Directory Rows
+// Hostinger Passenger Process Reload Signal v1.2.3 - Eliminate 30s Stale Cache Delay & Instant Post-Mutation Refresh
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
