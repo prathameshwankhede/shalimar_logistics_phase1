@@ -1,4 +1,4 @@
-// Hostinger Passenger Process Reload Signal v1.7.3 - Fix Unknown column is_frozen schema mismatch
+// Hostinger Passenger Process Reload Signal v1.7.4 - Fix Unknown column rate_request_id in Counter Offer API
 import express from 'express';
 import cors from 'cors';
 import path from 'path';

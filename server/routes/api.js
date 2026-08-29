@@ -856,7 +856,6 @@ async function handleAdminCounter(req, res) {
       await conn.query(
         `UPDATE rate_submissions
          SET original_rate = COALESCE(original_rate, ?),
-             original_rate_per_mt = COALESCE(original_rate_per_mt, ?),
              counter_rate = ?,
              bid_status = 'COUNTER_OFFERED',
              negotiation_status = 'COUNTER_OFFERED',
@@ -865,7 +864,7 @@ async function handleAdminCounter(req, res) {
              counter_updated_at = NOW(),
              updated_at = NOW()
          WHERE id = ?`,
-        [origRate, origRate, counterRateVal, remText, id]
+        [origRate, counterRateVal, remText, id]
       );
 
       const negId = `neg_${Date.now()}_${Math.random().toString(36).substring(2,7)}`;
@@ -926,50 +925,63 @@ async function handleAdminCounterAll(req, res) {
       return res.status(400).json({ success: false, error: 'counter_rate must be a positive number.' });
     }
 
-    if (!requirementId || !itemId) {
-      return res.status(400).json({ success: false, error: 'requirementId and itemId are required.' });
+    if (!requirementId) {
+      return res.status(400).json({ success: false, error: 'requirementId is required.' });
     }
 
     const conn = await pool.getConnection();
     try {
       await conn.beginTransaction();
 
-      // Find all submitted quotes for exact (requirement_id, item_id)
-      const [quotes] = await conn.query(
-        `SELECT * FROM rate_submissions 
-         WHERE (requirement_id = ? OR rate_request_id = ?) 
-           AND (item_id = ? OR sub_indent_no = ?)
-           AND (bid_status != 'finalized' AND bid_status != 'FINALIZED' AND status != 'Rate Frozen' AND status != 'Awarded')`,
-        [requirementId, requirementId, itemId, itemId]
+      // Resolve canonical parent requirement ID
+      const [reqRows] = await conn.query(
+        'SELECT id, req_no FROM transport_requirements WHERE id = ? OR req_no = ? LIMIT 1',
+        [requirementId, requirementId]
       );
+      const actualReqId = reqRows[0]?.id || requirementId;
 
+      let actualItemId = itemId || 'MAIN';
+      if (itemId && itemId !== 'MAIN') {
+        const [itemRows] = await conn.query(
+          'SELECT id, sub_indent_no FROM transport_requirement_items WHERE (id = ? OR sub_indent_no = ?) AND requirement_id = ? LIMIT 1',
+          [itemId, itemId, actualReqId]
+        );
+        if (itemRows.length > 0) {
+          actualItemId = itemRows[0].id;
+        }
+      }
+
+      // Find all submitted quotes for this requirement & item
+      let quotesQuery = `SELECT * FROM rate_submissions 
+                         WHERE requirement_id = ? 
+                           AND UPPER(COALESCE(bid_status, '')) NOT IN ('FINALIZED', 'AWARDED')
+                           AND UPPER(COALESCE(status, '')) NOT IN ('RATE FROZEN', 'AWARDED')`;
+      let queryParams = [actualReqId];
+
+      if (actualItemId && actualItemId !== 'MAIN') {
+        quotesQuery += ` AND (item_id = ? OR item_id = ? OR item_id = 'MAIN')`;
+        queryParams.push(actualItemId, itemId);
+      }
+
+      const [quotes] = await conn.query(quotesQuery, queryParams);
       let targetQuotes = [...quotes];
 
       if (targetQuotes.length === 0) {
-        // Fallback search matching requirement_id only
+        // Fallback: search all active quotes on parent requirement
         const [fallbackQuotes] = await conn.query(
           `SELECT * FROM rate_submissions 
-           WHERE (requirement_id = ? OR rate_request_id = ?) 
-             AND (bid_status != 'finalized' AND bid_status != 'FINALIZED' AND status != 'Rate Frozen' AND status != 'Awarded')`,
-          [requirementId, requirementId]
+           WHERE requirement_id = ? 
+             AND UPPER(COALESCE(bid_status, '')) NOT IN ('FINALIZED', 'AWARDED')
+             AND UPPER(COALESCE(status, '')) NOT IN ('RATE FROZEN', 'AWARDED')`,
+          [actualReqId]
         );
-
-        if (fallbackQuotes.length > 0) {
-          const matched = fallbackQuotes.filter(s => 
-            String(s.item_id || '').trim() === String(itemId).trim() ||
-            String(s.item_id || '').trim() === 'MAIN' ||
-            !s.item_id
-          );
-          if (matched.length > 0) {
-            targetQuotes = matched;
-          }
-        }
+        targetQuotes = fallbackQuotes;
       }
 
       if (targetQuotes.length === 0) {
         await conn.rollback();
         conn.release();
-        return res.status(404).json({ success: false, error: 'No active transporter quotes found for this sub-indent item.' });
+        return res.status(404).json({ success: false, error: 'No active transporter quotes found for this requirement.' });
       }
 
       const adminUser = req.user.username || 'admin';
@@ -982,7 +994,6 @@ async function handleAdminCounterAll(req, res) {
         await conn.query(
           `UPDATE rate_submissions
            SET original_rate = COALESCE(original_rate, ?),
-               original_rate_per_mt = COALESCE(original_rate_per_mt, ?),
                counter_rate = ?,
                bid_status = 'COUNTER_OFFERED',
                negotiation_status = 'COUNTER_OFFERED',
@@ -991,7 +1002,7 @@ async function handleAdminCounterAll(req, res) {
                counter_updated_at = NOW(),
                updated_at = NOW()
            WHERE id = ?`,
-          [origRate, origRate, counterRateVal, remText, sub.id]
+          [origRate, counterRateVal, remText, sub.id]
         );
 
         const negId = `neg_${Date.now()}_${Math.random().toString(36).substring(2,7)}`;
@@ -999,14 +1010,14 @@ async function handleAdminCounterAll(req, res) {
           `INSERT INTO rate_negotiations
            (id, requirement_id, item_id, transporter_id, rate_submission_id, action_type, offered_rate, remarks, created_by, created_at)
            VALUES (?, ?, ?, ?, ?, 'ADMIN_COUNTER', ?, ?, ?, NOW())`,
-          [negId, sub.requirement_id || requirementId, sub.item_id || itemId, sub.transporter_id, sub.id, counterRateVal, remText, adminUser]
+          [negId, sub.requirement_id || actualReqId, sub.item_id || actualItemId, sub.transporter_id, sub.id, counterRateVal, remText, adminUser]
         );
 
         await conn.query(
           `INSERT INTO bid_negotiation_history 
            (rate_submission_id, requirement_id, item_id, transporter_id, action_type, previous_rate, new_rate, actor_type, actor_id, message, created_at)
            VALUES (?, ?, ?, ?, 'ADMIN_COUNTER', ?, ?, 'ADMIN', ?, ?, NOW())`,
-          [sub.id, sub.requirement_id || requirementId, sub.item_id || itemId, sub.transporter_id, prevRate, counterRateVal, adminUser, remText || `Admin proposed counter offer of ₹${counterRateVal}/MT to all bidders`]
+          [sub.id, sub.requirement_id || actualReqId, sub.item_id || actualItemId, sub.transporter_id, prevRate, counterRateVal, adminUser, remText || `Admin proposed counter offer of ₹${counterRateVal}/MT to all bidders`]
         );
 
         updatedCount++;
