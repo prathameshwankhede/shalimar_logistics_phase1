@@ -1,4 +1,4 @@
-// Hostinger Passenger Process Reload Signal v1.4.7 - Always Visible Counter Rate Action Button
+// Hostinger Passenger Process Reload Signal v1.4.8 - Counter Rate Button in Matrix Column
 import express from 'express';
 import cors from 'cors';
 import path from 'path';

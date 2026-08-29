@@ -293,93 +293,7 @@ export const RateComparisonView = ({ rateRequest, onBack }) => {
           </div>
         </div>
 
-        {/* 📡 GLOBAL COUNTER OFFER BROADCAST BAR FOR ALL TRANSPORTERS (HIDDEN WHEN BID IS AWARDED / FINALIZED) */}
-        {rateRequest?.status !== 'Awarded' ? (
-          <div className="glass-panel-glow" style={{
-            marginTop: '16px',
-            padding: '16px 20px',
-            border: '1.5px solid #f59e0b',
-            borderRadius: '14px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            flexWrap: 'wrap',
-            gap: '16px'
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: '240px' }}>
-              <div style={{ background: '#f59e0b', padding: '8px', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <MessageSquare size={22} color="#ffffff" />
-              </div>
-              <div>
-                <div style={{ fontSize: '0.95rem', fontWeight: '900', color: 'var(--text-main)', letterSpacing: '0.03em', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  📡 BROADCAST COUNTER OFFER TO ALL TRANSPORTERS
-                </div>
-                <div style={{ fontSize: '0.76rem', color: 'var(--text-muted)', fontWeight: '600' }}>
-                  {rateRequest?.admin_counter_rate ? (
-                    <>Active Counter Offer: <strong style={{ color: '#d97706', fontSize: '0.88rem' }}>₹{rateRequest.admin_counter_rate}/MT</strong> (Broadcasted to all bidders)</>
-                  ) : (
-                    'Set a target counter rate here to broadcast to ALL transporters for this requirement 📢'
-                  )}
-                </div>
-              </div>
-            </div>
 
-            <form
-              onSubmit={(e) => handleSendCounterOffer(e, true)}
-              style={{ display: 'flex', gap: '10px', alignItems: 'center', flex: 1, maxWidth: '520px' }}
-            >
-              <div style={{ position: 'relative', flex: 1 }}>
-                <span style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#fbbf24', fontWeight: '800' }}>₹</span>
-                <input
-                  type="number"
-                  min="1"
-                  placeholder="e.g. 2650"
-                  className="form-control"
-                  value={counterForm.counter_rate}
-                  onChange={(e) => setCounterForm({ ...counterForm, counter_rate: e.target.value })}
-                  style={{ paddingLeft: '28px', fontSize: '0.92rem', height: '42px', background: 'rgba(15, 23, 42, 0.9)', border: '1px solid #f59e0b', color: '#fbbf24', fontWeight: '800', borderRadius: '8px' }}
-                  required
-                />
-              </div>
-              <button
-                type="submit"
-                className="btn"
-                style={{
-                  background: 'linear-gradient(135deg, #d97706 0%, #f59e0b 100%)',
-                  color: '#ffffff',
-                  boxShadow: '0 0 15px rgba(245, 158, 11, 0.4)',
-                  padding: '10px 20px',
-                  fontSize: '0.85rem',
-                  fontWeight: '900',
-                  height: '42px',
-                  borderRadius: '8px',
-                  border: 'none',
-                  whiteSpace: 'nowrap',
-                  cursor: 'pointer'
-                }}
-              >
-                <Send size={15} /> 📡 Broadcast Counter Offer To All
-              </button>
-            </form>
-          </div>
-        ) : (
-          <div style={{
-            marginTop: '16px',
-            padding: '12px 18px',
-            background: 'rgba(16, 185, 129, 0.12)',
-            border: '1.5px solid #10b981',
-            borderRadius: '14px',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '10px',
-            color: '#059669',
-            fontWeight: '800',
-            fontSize: '0.88rem'
-          }}>
-            <CheckCircle2 size={20} color="#10b981" />
-            <span>✓ Freight Requirement Awarded & Finalized. Bidding & Counter-Offer Broadcasts are Closed.</span>
-          </div>
-        )}
 
         {/* Savings Metric Header Card */}
         {submissions.length > 1 && (
@@ -520,15 +434,57 @@ export const RateComparisonView = ({ rateRequest, onBack }) => {
                     </td>
 
                     <td>
-                      {sub.counter_rate_per_unit ? (
-                        <div style={{ background: isFrozen ? 'rgba(56, 189, 248, 0.15)' : 'rgba(245, 158, 11, 0.15)', padding: '4px 8px', borderRadius: '6px', border: isFrozen ? '1px solid #38bdf8' : '1px solid #f59e0b', display: 'inline-block' }}>
-                          <span style={{ fontSize: '0.72rem', color: isFrozen ? '#38bdf8' : '#fbbf24', fontWeight: '700', display: 'block' }}>
-                            {isFrozen ? '❄️ ACCEPTED TARGET' : '💬 ADMIN COUNTER'}
-                          </span>
-                          <strong style={{ color: '#ffffff', fontSize: '1rem' }}>₹{sub.counter_rate_per_unit}/MT</strong>
+                      {sub.counter_rate_per_unit || sub.counter_rate ? (
+                        <div style={{ background: isFrozen ? 'rgba(56, 189, 248, 0.15)' : 'rgba(245, 158, 11, 0.15)', padding: '6px 10px', borderRadius: '6px', border: isFrozen ? '1px solid #38bdf8' : '1px solid #f59e0b', display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+                          <div>
+                            <span style={{ fontSize: '0.72rem', color: isFrozen ? '#38bdf8' : '#fbbf24', fontWeight: '700', display: 'block' }}>
+                              {isFrozen ? '❄️ ACCEPTED TARGET' : '💬 ADMIN COUNTER'}
+                            </span>
+                            <strong style={{ color: '#ffffff', fontSize: '1rem' }}>₹{sub.counter_rate_per_unit || sub.counter_rate}/MT</strong>
+                          </div>
+                          {!isFrozen && !existingAllocation && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setActiveCounterSub(sub);
+                                setCounterForm({ counter_rate: sub.counter_rate || sub.counter_rate_per_unit || '', note: '' });
+                              }}
+                              className="btn btn-secondary"
+                              style={{ padding: '2px 8px', fontSize: '0.72rem', border: '1px solid #f59e0b', color: '#fbbf24', borderRadius: '4px', cursor: 'pointer' }}
+                            >
+                              ✏ Edit
+                            </button>
+                          )}
                         </div>
-                      ) : (
+                      ) : existingAllocation ? (
                         <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>None Sent</span>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setActiveCounterSub(sub);
+                            setCounterForm({ counter_rate: sub.counter_rate || Math.round((sub.rate_per_unit || sub.rate_per_mt) * 0.92), note: '' });
+                          }}
+                          className="btn btn-primary"
+                          style={{
+                            padding: '6px 14px',
+                            fontSize: '0.8rem',
+                            fontWeight: '900',
+                            borderRadius: '6px',
+                            border: '1.5px solid #38bdf8',
+                            color: '#ffffff',
+                            background: 'linear-gradient(135deg, #0284c7 0%, #2563eb 100%)',
+                            boxShadow: '0 2px 6px rgba(2, 132, 199, 0.35)',
+                            cursor: 'pointer',
+                            whiteSpace: 'nowrap',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '6px'
+                          }}
+                          title="Send target counter rate to transporter"
+                        >
+                          <MessageSquare size={14} /> Counter Rate
+                        </button>
                       )}
                     </td>
 
@@ -577,21 +533,6 @@ export const RateComparisonView = ({ rateRequest, onBack }) => {
                         <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Contract Closed</span>
                       ) : (
                         <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
-                          
-                          {/* Send Counter Rate Button */}
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setActiveCounterSub(sub);
-                              setCounterForm({ counter_rate: sub.counter_rate || Math.round((sub.rate_per_unit || sub.rate_per_mt) * 0.92), note: '' });
-                            }}
-                            className="btn btn-secondary"
-                            style={{ padding: '6px 10px', fontSize: '0.78rem' }}
-                            title="Send target counter rate to transporter"
-                          >
-                            <MessageSquare size={14} color="#f59e0b" /> Counter Rate
-                          </button>
-
                           {/* Finalize Bid Button */}
                           {sub.bid_status !== 'finalized' && (
                             <button
