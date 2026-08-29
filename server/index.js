@@ -1,4 +1,4 @@
-// Hostinger Passenger Process Reload Signal v1.7.2 - Instant Single-Quote UI Persistence & Universal Central Bid Matcher
+// Hostinger Passenger Process Reload Signal v1.7.3 - Fix Unknown column is_frozen schema mismatch
 import express from 'express';
 import cors from 'cors';
 import path from 'path';

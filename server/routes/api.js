@@ -687,19 +687,18 @@ async function handleCreateRateSubmission(req, res) {
     await ensureRateNegotiationsTableExists();
 
     await pool.query(
-      `INSERT INTO rate_submissions (id, requirement_id, item_id, transporter_id, rate_per_mt, original_rate, original_rate_per_mt, quoted_quantity_mt, total_amount, remarks, status, bid_status, negotiation_status, submitted_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Submitted', 'Submitted', NOW())
+      `INSERT INTO rate_submissions (id, requirement_id, item_id, transporter_id, rate_per_mt, original_rate, quoted_quantity_mt, total_amount, remarks, status, bid_status, negotiation_status, submitted_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Submitted', 'Submitted', NOW())
        ON DUPLICATE KEY UPDATE
        rate_per_mt = VALUES(rate_per_mt),
        original_rate = COALESCE(original_rate, VALUES(rate_per_mt)),
-       original_rate_per_mt = COALESCE(original_rate_per_mt, VALUES(rate_per_mt)),
        quoted_quantity_mt = VALUES(quoted_quantity_mt),
        total_amount = VALUES(total_amount),
        remarks = VALUES(remarks),
        status = VALUES(status),
        submitted_at = NOW(),
        updated_at = NOW()`,
-      [subId, actualReqId, actualItemId, actualTransId, rateVal, rateVal, rateVal, qtyVal, totalAmount, rem, subStatus]
+      [subId, actualReqId, actualItemId, actualTransId, rateVal, rateVal, qtyVal, totalAmount, rem, subStatus]
     );
 
     try {
@@ -749,6 +748,8 @@ async function handleCreateRateSubmission(req, res) {
         COALESCE(t.code, '') AS transporter_code,
         s.rate_per_mt,
         s.rate_per_mt AS rate_per_unit,
+        s.rate_per_mt AS final_rate,
+        s.rate_per_mt AS final_rate_per_mt,
         s.quoted_quantity_mt,
         s.total_amount,
         s.remarks,
@@ -757,11 +758,8 @@ async function handleCreateRateSubmission(req, res) {
         s.bid_status,
         s.negotiation_status,
         s.original_rate,
-        s.original_rate_per_mt,
+        s.original_rate AS original_rate_per_mt,
         s.counter_rate,
-        s.final_rate,
-        s.final_rate_per_mt,
-        s.is_frozen,
         s.submitted_at,
         s.updated_at,
         COALESCE(r.req_no, r.id, '') AS request_no,
@@ -1327,13 +1325,9 @@ async function handleGetTransporterDashboardSummary(req, res) {
        FROM rate_submissions 
        WHERE transporter_id IN (?) 
          AND (
-           UPPER(bid_status) = 'FINALIZED' OR 
-           UPPER(bid_status) = 'AWARDED' OR 
-           UPPER(bid_status) = 'COUNTER_ACCEPTED' OR 
-           UPPER(status) = 'FINALIZED' OR 
-           UPPER(status) = 'AWARDED' OR 
-           UPPER(status) = 'RATE FROZEN' OR 
-           is_frozen = 1
+           UPPER(COALESCE(bid_status, '')) IN ('FINALIZED', 'AWARDED', 'COUNTER_ACCEPTED') OR 
+           UPPER(COALESCE(status, '')) IN ('FINALIZED', 'AWARDED', 'ACCEPTED', 'RATE FROZEN', 'SELECTED') OR 
+           final_rate IS NOT NULL
          )`,
       [transIds]
     );
