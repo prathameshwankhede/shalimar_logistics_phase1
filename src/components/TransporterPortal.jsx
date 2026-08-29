@@ -53,6 +53,7 @@ export const TransporterPortal = () => {
 
   const [allocationFilter, setAllocationFilter] = useState('all'); // 'all', 'active', 'completed'
   const [selectedMonth, setSelectedMonth] = useState('2026-08'); // Month filter for statement
+  const [submittingItems, setSubmittingItems] = useState({});
 
   const [expandedBatches, setExpandedBatches] = useState({});
   const toggleBatchExpand = (batchKey) => {
@@ -361,7 +362,7 @@ export const TransporterPortal = () => {
   };
 
   // FAST 1-LINE INLINE SUBMIT HANDLER (Supports Double/Re-Quoted Bids 🚀)
-  const handleExpressQuickSubmit = (e, req) => {
+  const handleExpressQuickSubmit = async (e, req) => {
     e.preventDefault();
     if (!currentTransporter) {
       alert('Please select or log in to a Transporter Account first.');
@@ -376,94 +377,43 @@ export const TransporterPortal = () => {
       return;
     }
 
-    const parentReqId = req.requirement_id || req.id;
-    const targetItemId = req.item_id || req.sub_indent_id || req.id;
-    const subIndentNo = req.sub_indent_no || req.request_no || req.id;
-    const qtyVal = Number(req.required_qty || req.quantity_mt || 0);
-    const totalCalcAmount = parseFloat((rateVal * qtyVal).toFixed(2));
-    const transId = currentTransporter?.id || currentTransporter?.code || currentTransporter?.username || 'transporter';
+    setSubmittingItems((prev) => ({ ...prev, [rateKey]: true, [req.id]: true }));
 
-    let updatedSubmissions = [...(db.rate_submissions || [])];
-    const existingIdx = updatedSubmissions.findIndex(
-      (s) => (String(s.requirement_id || s.rate_request_id) === String(parentReqId) || String(s.rate_request_id) === String(req.parent_req_no)) &&
-             (String(s.item_id) === String(targetItemId) || String(s.item_id) === String(subIndentNo)) &&
-             (String(s.transporter_id) === String(transId) || String(s.transporter_id) === String(currentTransporter?.code) || String(s.transporter_id) === String(currentTransporter?.username))
-    );
+    try {
+      const parentReqId = req.requirement_id || req.id;
+      const targetItemId = req.item_id || req.sub_indent_id || req.id;
+      const subIndentNo = req.sub_indent_no || req.request_no || req.id;
+      const qtyVal = Number(req.required_qty || req.quantity_mt || 0);
+      const totalCalcAmount = parseFloat((rateVal * qtyVal).toFixed(2));
+      const transId = currentTransporter?.id || currentTransporter?.code || currentTransporter?.username || 'transporter';
 
-    if (existingIdx >= 0 && updatedSubmissions[existingIdx].is_frozen) {
-      alert(`🛑 RATE FROZEN: Your agreed rate of ₹${updatedSubmissions[existingIdx].rate_per_unit}/MT has already been accepted/awarded and cannot be changed.`);
-      return;
+      // Persist bid directly to MySQL rate_submissions table via API
+      await submitBid({
+        requirement_id: parentReqId,
+        rate_request_id: parentReqId,
+        item_id: targetItemId,
+        request_no: subIndentNo,
+        transporter_id: transId,
+        transporter_name: currentTransporter?.company_name || transId,
+        rate_per_unit: rateVal,
+        rate_per_mt: rateVal,
+        quoted_quantity_mt: qtyVal,
+        total_amount: totalCalcAmount,
+        status: 'Submitted'
+      });
+
+      setSuccessNotice(`⚡ Quote rate ₹${rateVal.toLocaleString()}/MT submitted for ${subIndentNo}!`);
+      setQuickRates((prev) => ({ ...prev, [rateKey]: '' }));
+      setTimeout(() => setSuccessNotice(''), 5000);
+
+      // ⚡ Immediately re-fetch fresh MySQL database state so hasSubmittedQuote becomes true instantly
+      await refreshRequirements();
+    } catch (err) {
+      console.error('Quick bid submission error:', err);
+      alert(err.message || 'Failed to submit quote. Please try again.');
+    } finally {
+      setSubmittingItems((prev) => ({ ...prev, [rateKey]: false, [req.id]: false }));
     }
-
-    // 🛡️ COUNTER BID VALIDATION RULE: Updated rate MUST be strictly lower than competing counter rate!
-    const existingBid = existingIdx >= 0 ? updatedSubmissions[existingIdx] : null;
-    const counterCeiling = parseFloat(existingBid?.counter_rate_per_unit || req.admin_counter_rate || (existingBid ? existingBid.rate_per_unit : 0));
-    if (existingBid && counterCeiling > 0 && rateVal >= counterCeiling) {
-      alert(`🛑 BID VALIDATION ERROR:\n\nYour updated rate (₹${rateVal.toLocaleString()}/MT) must be STRICTLY LOWER than the competing/counter rate (₹${counterCeiling.toLocaleString()}/MT)!\n\nYou cannot submit a higher or equal freight rate.`);
-      return;
-    }
-
-    const newSubId = existingIdx >= 0 ? updatedSubmissions[existingIdx].id : `sub_${(transId).toLowerCase()}_${targetItemId}_${Date.now()}`;
-    const subObj = {
-      ...(existingIdx >= 0 ? updatedSubmissions[existingIdx] : {}),
-      id: newSubId,
-      requirement_id: parentReqId,
-      rate_request_id: parentReqId,
-      item_id: targetItemId,
-      transporter_id: transId,
-      transporter_name: currentTransporter?.company_name || transId,
-      rate_per_unit: rateVal,
-      rate_per_mt: rateVal,
-      quoted_quantity_mt: qtyVal,
-      total_estimated_amount: totalCalcAmount,
-      total_amount: totalCalcAmount,
-      transit_days: 2,
-      notes: 'Fast 1-line quote submitted.',
-      status: 'Submitted',
-      submitted_at: new Date().toISOString(),
-      ...(counterCeiling > 0 ? {
-        has_responded_to_counter: true,
-        responded_counter_rate: counterCeiling
-      } : {})
-    };
-
-    if (existingIdx >= 0) {
-      updatedSubmissions[existingIdx] = subObj;
-    } else {
-      updatedSubmissions.unshift(subObj);
-    }
-
-    // Persist bid directly to MySQL rate_submissions table via API
-    submitBid({
-      id: subObj.id,
-      requirement_id: parentReqId,
-      rate_request_id: parentReqId,
-      item_id: targetItemId,
-      request_no: subIndentNo,
-      transporter_id: transId,
-      transporter_name: currentTransporter?.company_name || transId,
-      rate_per_unit: rateVal,
-      rate_per_mt: rateVal,
-      quoted_quantity_mt: qtyVal,
-      total_amount: totalCalcAmount,
-      status: 'Submitted'
-    }).catch(err => console.error('Quick bid persistence warning:', err.message));
-
-    const updatedDb = addSecurityLog(
-      {
-        ...db,
-        rate_submissions: updatedSubmissions
-      },
-      `SUBMIT_RATE_BID (Updated ₹${rateVal}/MT for ${subIndentNo})`,
-      currentTransporter.company_name,
-      'transporter',
-      'BID_SUBMITTED 🛡️'
-    );
-
-    updateDB(updatedDb);
-    setSuccessNotice(`⚡ Quote rate ₹${rateVal.toLocaleString()}/MT saved & updated for ${subIndentNo}!`);
-    setQuickRates((prev) => ({ ...prev, [rateKey]: '' }));
-    setTimeout(() => setSuccessNotice(''), 5000);
   };
 
   const handleRateSubmit = (e) => {
@@ -1170,166 +1120,153 @@ export const TransporterPortal = () => {
                                            </thead>
                                            <tbody>
                                              {(group.items || []).map((req, rIdx) => {
-                                               const myExistingBid = (mySubmissions || []).find((s) => 
-                                                  (String(s.rate_request_id) === String(req.id) || String(s.rate_request_id) === String(req.parent_req_no) || String(s.requirement_id) === String(req.id)) &&
-                                                  (String(s.item_id) === String(req.item_id) || String(s.item_id) === String(req.sub_indent_no) || String(s.item_id) === String(req.request_no) || !req.item_id)
-                                                );
-                                               const isAwarded = req.status === 'Awarded';
-                                               const subKey = getSubIndentKey(req);
-                                               const currentInputRate = quickRates[subKey] !== undefined ? quickRates[subKey] : '';
-                                               const displayCode = req.request_no || req.title || 'REQ';
+                                                const reqParentId = String(req.requirement_id || req.parent_req_no || req.id || '').trim();
+                                                const reqItemId = String(req.item_id || req.sub_indent_no || req.request_no || '').trim();
 
-                                               return (
-                                                 <tr
-                                                   key={req.item_id ? `${req.id}_${req.item_id}` : (req.id || `sub_trans_${rIdx}`)}
-                                                   style={{ background: rIdx % 2 === 0 ? '#ffffff' : '#f8fafc', borderBottom: '1px solid #e2e8f0' }}
-                                                 >
-                                                   <td style={{ padding: '10px 14px' }}>
-                                                     <div style={{
-                                                       fontSize: '0.92rem',
-                                                       fontWeight: '900',
-                                                       color: '#0f172a',
-                                                       letterSpacing: '0.01em'
-                                                     }}>
-                                                       {displayCode}
-                                                     </div>
-                                                   </td>
+                                                const myExistingBid = (mySubmissions || []).find((s) => {
+                                                  const sReqId = String(s.requirement_id || s.rate_request_id || '').trim();
+                                                  const sItemId = String(s.item_id || '').trim();
 
-                                                   <td style={{ padding: '10px 14px' }}>
-                                                     <div style={{ fontSize: '0.82rem', color: '#475569', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: '600' }}>
-                                                       <MapPin size={12} color="#0284c7" /> 📍 {req.origin_city || 'N/A'} ➔ 🎯 <strong style={{ color: '#d97706', fontWeight: '800', fontSize: '0.88rem' }}>{req.dest_city || 'N/A'}</strong>
-                                                     </div>
-                                                     {req.admin_counter_rate && (
-                                                        <span style={{ fontSize: '0.72rem', background: '#fef3c7', color: '#d97706', border: '1px solid #f59e0b', padding: '2px 8px', borderRadius: '6px', fontWeight: '800', display: 'inline-flex', alignItems: 'center', gap: '4px', marginTop: '4px' }}>
-                                                          🔥 Competing Transporter Bid: ₹{req.admin_counter_rate}/MT
+                                                  const matchesReq = sReqId === reqParentId || sReqId === String(req.parent_req_no || '').trim() || sReqId === String(req.id || '').trim();
+
+                                                  const matchesItem = (reqItemId && sItemId === reqItemId) ||
+                                                                      (req.item_id && sItemId === String(req.item_id).trim()) ||
+                                                                      (req.sub_indent_no && sItemId === String(req.sub_indent_no).trim()) ||
+                                                                      (req.request_no && sItemId === String(req.request_no).trim());
+
+                                                  return matchesReq && matchesItem;
+                                                });
+                                                const hasSubmittedQuote = Boolean(myExistingBid);
+                                                const isAwarded = req.status === 'Awarded';
+                                                const subKey = getSubIndentKey(req);
+                                                const isSubmitting = submittingItems[subKey] || submittingItems[req.id];
+                                                const currentInputRate = quickRates[subKey] !== undefined ? quickRates[subKey] : '';
+                                                const displayCode = req.request_no || req.title || 'REQ';
+
+                                                return (
+                                                  <tr
+                                                    key={req.item_id ? `${req.id}_${req.item_id}` : (req.id || `sub_trans_${rIdx}`)}
+                                                    style={{ background: rIdx % 2 === 0 ? '#ffffff' : '#f8fafc', borderBottom: '1px solid #e2e8f0' }}
+                                                  >
+                                                    <td style={{ padding: '10px 14px' }}>
+                                                      <div style={{
+                                                        fontSize: '0.92rem',
+                                                        fontWeight: '900',
+                                                        color: '#0f172a',
+                                                        letterSpacing: '0.01em'
+                                                      }}>
+                                                        {displayCode}
+                                                      </div>
+                                                    </td>
+
+                                                    <td style={{ padding: '10px 14px' }}>
+                                                      <div style={{ fontSize: '0.82rem', color: '#475569', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: '600' }}>
+                                                        <MapPin size={12} color="#0284c7" /> 📍 {req.origin_city || 'N/A'} ➔ 🎯 <strong style={{ color: '#d97706', fontWeight: '800', fontSize: '0.88rem' }}>{req.dest_city || 'N/A'}</strong>
+                                                      </div>
+                                                      {req.admin_counter_rate && (
+                                                         <span style={{ fontSize: '0.72rem', background: '#fef3c7', color: '#d97706', border: '1px solid #f59e0b', padding: '2px 8px', borderRadius: '6px', fontWeight: '800', display: 'inline-flex', alignItems: 'center', gap: '4px', marginTop: '4px' }}>
+                                                           🔥 Competing Transporter Bid: ₹{req.admin_counter_rate}/MT
+                                                         </span>
+                                                       )}
+                                                    </td>
+
+                                                    <td style={{ padding: '10px 14px' }}>
+                                                      <div style={{ fontWeight: '900', color: '#0284c7', fontSize: '0.9rem' }}>
+                                                        {req.required_qty ? Number(req.required_qty).toLocaleString() : 0} {req.unit || 'MT'}
+                                                      </div>
+                                                      <div style={{ fontSize: '0.74rem', color: '#64748b', fontWeight: '600', textTransform: 'uppercase' }}>{req.material_type || 'Cargo'}</div>
+                                                    </td>
+
+                                                    <td style={{ padding: '10px 14px' }}>
+                                                      <div style={{ fontSize: '0.84rem', color: '#334155', fontWeight: '700' }}>{req.target_date || '-'}</div>
+                                                    </td>
+
+                                                    <td style={{ padding: '10px 14px' }}>
+                                                      {hasSubmittedQuote ? (
+                                                        <div className="submitted-quote-state" style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                                          <div className="submitted-rate" style={{
+                                                            background: '#dcfce7',
+                                                            border: '1.5px solid #16a34a',
+                                                            padding: '6px 12px',
+                                                            borderRadius: '8px',
+                                                            color: '#064e3b',
+                                                            fontSize: '0.88rem',
+                                                            fontWeight: '900',
+                                                            display: 'inline-flex',
+                                                            alignItems: 'center',
+                                                            gap: '6px'
+                                                          }}>
+                                                            <span>₹{myExistingBid.rate_per_unit || myExistingBid.rate_per_mt} / MT</span>
+                                                          </div>
+                                                          <div className="quote-submitted-badge" style={{ color: '#047857', fontSize: '0.78rem', fontWeight: '900', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                            ✓ Quote Submitted
+                                                          </div>
+                                                        </div>
+                                                      ) : isAwarded ? (
+                                                        <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Requirements Closed</span>
+                                                      ) : (
+                                                        <form onSubmit={(e) => handleExpressQuickSubmit(e, req)} style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                                                          <div style={{ position: 'relative', width: '100%' }}>
+                                                            <span style={{ position: 'absolute', left: '8px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', fontSize: '0.85rem' }}>₹</span>
+                                                            <input
+                                                              type="number"
+                                                              inputMode="decimal"
+                                                              min="1"
+                                                              step="0.01"
+                                                              placeholder="Rate"
+                                                              className="form-control"
+                                                              disabled={isSubmitting}
+                                                              value={currentInputRate}
+                                                              onChange={(e) => {
+                                                                const val = e.target.value;
+                                                                const key = getSubIndentKey(req);
+                                                                setQuickRates((prev) => ({
+                                                                  ...prev,
+                                                                  [key]: val
+                                                                }));
+                                                              }}
+                                                              style={{ paddingLeft: '22px', fontSize: '0.86rem', fontWeight: '800', height: '36px', width: '110px' }}
+                                                              required
+                                                            />
+                                                          </div>
+                                                          <button
+                                                            type="submit"
+                                                            className="btn btn-primary"
+                                                            disabled={isSubmitting || !currentInputRate}
+                                                            style={{ padding: '6px 12px', fontSize: '0.78rem', whiteSpace: 'nowrap', height: '36px', borderRadius: '8px', fontWeight: '800' }}
+                                                          >
+                                                            {isSubmitting ? '⏳ Submitting...' : '🚀 Quote'}
+                                                          </button>
+                                                        </form>
+                                                      )}
+                                                    </td>
+
+                                                    <td style={{ textAlign: 'right', padding: '10px 14px' }}>
+                                                      {hasSubmittedQuote ? (
+                                                        <span className="badge badge-awarded" style={{
+                                                          fontSize: '0.76rem',
+                                                          padding: '6px 12px',
+                                                          background: '#dcfce7',
+                                                          color: '#047857',
+                                                          border: '1px solid #86efac',
+                                                          borderRadius: '8px',
+                                                          fontWeight: '900'
+                                                        }}>
+                                                          ✓ Quote Submitted
+                                                        </span>
+                                                      ) : isAwarded ? (
+                                                        <span className="badge" style={{ background: 'rgba(239, 68, 68, 0.15)', color: '#fca5a5', fontSize: '0.72rem' }}>
+                                                          Closed
+                                                        </span>
+                                                      ) : (
+                                                        <span className="badge badge-open" style={{ fontSize: '0.72rem' }}>
+                                                          Active Bidding
                                                         </span>
                                                       )}
-                                                   </td>
-
-                                                   <td style={{ padding: '10px 14px' }}>
-                                                     <div style={{ fontWeight: '900', color: '#0284c7', fontSize: '0.9rem' }}>
-                                                       {req.required_qty ? Number(req.required_qty).toLocaleString() : 0} {req.unit || 'MT'}
-                                                     </div>
-                                     <div style={{ fontSize: '0.74rem', color: '#64748b', fontWeight: '600', textTransform: 'uppercase' }}>{req.material_type || 'Cargo'}</div>
-                                                   </td>
-
-                                                   <td style={{ padding: '10px 14px' }}>
-                                                     <div style={{ fontSize: '0.84rem', color: '#334155', fontWeight: '700' }}>{req.target_date || '-'}</div>
-                                                   </td>
-
-                                                   <td style={{ padding: '10px 14px' }}>
-                                                     {myExistingBid ? (
-                                                       myExistingBid.is_frozen ? (
-                                                         <div className="current-bid-badge" style={{ background: '#dcfce7', border: '1.5px solid #16a34a', padding: '6px 10px', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                           <Lock size={12} color="#047857" />
-                                                           <span style={{ fontSize: '0.74rem', color: '#047857', fontWeight: '800' }}>FROZEN:</span>
-                                                           <strong style={{ color: '#064e3b', fontSize: '0.95rem', fontWeight: '900' }}>₹{myExistingBid.rate_per_unit}/MT</strong>
-                                                         </div>
-                                                       ) : (() => {
-                                                          const counterCeiling = parseFloat(myExistingBid?.counter_rate_per_unit || req.admin_counter_rate || 0);
-                                                          const alreadyResponded = Boolean(myExistingBid?.has_responded_to_counter && String(myExistingBid?.responded_counter_rate) === String(counterCeiling));
-                                                          const isAlreadyLower = Boolean(myExistingBid && counterCeiling > 0 && parseFloat(myExistingBid.rate_per_unit) < counterCeiling);
-                                                          const canUpdateOnce = Boolean(counterCeiling > 0 && !alreadyResponded && !isAlreadyLower);
-
-                                                          return (
-                                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                                              <div className="current-bid-badge" style={{ background: '#dcfce7', border: '1.5px solid #16a34a', padding: '5px 10px', borderRadius: '8px', fontSize: '0.78rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                                                                <span style={{ color: '#047857', fontWeight: '900' }}>✓ Current Bid:</span>
-                                                                <strong style={{ color: '#064e3b', fontSize: '0.92rem', fontWeight: '900' }}>₹{myExistingBid.rate_per_unit}/MT</strong>
-                                                              </div>
-
-                                                              {/* ⚡ ALLOW EXACTLY 1 LOWERING ATTEMPT ONLY IF TRANSPORTER HAS NOT ALREADY BEATEN OR RESPONDED! */}
-                                                              {canUpdateOnce && (
-                                                                <form onSubmit={(e) => handleExpressQuickSubmit(e, req)} style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                                                                  <div style={{ position: 'relative', width: '100%' }}>
-                                                                    <span style={{ position: 'absolute', left: '8px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', fontSize: '0.85rem' }}>₹</span>
-                                                                    <input
-                                                                      type="number"
-                                                                      inputMode="decimal"
-                                                                      min="0"
-                                                                      step="0.01"
-                                                                      max={counterCeiling > 0 ? counterCeiling - 1 : undefined}
-                                                                      placeholder={counterCeiling > 0 ? `< ₹${counterCeiling}` : 'Lower Rate'}
-                                                                      className="form-control"
-                                                                      value={currentInputRate}
-                                                                      onChange={(e) => {
-                                                                        const val = e.target.value;
-                                                                        const key = getSubIndentKey(req);
-                                                                        setQuickRates((prev) => ({
-                                                                          ...prev,
-                                                                          [key]: val
-                                                                        }));
-                                                                      }}
-                                                                      style={{ paddingLeft: '22px', fontSize: '0.82rem', fontWeight: '800', height: '32px', width: '105px' }}
-                                                                    />
-                                                                  </div>
-                                                                  <button type="submit" className="btn btn-primary" style={{ padding: '4px 10px', fontSize: '0.75rem', whiteSpace: 'nowrap', height: '32px', borderRadius: '6px', fontWeight: '900', background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)' }}>
-                                                                    ✏️ Update
-                                                                  </button>
-                                                                </form>
-                                                              )}
-                                                            </div>
-                                                          );
-                                                        })()
-                                                     ) : isAwarded ? (
-                                                       <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Requirements Closed</span>
-                                                     ) : (
-                                                       <form onSubmit={(e) => handleExpressQuickSubmit(e, req)} style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                                                         <div style={{ position: 'relative', width: '100%' }}>
-                                                           <span style={{ position: 'absolute', left: '8px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', fontSize: '0.85rem' }}>₹</span>
-                                                           <input
-                                                             type="number"
-                                                             inputMode="decimal"
-                                                             min="0"
-                                                             step="0.01"
-                                                             placeholder="Rate"
-                                                             className="form-control"
-                                                             value={currentInputRate}
-                                                             onChange={(e) => {
-                                                               const val = e.target.value;
-                                                               const key = getSubIndentKey(req);
-                                                               setQuickRates((prev) => ({
-                                                                 ...prev,
-                                                                 [key]: val
-                                                               }));
-                                                             }}
-                                                             style={{ paddingLeft: '22px', fontSize: '0.86rem', fontWeight: '800', height: '36px', width: '110px' }}
-                                                             required
-                                                           />
-                                                         </div>
-                                                         <button type="submit" className="btn btn-primary" style={{ padding: '6px 12px', fontSize: '0.78rem', whiteSpace: 'nowrap', height: '36px', borderRadius: '8px' }}>
-                                                           <Send size={13} /> Quote
-                                                         </button>
-                                                       </form>
-                                                     )}
-                                                   </td>
-
-                                                   <td style={{ textAlign: 'right', padding: '10px 14px' }}>
-                                                     {myExistingBid?.counter_rate_per_unit && !myExistingBid?.is_frozen ? (
-                                                       <button
-                                                         onClick={() => handleAcceptCounterRate(myExistingBid)}
-                                                         className="btn btn-success"
-                                                         style={{ padding: '6px 10px', fontSize: '0.75rem', borderRadius: '8px' }}
-                                                       >
-                                                         <Snowflake size={13} /> Match Lowest Bid ₹{myExistingBid.counter_rate_per_unit} ❄️
-                                                       </button>
-                                                    ) : myExistingBid ? (
-                                                      <span className="badge badge-awarded" style={{ fontSize: '0.72rem' }}>
-                                                        {myExistingBid.is_frozen ? '❄️ Agreed' : '🔒 Final Bid'}
-                                                      </span>
-                                                    ) : isAwarded ? (
-                                                      <span className="badge" style={{ background: 'rgba(239, 68, 68, 0.15)', color: '#fca5a5', fontSize: '0.72rem' }}>
-                                                        Closed
-                                                      </span>
-                                                    ) : (
-                                                      <span className="badge badge-open" style={{ fontSize: '0.72rem' }}>
-                                                        Active Bidding
-                                                      </span>
-                                                    )}
-                                                  </td>
-                                                </tr>
-                                              );
-                                            })}
+                                                    </td>
+                                                  </tr>
+                                                );
+                                              })}
                                           </tbody>
                                         </table>
                                       </div>
@@ -1343,8 +1280,25 @@ export const TransporterPortal = () => {
 
                         // SINGLE ITEM ROW
                       const req = group.items[0];
-                      const myExistingBid = mySubmissions.find((s) => String(s.rate_request_id) === String(req.id) || String(s.rate_request_id) === String(req.request_no));
+                      const reqParentId = String(req.requirement_id || req.parent_req_no || req.id || '').trim();
+                      const reqItemId = String(req.item_id || req.sub_indent_no || req.request_no || '').trim();
+
+                      const myExistingBid = (mySubmissions || []).find((s) => {
+                        const sReqId = String(s.requirement_id || s.rate_request_id || '').trim();
+                        const sItemId = String(s.item_id || '').trim();
+
+                        const matchesReq = sReqId === reqParentId || sReqId === String(req.parent_req_no || '').trim() || sReqId === String(req.id || '').trim();
+
+                        const matchesItem = (reqItemId && sItemId === reqItemId) ||
+                                            (req.item_id && sItemId === String(req.item_id).trim()) ||
+                                            (req.sub_indent_no && sItemId === String(req.sub_indent_no).trim()) ||
+                                            (req.request_no && sItemId === String(req.request_no).trim());
+
+                        return matchesReq && matchesItem;
+                      });
+                      const hasSubmittedQuote = Boolean(myExistingBid);
                       const isAwarded = req.status === 'Awarded';
+                      const isSubmitting = submittingItems[req.id];
                       const currentInputRate = quickRates[req.id] || '';
                       const displayCode = req.request_no || req.title;
 
@@ -1352,10 +1306,8 @@ export const TransporterPortal = () => {
                         <tr
                           key={req.id}
                           style={{
-                            background: myExistingBid
-                              ? myExistingBid.counter_rate_per_unit
-                                ? 'rgba(245, 158, 11, 0.08)'
-                                : 'rgba(16, 185, 129, 0.06)'
+                            background: hasSubmittedQuote
+                              ? 'rgba(16, 185, 129, 0.06)'
                               : 'transparent'
                           }}
                         >
@@ -1396,50 +1348,26 @@ export const TransporterPortal = () => {
                           </td>
 
                           <td>
-                            {myExistingBid ? (
-                              myExistingBid.is_frozen ? (
-                                <div className="current-bid-badge" style={{ background: '#dcfce7', border: '1.5px solid #16a34a', padding: '6px 10px', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                  <Lock size={12} color="#047857" />
-                                  <span style={{ fontSize: '0.74rem', color: '#047857', fontWeight: '800' }}>FROZEN:</span>
-                                  <strong style={{ color: '#064e3b', fontSize: '0.95rem', fontWeight: '900' }}>₹{myExistingBid.rate_per_unit}/MT</strong>
+                            {hasSubmittedQuote ? (
+                              <div className="submitted-quote-state" style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                <div className="submitted-rate" style={{
+                                  background: '#dcfce7',
+                                  border: '1.5px solid #16a34a',
+                                  padding: '6px 12px',
+                                  borderRadius: '8px',
+                                  color: '#064e3b',
+                                  fontSize: '0.88rem',
+                                  fontWeight: '900',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '6px'
+                                }}>
+                                  <span>₹{myExistingBid.rate_per_unit || myExistingBid.rate_per_mt} / MT</span>
                                 </div>
-                              ) : (() => {
-                                const counterCeiling = parseFloat(myExistingBid?.counter_rate_per_unit || req.admin_counter_rate || 0);
-                                const alreadyResponded = Boolean(myExistingBid?.has_responded_to_counter && String(myExistingBid?.responded_counter_rate) === String(counterCeiling));
-                                const isAlreadyLower = Boolean(myExistingBid && counterCeiling > 0 && parseFloat(myExistingBid.rate_per_unit) < counterCeiling);
-                                const canUpdateOnce = Boolean(counterCeiling > 0 && !alreadyResponded && !isAlreadyLower);
-
-                                return (
-                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                    <div className="current-bid-badge" style={{ background: '#dcfce7', border: '1.5px solid #16a34a', padding: '5px 10px', borderRadius: '8px', fontSize: '0.78rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                                      <span style={{ color: '#047857', fontWeight: '900' }}>✓ Current Bid:</span>
-                                      <strong style={{ color: '#064e3b', fontSize: '0.92rem', fontWeight: '900' }}>₹{myExistingBid.rate_per_unit}/MT</strong>
-                                    </div>
-
-                                    {/* ⚡ ALLOW EXACTLY 1 LOWERING ATTEMPT ONLY IF TRANSPORTER HAS NOT ALREADY BEATEN OR RESPONDED! */}
-                                    {canUpdateOnce && (
-                                      <form onSubmit={(e) => handleExpressQuickSubmit(e, req)} style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                                        <div style={{ position: 'relative', width: '100%' }}>
-                                          <span style={{ position: 'absolute', left: '8px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', fontSize: '0.85rem' }}>₹</span>
-                                          <input
-                                            type="number"
-                                            min="1"
-                                            max={counterCeiling > 0 ? counterCeiling - 1 : undefined}
-                                            placeholder={counterCeiling > 0 ? `< ₹${counterCeiling}` : 'Lower Rate'}
-                                            className="form-control"
-                                            value={currentInputRate}
-                                            onChange={(e) => setQuickRates({ ...quickRates, [req.id]: e.target.value })}
-                                            style={{ paddingLeft: '22px', fontSize: '0.82rem', fontWeight: '800', height: '32px', width: '105px' }}
-                                          />
-                                        </div>
-                                        <button type="submit" className="btn btn-primary" style={{ padding: '4px 10px', fontSize: '0.75rem', whiteSpace: 'nowrap', height: '32px', borderRadius: '6px', fontWeight: '900', background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)' }}>
-                                          ✏️ Update
-                                        </button>
-                                      </form>
-                                    )}
-                                  </div>
-                                );
-                              })()
+                                <div className="quote-submitted-badge" style={{ color: '#047857', fontSize: '0.78rem', fontWeight: '900', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                  ✓ Quote Submitted
+                                </div>
+                              </div>
                             ) : isAwarded ? (
                               <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Requirements Closed</span>
                             ) : (
@@ -1448,34 +1376,42 @@ export const TransporterPortal = () => {
                                   <span style={{ position: 'absolute', left: '8px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', fontSize: '0.85rem' }}>₹</span>
                                   <input
                                     type="number"
+                                    inputMode="decimal"
                                     min="1"
-                                    placeholder="e.g. 480"
+                                    step="0.01"
+                                    placeholder="Rate"
                                     className="form-control"
+                                    disabled={isSubmitting}
                                     value={currentInputRate}
                                     onChange={(e) => setQuickRates({ ...quickRates, [req.id]: e.target.value })}
                                     style={{ paddingLeft: '22px', fontSize: '0.88rem', fontWeight: '700', height: '36px' }}
                                     required
                                   />
                                 </div>
-                                <button type="submit" className="btn btn-primary" style={{ padding: '6px 12px', fontSize: '0.78rem', whiteSpace: 'nowrap', height: '36px' }}>
-                                  <Send size={13} /> Quote
+                                <button
+                                  type="submit"
+                                  className="btn btn-primary"
+                                  disabled={isSubmitting || !currentInputRate}
+                                  style={{ padding: '6px 12px', fontSize: '0.78rem', whiteSpace: 'nowrap', height: '36px', fontWeight: '800' }}
+                                >
+                                  {isSubmitting ? '⏳ Submitting...' : '🚀 Quote'}
                                 </button>
                               </form>
                             )}
                           </td>
 
                           <td style={{ textAlign: 'right' }}>
-                            {myExistingBid?.counter_rate_per_unit && !myExistingBid?.is_frozen ? (
-                              <button
-                                onClick={() => handleAcceptCounterRate(myExistingBid)}
-                                className="btn btn-success"
-                                style={{ padding: '6px 10px', fontSize: '0.75rem' }}
-                              >
-                                <Snowflake size={13} /> Match Lowest Bid ₹{myExistingBid.counter_rate_per_unit} ❄️
-                              </button>
-                            ) : myExistingBid ? (
-                              <span className="badge badge-awarded" style={{ fontSize: '0.72rem' }}>
-                                {myExistingBid.is_frozen ? '❄️ Agreed' : '🔒 Final Bid'}
+                            {hasSubmittedQuote ? (
+                              <span className="badge badge-awarded" style={{
+                                fontSize: '0.76rem',
+                                padding: '6px 12px',
+                                background: '#dcfce7',
+                                color: '#047857',
+                                border: '1px solid #86efac',
+                                borderRadius: '8px',
+                                fontWeight: '900'
+                              }}>
+                                ✓ Quote Submitted
                               </span>
                             ) : isAwarded ? (
                               <span className="badge badge-open" style={{ opacity: 0.6 }}>Awarded</span>
