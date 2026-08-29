@@ -166,16 +166,12 @@ export const AdminDashboard = () => {
   const renderCounterOfferCell = (reqId, itemId, itemBids, openCompareModal, reqCode) => {
     const quoteCount = itemBids ? itemBids.length : 0;
 
-    if (quoteCount === 0) {
-      return <span className="no-bids" style={{ fontSize: '0.78rem', color: '#64748b' }}>No Bids Yet</span>;
-    }
-
-    const anyFinalized = itemBids.some(b => b.bid_status === 'finalized' || b.bid_status === 'FINALIZED' || b.status === 'Rate Frozen');
-    const allResponded = itemBids.length > 0 && itemBids.every(b => b.bid_status === 'counter_accepted' || b.bid_status === 'countered_by_transporter' || b.bid_status === 'COUNTER_ACCEPTED' || b.bid_status === 'COUNTER_RESPONDED');
-    const someResponded = itemBids.some(b => b.bid_status === 'counter_accepted' || b.bid_status === 'countered_by_transporter' || b.bid_status === 'COUNTER_ACCEPTED' || b.bid_status === 'COUNTER_RESPONDED');
-    const respondedCount = itemBids.filter(b => b.bid_status === 'counter_accepted' || b.bid_status === 'countered_by_transporter' || b.bid_status === 'COUNTER_ACCEPTED' || b.bid_status === 'COUNTER_RESPONDED').length;
-    const isCounterSent = itemBids.some(b => b.bid_status === 'countered_by_admin' || b.bid_status === 'COUNTER_OFFERED');
-    const latestCounter = itemBids.find(b => b.counter_rate || b.counter_rate_per_unit)?.counter_rate || itemBids.find(b => b.counter_rate_per_unit)?.counter_rate_per_unit;
+    const anyFinalized = itemBids && itemBids.some(b => b.bid_status === 'finalized' || b.bid_status === 'FINALIZED' || b.status === 'Rate Frozen');
+    const allResponded = quoteCount > 0 && itemBids.every(b => b.bid_status === 'counter_accepted' || b.bid_status === 'countered_by_transporter' || b.bid_status === 'COUNTER_ACCEPTED' || b.bid_status === 'COUNTER_RESPONDED');
+    const someResponded = itemBids && itemBids.some(b => b.bid_status === 'counter_accepted' || b.bid_status === 'countered_by_transporter' || b.bid_status === 'COUNTER_ACCEPTED' || b.bid_status === 'COUNTER_RESPONDED');
+    const respondedCount = itemBids ? itemBids.filter(b => b.bid_status === 'counter_accepted' || b.bid_status === 'countered_by_transporter' || b.bid_status === 'COUNTER_ACCEPTED' || b.bid_status === 'COUNTER_RESPONDED').length : 0;
+    const isCounterSent = itemBids && itemBids.some(b => b.bid_status === 'countered_by_admin' || b.bid_status === 'COUNTER_OFFERED');
+    const latestCounter = itemBids && (itemBids.find(b => b.counter_rate || b.counter_rate_per_unit)?.counter_rate || itemBids.find(b => b.counter_rate_per_unit)?.counter_rate_per_unit);
 
     if (anyFinalized) {
       return (
@@ -194,11 +190,11 @@ export const AdminDashboard = () => {
             type="button"
             onClick={openCompareModal}
             className="btn btn-primary"
-            style={{ padding: '4px 12px', fontSize: '0.78rem', background: '#0284c7', color: '#ffffff', borderRadius: '6px', fontWeight: '800', border: 'none', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+            style={{ padding: '5px 12px', fontSize: '0.78rem', background: 'linear-gradient(135deg, #059669 0%, #10b981 100%)', color: '#ffffff', borderRadius: '6px', fontWeight: '900', border: 'none', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px', boxShadow: '0 2px 4px rgba(16, 185, 129, 0.3)' }}
           >
             ✓ All Responses Received
           </button>
-          {latestCounter && <span style={{ fontSize: '0.74rem', color: '#38bdf8', fontWeight: '800' }}>₹{latestCounter}/MT</span>}
+          {latestCounter && <span style={{ fontSize: '0.74rem', color: '#34d399', fontWeight: '800' }}>Counter: ₹{latestCounter}/MT</span>}
         </div>
       );
     }
@@ -210,34 +206,36 @@ export const AdminDashboard = () => {
             type="button"
             onClick={openCompareModal}
             className="btn btn-primary"
-            style={{ padding: '4px 12px', fontSize: '0.78rem', background: '#0284c7', color: '#ffffff', borderRadius: '6px', fontWeight: '800', border: 'none', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+            style={{ padding: '5px 12px', fontSize: '0.78rem', background: 'linear-gradient(135deg, #0284c7 0%, #2563eb 100%)', color: '#ffffff', borderRadius: '6px', fontWeight: '900', border: 'none', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px', boxShadow: '0 2px 4px rgba(2, 132, 199, 0.3)' }}
           >
-            🔄 Response Received ({respondedCount}/{quoteCount})
+            🔄 Responses ({respondedCount}/{quoteCount})
           </button>
-          {latestCounter && <span style={{ fontSize: '0.74rem', color: '#38bdf8', fontWeight: '800' }}>₹{latestCounter}/MT</span>}
+          {latestCounter && <span style={{ fontSize: '0.74rem', color: '#38bdf8', fontWeight: '800' }}>Counter: ₹{latestCounter}/MT</span>}
         </div>
       );
     }
 
     if (isCounterSent) {
       return (
-        <div className="counter-pending" style={{ display: 'flex', flexDirection: 'column', gap: '2px', alignItems: 'flex-start' }}>
-          <span style={{ fontSize: '0.76rem', background: 'rgba(245, 158, 11, 0.2)', color: '#fbbf24', border: '1px solid #f59e0b', padding: '3px 8px', borderRadius: '6px', fontWeight: '800', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-            ⏳ Counter Pending
-          </span>
-          <strong style={{ fontSize: '0.8rem', color: '#fbbf24' }}>₹{latestCounter}/MT</strong>
+        <div className="counter-pending" style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'flex-start' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <span style={{ fontSize: '0.74rem', background: 'rgba(245, 158, 11, 0.2)', color: '#fbbf24', border: '1px solid #f59e0b', padding: '2px 6px', borderRadius: '4px', fontWeight: '800' }}>
+              ⏳ Pending: ₹{latestCounter}/MT
+            </span>
+          </div>
           <button
             type="button"
             onClick={openCompareModal}
-            style={{ background: 'none', border: 'none', color: '#38bdf8', fontSize: '0.72rem', cursor: 'pointer', textDecoration: 'underline', padding: 0, marginTop: '2px' }}
+            className="btn btn-secondary"
+            style={{ padding: '3px 8px', fontSize: '0.72rem', border: '1px solid #38bdf8', color: '#38bdf8', borderRadius: '4px', fontWeight: '800', background: 'transparent', cursor: 'pointer' }}
           >
-            Manage Counters ({quoteCount})
+            💬 Counter Rate ({quoteCount})
           </button>
         </div>
       );
     }
 
-    // Default actionable button when quotes exist but no counter offer sent yet
+    // Always render the prominent Counter Rate button!
     return (
       <button
         type="button"
@@ -246,20 +244,34 @@ export const AdminDashboard = () => {
         aria-label={`Send counter rate for ${reqCode || reqId}`}
         style={{
           padding: '6px 14px',
-          fontSize: '0.78rem',
-          fontWeight: '800',
+          fontSize: '0.8rem',
+          fontWeight: '900',
           borderRadius: '6px',
-          border: '1px solid #38bdf8',
-          color: '#38bdf8',
-          background: 'rgba(56, 189, 248, 0.15)',
+          border: '1.5px solid #38bdf8',
+          color: '#ffffff',
+          background: 'linear-gradient(135deg, #0284c7 0%, #2563eb 100%)',
+          boxShadow: '0 2px 6px rgba(2, 132, 199, 0.35)',
           cursor: 'pointer',
           whiteSpace: 'nowrap',
           display: 'inline-flex',
           alignItems: 'center',
-          gap: '4px'
+          gap: '6px'
         }}
       >
-        💬 Counter Rate
+        <span>💬</span>
+        <span>Counter Rate</span>
+        {quoteCount > 0 && (
+          <span style={{
+            background: '#ffffff',
+            color: '#0369a1',
+            fontSize: '0.7rem',
+            padding: '1px 6px',
+            borderRadius: '10px',
+            fontWeight: '900'
+          }}>
+            {quoteCount}
+          </span>
+        )}
       </button>
     );
   };
@@ -2400,10 +2412,22 @@ export const AdminDashboard = () => {
                             <tbody>
                               {childItems.map((item, subIdx) => {
                                 const subCode = item.sub_indent_no || `${reqNoStr}/${(subIdx + 1).toString().padStart(2, '0')}`;
-                                const bids = (db.rate_submissions || []).filter((s) => 
-                                  (String(s.requirement_id) === String(openedReq.id) || String(s.requirement_id) === String(reqNoStr) || String(s.rate_request_id) === String(openedReq.id) || String(s.rate_request_id) === String(reqNoStr)) &&
-                                  (String(s.item_id) === String(item.id) || String(s.item_id) === String(item.sub_indent_no) || String(s.item_id) === String(subCode))
-                                );
+                                const bids = (db.rate_submissions || []).filter((s) => {
+                                  const reqMatch = (
+                                    String(s.requirement_id) === String(openedReq.id) ||
+                                    String(s.requirement_id) === String(reqNoStr) ||
+                                    String(s.rate_request_id) === String(openedReq.id) ||
+                                    String(s.rate_request_id) === String(reqNoStr)
+                                  );
+                                  if (!reqMatch) return false;
+                                  return (
+                                    String(s.item_id) === String(item.id) ||
+                                    String(s.item_id) === String(item.sub_indent_no) ||
+                                    String(s.item_id) === String(subCode) ||
+                                    String(s.item_id) === String(subIdx + 1) ||
+                                    String(s.item_id) === String((subIdx + 1).toString().padStart(2, '0'))
+                                  );
+                                });
                                 const validRates = bids.map(b => parseFloat(b.rate_per_mt || b.rate_per_unit || 0)).filter(r => r > 0);
                                 const lowestRate = validRates.length > 0 ? Math.min(...validRates) : (item.lowest_rate ? Number(item.lowest_rate) : null);
                                 const bidsCount = (bids && bids.length > 0) ? bids.length : Number(item.submitted_bids_count || 0);
