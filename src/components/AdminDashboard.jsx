@@ -2740,7 +2740,33 @@ export const AdminDashboard = () => {
 
                                 {/* 5.5. 💬 COUNTER OFFER */}
                                 <td className="counter-offer-cell">
-                                  {renderCounterOfferCell(req.id || reqNoStr, 'MAIN', bids, lowestRate, reqNoStr)}
+                                  {isBatch ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => toggleBatchExpand(reqNoStr)}
+                                      className="btn btn-secondary"
+                                      style={{
+                                        padding: '6px 12px',
+                                        fontSize: '0.78rem',
+                                        fontWeight: '800',
+                                        borderRadius: '6px',
+                                        border: '1.5px solid #38bdf8',
+                                        color: '#38bdf8',
+                                        background: openedBatchKey === reqNoStr ? 'rgba(56, 189, 248, 0.25)' : 'rgba(56, 189, 248, 0.1)',
+                                        cursor: 'pointer',
+                                        whiteSpace: 'nowrap',
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '6px'
+                                      }}
+                                      title="Open batch to view & counter individual sub-indents"
+                                    >
+                                      <span>📂</span>
+                                      <span>{openedBatchKey === reqNoStr ? 'Batch Open' : `Open Batch (${childItems.length})`}</span>
+                                    </button>
+                                  ) : (
+                                    renderCounterOfferCell(req.id || reqNoStr, 'MAIN', bids, lowestRate, reqNoStr)
+                                  )}
                                 </td>
 
                                 {/* 6. BIDDING & APPROVAL REPORT */}
