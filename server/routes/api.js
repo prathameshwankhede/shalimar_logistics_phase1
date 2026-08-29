@@ -2487,8 +2487,54 @@ router.get('/audit-orphan-data', authenticateToken, requireRole('admin'), async 
         rate_submissions: rsDdl[0]['Create Table'] || rsDdl[0]['CREATE TABLE']
       }
     });
+router.get('/audit-quote-details', authenticateToken, requireRole('admin'), async (req, res) => {
+  try {
+    await ensureRateSubmissionsTableExists();
+    await ensureRequirementsTableExists();
+
+    const [allSubmissions] = await pool.query(
+      `SELECT
+          rs.id,
+          rs.requirement_id,
+          tr.req_no,
+          rs.item_id,
+          tri.sub_indent_no,
+          rs.transporter_id,
+          t.company_name AS transporter_name,
+          rs.rate_per_mt,
+          rs.quoted_quantity_mt,
+          rs.total_amount,
+          rs.status,
+          rs.submitted_at,
+          rs.updated_at
+       FROM rate_submissions rs
+       LEFT JOIN transport_requirements tr ON tr.id = rs.requirement_id
+       LEFT JOIN transport_requirement_items tri ON tri.id = rs.item_id
+       LEFT JOIN transporters t ON t.id = rs.transporter_id
+       ORDER BY rs.submitted_at DESC`
+    );
+
+    const [duplicates] = await pool.query(
+      `SELECT
+          requirement_id,
+          item_id,
+          transporter_id,
+          COUNT(*) AS duplicate_count
+       FROM rate_submissions
+       GROUP BY requirement_id, item_id, transporter_id
+       HAVING COUNT(*) > 1`
+    );
+
+    const [indexes] = await pool.query('SHOW INDEX FROM rate_submissions');
+
+    return res.json({
+      success: true,
+      all_submissions: allSubmissions,
+      duplicates: duplicates,
+      indexes: indexes
+    });
   } catch (err) {
-    console.error('Audit orphan data error:', err.message);
+    console.error('Audit quote details error:', err.message);
     return res.status(500).json({ success: false, error: err.message });
   }
 });
