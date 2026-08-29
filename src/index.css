@@ -47,6 +47,26 @@ a:focus-visible {
   outline-offset: 3px !important;
 }
 
+/* 🏷️ LIVE BID PREVIEW STYLES */
+.current-bid-preview {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 8px 14px;
+  border-radius: 12px;
+  background: #e8f7ee;
+  border: 1px solid #71c596;
+  color: #25634a;
+  font-weight: 800;
+  min-width: 200px;
+}
+
+.current-bid-preview strong {
+  font-size: 1.05rem;
+  color: #245f52;
+}
+
 /* ☀️ LIGHT MODE COMPREHENSIVE OVERRIDES & COLOR MAPPING */
 [data-theme="light"] {
   color-scheme: light;
