@@ -1,4 +1,4 @@
-// Hostinger Passenger Process Reload Signal v1.1.7 - Table Initialization Lock Optimization
+// Hostinger Passenger Process Reload Signal v1.1.8 - Read-Only Quote Audit Endpoint
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
