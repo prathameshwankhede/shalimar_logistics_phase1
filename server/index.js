@@ -1,4 +1,4 @@
-// Hostinger Passenger Process Reload Signal v1.4.1 - Rate Negotiations Table & Database Transaction Endpoints
+// Hostinger Passenger Process Reload Signal v1.4.2 - Fix SyntaxError in ensureRateSubmissionsTableExists
 import express from 'express';
 import cors from 'cors';
 import path from 'path';

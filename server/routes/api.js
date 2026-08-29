@@ -306,6 +306,11 @@ export async function ensureRateSubmissionsTableExists() {
       FOREIGN KEY (item_id) REFERENCES transport_requirement_items(id) 
       ON DELETE CASCADE
     `).catch(() => {});
+
+    isRateSubmissionsTableEnsured = true;
+  } catch (err) {
+    console.warn('rate_submissions table creation notice:', err.message);
+  }
 }
 
 let isBidNegotiationTableEnsured = false;
