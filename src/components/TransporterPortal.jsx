@@ -583,64 +583,60 @@ export const TransporterPortal = () => {
   };
 
   // FAST 1-LINE INLINE SUBMIT HANDLER (Supports Double/Re-Quoted Bids 🚀)
-  const handleExpressQuickSubmit = async (e, req) => {
-    e.preventDefault();
+  const handleExpressQuickSubmit = async (req, explicitRateValue = null) => {
     if (!currentTransporter) {
       alert('Please select or log in to a Transporter Account first.');
       return;
     }
 
+    const parentReqId = req.requirement_id || req.id;
+    const targetItemId = req.item_id || req.sub_indent_id || req.id;
+    const subIndentNo = req.sub_indent_no || req.request_no || req.id;
     const rateKey = getSubIndentKey(req);
-    const rawInput = quickRates[rateKey] !== undefined ? quickRates[rateKey] : quickRates[req.id];
-    const rateVal = parseFloat(String(rawInput || '').replace(/,/g, '').trim());
-    if (!rateVal || isNaN(rateVal) || rateVal <= 0) {
-      alert('Please enter a valid freight rate per MT (e.g. 2450).');
+    const transId = currentTransporter?.id || currentTransporter?.code || currentTransporter?.username || 'transporter';
+    const bidKey = `${String(parentReqId).trim()}::${String(targetItemId).trim()}::${String(transId).trim()}`;
+
+    // 🔒 1. SINGLE CLICK & DOUBLE SUBMISSION LOCK PROTECTION
+    if (submittingItems[bidKey] || submittingItems[rateKey] || submittingItems[req.id]) {
       return;
     }
 
-    setSubmittingItems((prev) => ({ ...prev, [rateKey]: true, [req.id]: true }));
+    // 🔍 2. PREVENT STALE STATE BUG: Read rate directly from explicit parameter, React state, or DOM input
+    let rawInput = explicitRateValue;
+    if (rawInput === null || rawInput === undefined || String(rawInput).trim() === '') {
+      rawInput = quickRates[rateKey] !== undefined ? quickRates[rateKey] : quickRates[req.id];
+    }
+    if (rawInput === null || rawInput === undefined || String(rawInput).trim() === '') {
+      const inputEl = document.getElementById(`rate_input_${targetItemId}`) || document.getElementById(`rate_input_${req.id}`);
+      if (inputEl && inputEl.value) {
+        rawInput = inputEl.value;
+      }
+    }
+
+    // 🛡️ 3. VALIDATE RATE BEFORE REQUEST
+    const rateVal = parseFloat(String(rawInput || '').replace(/,/g, '').trim());
+    if (!rateVal || isNaN(rateVal) || rateVal <= 0) {
+      alert(`Please enter a valid freight rate per MT (greater than 0) for ${subIndentNo}.`);
+      return;
+    }
+
+    setSubmittingItems((prev) => ({
+      ...prev,
+      [bidKey]: true,
+      [rateKey]: true,
+      [req.id]: true
+    }));
 
     try {
-      const parentReqId = req.requirement_id || req.id;
-      const targetItemId = req.item_id || req.sub_indent_id || req.id;
-      const subIndentNo = req.sub_indent_no || req.request_no || req.id;
       const qtyVal = Number(req.required_qty || req.quantity_mt || 0);
       const totalCalcAmount = parseFloat((rateVal * qtyVal).toFixed(2));
-      const transId = currentTransporter?.id || currentTransporter?.code || currentTransporter?.username || 'transporter';
 
-      const newSub = {
-        id: `sub_${transId}_${Date.now()}`,
-        requirement_id: parentReqId,
-        rate_request_id: parentReqId,
-        item_id: targetItemId,
-        request_no: subIndentNo,
-        transporter_id: transId,
-        transporter_name: currentTransporter?.company_name || transId,
-        rate_per_unit: rateVal,
-        rate_per_mt: rateVal,
-        quoted_quantity_mt: qtyVal,
-        total_amount: totalCalcAmount,
-        status: 'Submitted',
-        bid_status: 'submitted',
-        submitted_at: new Date().toISOString()
-      };
-
-      if (typeof updateDB === 'function') {
-        updateDB({
-          ...db,
-          rate_submissions: [
-            newSub,
-            ...(db.rate_submissions || []).filter(s => !(
-              (String(s.transporter_id) === String(transId) || String(s.transporter_id) === String(currentTransporter?.code)) &&
-              (String(s.requirement_id) === String(parentReqId) || String(s.rate_request_id) === String(parentReqId)) &&
-              (String(s.item_id) === String(targetItemId) || String(s.request_no) === String(subIndentNo))
-            ))
-          ]
-        });
-      }
+      // ⏱️ 4. 15-SECOND NETWORK TIMEOUT PROTECTION
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000);
 
       // Persist bid directly to MySQL rate_submissions table via API
-      await submitBid({
+      const result = await submitBid({
         requirement_id: parentReqId,
         rate_request_id: parentReqId,
         item_id: targetItemId,
@@ -652,30 +648,38 @@ export const TransporterPortal = () => {
         quoted_quantity_mt: qtyVal,
         total_amount: totalCalcAmount,
         status: 'Submitted'
-      });
+      }, { signal: controller.signal });
+
+      clearTimeout(timeoutId);
+
+      if (!result || (result.success === false && !result.submission)) {
+        throw new Error(result?.error?.message || result?.message || 'Quote submission failed');
+      }
 
       setSuccessNotice(`⚡ Quote rate ₹${rateVal.toLocaleString()}/MT submitted for ${subIndentNo}!`);
       setQuickRates((prev) => ({ ...prev, [rateKey]: '', [req.id]: '' }));
       setTimeout(() => setSuccessNotice(''), 5000);
 
-      // ⚡ Immediately re-fetch fresh MySQL database state so hasSubmittedQuote becomes true instantly
+      // ⚡ Re-fetch fresh MySQL database state so hasSubmittedQuote becomes true instantly
       await refreshRequirements();
 
       // ♿ ACCESSIBILITY: Auto-advance focus to the next unsubmitted item input
       focusNextUnsubmittedItem(targetItemId);
     } catch (err) {
-      console.error('Quick bid submission notice:', err);
-      const isDuplicate = err.message && (err.message.includes('already submitted') || err.message.includes('Duplicate') || err.message.includes('409'));
-      if (isDuplicate) {
-        setSuccessNotice(`✓ Quote already submitted for ${subIndentNo}!`);
+      console.error('Quote submission error:', err);
+      if (err.name === 'AbortError') {
+        alert('Network request timed out. Please check your connection and click Quote again.');
       } else {
-        alert(err.message || 'Failed to submit quote. Please try again.');
+        alert(err.message || 'Unable to submit quote. Please try again.');
       }
-      setQuickRates((prev) => ({ ...prev, [rateKey]: '' }));
-      setTimeout(() => setSuccessNotice(''), 5000);
-      await refreshRequirements();
     } finally {
-      setSubmittingItems((prev) => ({ ...prev, [rateKey]: false, [req.id]: false }));
+      // 🔓 ALWAYS RELEASE LOCK IN FINALLY
+      setSubmittingItems((prev) => ({
+        ...prev,
+        [bidKey]: false,
+        [rateKey]: false,
+        [req.id]: false
+      }));
     }
   };
 
@@ -1413,7 +1417,7 @@ export const TransporterPortal = () => {
                                                       ) : isAwarded ? (
                                                         <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Requirements Closed</span>
                                                       ) : (
-                                                        <form onSubmit={(e) => handleExpressQuickSubmit(e, req)} style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
+                                                        <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
                                                           <div style={{ position: 'relative' }}>
                                                             <span style={{ position: 'absolute', left: '8px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', fontSize: '0.85rem' }}>₹</span>
                                                             <input
@@ -1437,20 +1441,26 @@ export const TransporterPortal = () => {
                                                                 }));
                                                               }}
                                                               onKeyDown={(e) => {
-                                                                if (e.key === 'Enter' && Number(currentInputRate) > 0) {
-                                                                  handleExpressQuickSubmit(e, req);
+                                                                if (e.key === 'Enter') {
+                                                                  e.preventDefault();
+                                                                  e.stopPropagation();
+                                                                  handleExpressQuickSubmit(req, currentInputRate);
                                                                 }
                                                               }}
                                                               style={{ paddingLeft: '22px', fontSize: '0.86rem', fontWeight: '800', height: '36px', width: '110px' }}
-                                                              required
                                                             />
                                                           </div>
 
                                                           <button
-                                                            type="submit"
+                                                            type="button"
                                                             aria-label={`Submit quote for ${displayCode}`}
                                                             className="btn btn-primary"
-                                                            disabled={isSubmitting || !currentInputRate || Number(currentInputRate) <= 0}
+                                                            disabled={isSubmitting}
+                                                            onClick={(e) => {
+                                                              e.preventDefault();
+                                                              e.stopPropagation();
+                                                              handleExpressQuickSubmit(req, currentInputRate);
+                                                            }}
                                                             style={{
                                                               padding: '6px 14px',
                                                               fontSize: '0.8rem',
@@ -1460,12 +1470,13 @@ export const TransporterPortal = () => {
                                                               fontWeight: '900',
                                                               display: 'inline-flex',
                                                               alignItems: 'center',
-                                                              gap: '4px'
+                                                              gap: '4px',
+                                                              cursor: isSubmitting ? 'not-allowed' : 'pointer'
                                                             }}
                                                           >
                                                             {isSubmitting ? '⏳ Submitting...' : '🚀 Quote'}
                                                           </button>
-                                                        </form>
+                                                        </div>
                                                       )}
                                                     </td>
 
@@ -1651,7 +1662,7 @@ export const TransporterPortal = () => {
                             ) : isAwarded ? (
                               <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Requirements Closed</span>
                             ) : (
-                              <form onSubmit={(e) => handleExpressQuickSubmit(e, req)} style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
+                              <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
                                 <div style={{ position: 'relative' }}>
                                   <span style={{ position: 'absolute', left: '8px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', fontSize: '0.85rem' }}>₹</span>
                                   <input
@@ -1667,19 +1678,25 @@ export const TransporterPortal = () => {
                                     value={currentInputRate}
                                     onChange={(e) => setQuickRates({ ...quickRates, [req.id]: e.target.value })}
                                     onKeyDown={(e) => {
-                                      if (e.key === 'Enter' && Number(currentInputRate) > 0) {
-                                        handleExpressQuickSubmit(e, req);
+                                      if (e.key === 'Enter') {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        handleExpressQuickSubmit(req, currentInputRate);
                                       }
                                     }}
                                     style={{ paddingLeft: '22px', fontSize: '0.88rem', fontWeight: '700', height: '36px', width: '110px' }}
-                                    required
                                   />
                                 </div>
                                 <button
-                                  type="submit"
+                                  type="button"
                                   aria-label={`Submit quote for ${displayCode}`}
                                   className="btn btn-primary"
-                                  disabled={isSubmitting || !currentInputRate || Number(currentInputRate) <= 0}
+                                  disabled={isSubmitting}
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    handleExpressQuickSubmit(req, currentInputRate);
+                                  }}
                                   style={{
                                     padding: '6px 14px',
                                     fontSize: '0.8rem',
@@ -1689,13 +1706,14 @@ export const TransporterPortal = () => {
                                     fontWeight: '900',
                                     display: 'inline-flex',
                                     alignItems: 'center',
-                                    gap: '4px'
+                                    gap: '4px',
+                                    cursor: isSubmitting ? 'not-allowed' : 'pointer'
                                   }}
                                 >
-                                 {isSubmitting ? '⏳ Submitting...' : '🚀 Quote'}
-                                 </button>
-                               </form>
-                             )}
+                                  {isSubmitting ? '⏳ Submitting...' : '🚀 Quote'}
+                                </button>
+                              </div>
+                            )}
                           </td>
 
                           <td style={{ textAlign: 'right' }}>

@@ -10,17 +10,19 @@ export async function getRequirementRates(requirementId, itemId) {
   return apiClient(url, { method: 'GET' });
 }
 
-export async function submitBid(bidPayload) {
+export async function submitBid(bidPayload, options = {}) {
   return apiClient('/api/rate-submissions', {
     method: 'POST',
-    body: JSON.stringify(bidPayload)
+    body: JSON.stringify(bidPayload),
+    ...options
   });
 }
 
-export async function submitRateQuote(quotePayload) {
+export async function submitRateQuote(quotePayload, options = {}) {
   return apiClient('/api/rate-submissions', {
     method: 'POST',
-    body: JSON.stringify(quotePayload)
+    body: JSON.stringify(quotePayload),
+    ...options
   });
 }
 
