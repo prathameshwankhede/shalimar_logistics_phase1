@@ -12,7 +12,7 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "oxlint",
-    "test": "node tests/security_regression.test.js && node tests/smart_delete_policy.test.js && node tests/transporter_dispatch_workflow.test.js && node tests/transporter_dashboard_navigation.test.js && node tests/release_remaining_requote.test.js",
+    "test": "node tests/security_regression.test.js && node tests/smart_delete_policy.test.js && node tests/transporter_dispatch_workflow.test.js && node tests/transporter_dashboard_navigation.test.js && node tests/release_remaining_requote.test.js && node tests/partial_dispatch_autoreopen.test.js",
     "preview": "vite preview"
   },
   "dependencies": {

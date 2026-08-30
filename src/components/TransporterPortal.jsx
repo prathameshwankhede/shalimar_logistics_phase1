@@ -1928,6 +1928,23 @@ export const TransporterPortal = () => {
                                                       }}>
                                                         {displayCode}
                                                       </div>
+                                                      {req.source_item_id && (
+                                                        <span className="badge badge-warning" style={{
+                                                          fontSize: '0.7rem',
+                                                          background: '#fef3c7',
+                                                          color: '#b45309',
+                                                          border: '1px solid #f59e0b',
+                                                          padding: '2px 6px',
+                                                          borderRadius: '4px',
+                                                          fontWeight: '800',
+                                                          display: 'inline-flex',
+                                                          alignItems: 'center',
+                                                          gap: '3px',
+                                                          marginTop: '2px'
+                                                        }}>
+                                                          🔄 RE-OPENED FOR QUOTE
+                                                        </span>
+                                                      )}
                                                     </td>
 
                                                     <td style={{ padding: '10px 14px' }}>
@@ -2192,7 +2209,24 @@ export const TransporterPortal = () => {
 
                           <td>
                             <div style={{ fontWeight: '700', color: '#ffffff', fontSize: '0.92rem' }}>{displayCode}</div>
-                            <div style={{ fontSize: '0.82rem', color: 'var(--text-sub)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            {req.source_item_id && (
+                              <span className="badge badge-warning" style={{
+                                fontSize: '0.7rem',
+                                background: '#fef3c7',
+                                color: '#b45309',
+                                border: '1px solid #f59e0b',
+                                padding: '2px 6px',
+                                borderRadius: '4px',
+                                fontWeight: '800',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '3px',
+                                marginTop: '2px'
+                              }}>
+                                🔄 RE-OPENED FOR QUOTE
+                              </span>
+                            )}
+                            <div style={{ fontSize: '0.82rem', color: 'var(--text-sub)', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}>
                               <MapPin size={13} color="#38bdf8" /> 📍 {req.origin_city} ➔ 🎯 <strong style={{ color: '#d97706', fontWeight: '900', fontSize: '0.95rem', letterSpacing: '0.01em' }}>{req.dest_city}</strong>
                             </div>
                             {req.admin_counter_rate && (

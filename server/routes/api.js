@@ -2170,28 +2170,121 @@ async function handleCreateTruckDispatch(req, res) {
       ]
     );
 
-    // 9. Update Item-Level and Parent-Level Status
+    // 9. Update Item-Level and Parent-Level Status & Trigger Auto-Reopen for Remaining Quantity
     const newTotalDispatched = parseFloat((alreadyDispatched + loadedQty).toFixed(3));
     const newRemaining = parseFloat(Math.max(0, totalItemQty - newTotalDispatched).toFixed(3));
-    const itemStatus = (newRemaining <= 0) ? 'FULLY_DISPATCHED' : 'PARTIALLY_DISPATCHED';
+    let replacementItemId = null;
+    let newSubIndentNo = null;
 
-    await conn.query(
-      `UPDATE transport_requirement_items
-       SET dispatched_quantity_mt = ?,
-           remaining_quantity_mt = ?,
-           dispatch_status = ?,
-           updated_at = NOW()
-       WHERE requirement_id = ? AND id = ?`,
-      [newTotalDispatched, newRemaining, itemStatus, requirementId, itemId]
-    );
+    if (newRemaining > 0) {
+      // 🔄 AUTOMATIC RE-BID / RE-QUOTE LIFECYCLE CREATION
+      // Concurrency-Safe Next Sub-Indent Number Generation
+      const [allItems] = await conn.query(
+        `SELECT id, sub_indent_no FROM transport_requirement_items WHERE requirement_id = ? FOR UPDATE`,
+        [requirementId]
+      );
 
-    // Update parent status based on child items
-    const [allChildItems] = await conn.query(
-      `SELECT id, dispatch_status FROM transport_requirement_items WHERE requirement_id = ?`,
-      [requirementId]
-    );
-    if (allChildItems.length > 0) {
-      const allFullyDispatched = allChildItems.every(i => i.id === itemId ? itemStatus === 'FULLY_DISPATCHED' : i.dispatch_status === 'FULLY_DISPATCHED');
+      let maxSeq = 0;
+      allItems.forEach((i) => {
+        const match = String(i.sub_indent_no || '').match(/\/(\d+)$/);
+        if (match) {
+          const num = parseInt(match[1], 10);
+          if (!isNaN(num) && num > maxSeq) maxSeq = num;
+        }
+      });
+      if (maxSeq === 0) maxSeq = allItems.length;
+      const nextSeq = maxSeq + 1;
+      const nextSeqStr = String(nextSeq).padStart(2, '0');
+      const parentReqNo = parentReq ? (parentReq.req_no || parentReq.id) : requirementId;
+      newSubIndentNo = `${parentReqNo}/${nextSeqStr}`;
+      replacementItemId = `item_${String(requirementId).replace(/[^a-zA-Z0-9_]/g, '')}_${nextSeqStr}_${Math.random().toString(36).substring(2, 6)}`;
+
+      // Mark original item: RELEASED_FOR_REQUOTE (closes old contract capacity, preserves dispatch history)
+      await conn.query(
+        `UPDATE transport_requirement_items
+         SET dispatched_quantity_mt = ?,
+             remaining_quantity_mt = 0,
+             dispatch_status = 'RELEASED_FOR_REQUOTE',
+             allocation_status = 'RELEASED_FOR_REQUOTE',
+             remaining_action = 'REQUOTE',
+             released_for_requote_at = NOW(),
+             released_for_requote_by = ?,
+             released_for_requote_reason = 'Auto-reopened for competitive quotation after partial dispatch',
+             replacement_item_id = ?,
+             updated_at = NOW()
+         WHERE requirement_id = ? AND id = ?`,
+        [newTotalDispatched, authTransporter.company_name || authTransporter.username || 'Auto-Dispatch Re-open', replacementItemId, requirementId, itemId]
+      );
+
+      // Insert Replacement Requirement Item for exact remaining quantity
+      const targetItemRec = itemRows[0] || {};
+      const targetDateVal = targetItemRec.target_date || (parentReq ? parentReq.target_date : null) || new Date();
+      await conn.query(
+        `INSERT INTO transport_requirement_items (
+           id, requirement_id, sub_indent_no, product_name, quantity_mt, unit,
+           pickup_origin, drop_location, hsn_code, target_date,
+           dispatch_status, allocation_status, remaining_quantity_mt, dispatched_quantity_mt,
+           source_item_id, created_at, updated_at
+         ) VALUES (
+           ?, ?, ?, ?, ?, ?,
+           ?, ?, ?, ?,
+           'PENDING', 'ACTIVE', ?, 0,
+           ?, NOW(), NOW()
+         )`,
+        [
+          replacementItemId,
+          requirementId,
+          newSubIndentNo,
+          targetItemRec.product_name || (parentReq ? parentReq.product_name : 'Cargo'),
+          newRemaining,
+          targetItemRec.unit || 'MT',
+          targetItemRec.pickup_origin || (parentReq ? parentReq.pickup_origin : ''),
+          targetItemRec.drop_location || (parentReq ? parentReq.drop_location : ''),
+          targetItemRec.hsn_code || '',
+          targetDateVal,
+          newRemaining,
+          itemId
+        ]
+      );
+
+      // Parent status is kept in PARTIALLY_DISPATCHED
+      await conn.query(
+        `UPDATE transport_requirements SET status = 'PARTIALLY_DISPATCHED', updated_at = NOW() WHERE id = ?`,
+        [requirementId]
+      );
+
+      // Log Reopen Audit
+      await conn.query(
+        `INSERT INTO security_audit_logs (id, action, username, role, ip, status, timestamp)
+         VALUES (?, ?, ?, ?, ?, ?, NOW())`,
+        [
+          `sec_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+          `PARTIAL_DISPATCH_AUTO_REOPEN (Dispatched: ${loadedQty} MT, Reopened: ${newRemaining} MT -> New Sub-Indent: ${newSubIndentNo})`,
+          req.user.username || authTransporter.username,
+          'transporter',
+          req.ip || '127.0.0.1',
+          'AUTO_REOPENED 🔄'
+        ]
+      );
+    } else {
+      // FULLY DISPATCHED
+      await conn.query(
+        `UPDATE transport_requirement_items
+         SET dispatched_quantity_mt = ?,
+             remaining_quantity_mt = 0,
+             dispatch_status = 'FULLY_DISPATCHED',
+             allocation_status = 'COMPLETED',
+             updated_at = NOW()
+         WHERE requirement_id = ? AND id = ?`,
+        [newTotalDispatched, requirementId, itemId]
+      );
+
+      // Check if all items in parent requirement are FULLY_DISPATCHED (or completed through re-quote)
+      const [allChildItems] = await conn.query(
+        `SELECT id, dispatch_status FROM transport_requirement_items WHERE requirement_id = ?`,
+        [requirementId]
+      );
+      const allFullyDispatched = allChildItems.length > 0 && allChildItems.every(i => i.id === itemId ? true : (i.dispatch_status === 'FULLY_DISPATCHED' || i.dispatch_status === 'RELEASED_FOR_REQUOTE'));
       const parentStatus = allFullyDispatched ? 'COMPLETED' : 'PARTIALLY_DISPATCHED';
       await conn.query(
         `UPDATE transport_requirements SET status = ?, updated_at = NOW() WHERE id = ?`,
@@ -2220,12 +2313,18 @@ async function handleCreateTruckDispatch(req, res) {
 
     return res.json({
       success: true,
-      message: `Truck ${cleanTruckNo} dispatched successfully! LR No: ${lrNumber}. ${newRemaining <= 0 ? '🎉 Requirement item is 100% Fully Dispatched!' : ''}`,
+      message: newRemaining > 0
+        ? `Truck ${cleanTruckNo} dispatched (${loadedQty} MT). Remaining balance (${newRemaining} MT) automatically re-opened for quotation under ${newSubIndentNo}.`
+        : `Truck ${cleanTruckNo} dispatched successfully! LR No: ${lrNumber}. Requirement item is 100% Fully Dispatched!`,
       dispatch: dispatchRecord[0],
       lr_number: lrNumber,
       loaded_quantity_mt: loadedQty,
+      dispatched_quantity_mt: newTotalDispatched,
       remaining_quantity_mt: newRemaining,
-      dispatch_status: itemStatus
+      dispatch_status: newRemaining > 0 ? 'RELEASED_FOR_REQUOTE' : 'FULLY_DISPATCHED',
+      is_partial: newRemaining > 0,
+      reopened_sub_indent_no: newSubIndentNo,
+      reopened_item_id: replacementItemId
     });
   } catch (err) {
     await conn.rollback();
@@ -2596,6 +2695,138 @@ async function handleReleaseRemainingForRequote(req, res) {
       conn.release();
     }
     console.error('❌ Release Remaining for Requote Error:', err.message);
+}
+
+// -------------------------------------------------------------
+// GET OPEN REQUIREMENTS & RE-OPENED ITEMS 🔄 (ALL TRANSPORTERS)
+// -------------------------------------------------------------
+async function handleGetOpenRequirements(req, res) {
+  try {
+    await ensureRequirementsTableExists();
+    await ensureRateSubmissionsTableExists();
+    await ensureBidNegotiationHistoryTableExists();
+    await ensureRateNegotiationsTableExists();
+
+    const reqQuery = "SELECT * FROM transport_requirements WHERE UPPER(COALESCE(status, 'ACTIVE')) NOT IN ('ARCHIVED', 'DELETED', 'CANCELLED') ORDER BY created_at DESC LIMIT 300";
+    const [parents] = await pool.query(reqQuery);
+
+    if (parents.length === 0) {
+      return res.json({ success: true, count: 0, requirements: [], data: [] });
+    }
+
+    const parentIds = parents.map(p => p.id);
+    const [items] = await pool.query(
+      `SELECT * FROM transport_requirement_items WHERE requirement_id IN (?) ORDER BY id ASC`,
+      [parentIds]
+    );
+
+    const itemsMap = {};
+    items.forEach(i => {
+      if (!itemsMap[i.requirement_id]) itemsMap[i.requirement_id] = [];
+      itemsMap[i.requirement_id].push(i);
+    });
+
+    const dtos = parents.map(p => formatParentRequirementDto(p, itemsMap[p.id] || []));
+    return res.json({ success: true, count: dtos.length, requirements: dtos, data: dtos });
+  } catch (err) {
+    console.error('❌ Get Open Requirements Error:', err.message);
+    return res.status(500).json({ success: false, error: { code: 'DATABASE_ERROR', message: err.message } });
+  }
+}
+
+// -------------------------------------------------------------
+// GET RE-BID / RE-QUOTE LIFECYCLE HISTORY 📜 (ADMIN & TRANSPORTER)
+// -------------------------------------------------------------
+async function handleGetRebidHistory(req, res) {
+  try {
+    await ensureRequirementsTableExists();
+    await ensureTruckDispatchesTableExists();
+    await ensureRateSubmissionsTableExists();
+
+    const { id } = req.params;
+    const [reqRows] = await pool.query(
+      `SELECT * FROM transport_requirements WHERE id = ? OR req_no = ? LIMIT 1`,
+      [id, id]
+    );
+
+    if (reqRows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Requirement not found' });
+    }
+
+    const parentReq = reqRows[0];
+    const actualReqId = parentReq.id;
+
+    const [items] = await pool.query(
+      `SELECT * FROM transport_requirement_items WHERE requirement_id = ? ORDER BY id ASC`,
+      [actualReqId]
+    );
+
+    const [dispatches] = await pool.query(
+      `SELECT td.*, t.company_name AS transporter_name, t.code AS transporter_code
+       FROM truck_dispatches td
+       LEFT JOIN transporters t ON t.id = td.transporter_id
+       WHERE td.requirement_id = ?
+       ORDER BY td.dispatched_at ASC`,
+      [actualReqId]
+    );
+
+    const [submissions] = await pool.query(
+      `SELECT rs.*, t.company_name AS transporter_name, t.code AS transporter_code
+       FROM rate_submissions rs
+       LEFT JOIN transporters t ON t.id = rs.transporter_id
+       WHERE rs.requirement_id = ?
+       ORDER BY rs.submitted_at ASC`,
+      [actualReqId]
+    );
+
+    const totalReqQty = parseFloat(parentReq.total_quantity_mt || parentReq.quantity_mt || 0);
+    const totalDispatched = dispatches.reduce((acc, d) => acc + parseFloat(d.loaded_quantity_mt || 0), 0);
+    const totalRemaining = Math.max(0, totalReqQty - totalDispatched);
+
+    // Build cycles list
+    const cycles = items.map((item, idx) => {
+      const itemDispatches = dispatches.filter(d => d.requirement_item_id === item.id || d.requirement_item_id === item.sub_indent_no);
+      const itemSubs = submissions.filter(s => s.item_id === item.id || s.item_id === item.sub_indent_no);
+      const winningSub = itemSubs.find(s => s.is_finalized === 1 || s.final_rate > 0);
+      const dispSum = itemDispatches.reduce((acc, d) => acc + parseFloat(d.loaded_quantity_mt || 0), 0);
+
+      return {
+        cycle_number: idx + 1,
+        item_id: item.id,
+        sub_indent_no: item.sub_indent_no,
+        product_name: item.product_name,
+        quantity_mt: parseFloat(item.quantity_mt || 0),
+        dispatched_quantity_mt: dispSum,
+        remaining_quantity_mt: Math.max(0, parseFloat(item.quantity_mt || 0) - dispSum),
+        dispatch_status: item.dispatch_status,
+        allocation_status: item.allocation_status,
+        source_item_id: item.source_item_id,
+        replacement_item_id: item.replacement_item_id,
+        winner: winningSub ? {
+          transporter_id: winningSub.transporter_id,
+          transporter_name: winningSub.transporter_name,
+          final_rate: winningSub.final_rate || winningSub.rate_per_mt,
+          acceptance_status: winningSub.acceptance_status
+        } : null,
+        quotes_count: itemSubs.length,
+        dispatches: itemDispatches
+      };
+    });
+
+    return res.json({
+      success: true,
+      requirement_id: actualReqId,
+      req_no: parentReq.req_no,
+      total_quantity_mt: totalReqQty,
+      total_dispatched_mt: totalDispatched,
+      total_remaining_mt: totalRemaining,
+      status: parentReq.status,
+      cycles_count: cycles.length,
+      cycles,
+      all_dispatches: dispatches
+    });
+  } catch (err) {
+    console.error('❌ Get Rebid History Error:', err.message);
     return res.status(500).json({ success: false, error: { code: 'DATABASE_ERROR', message: err.message } });
   }
 }
@@ -2702,7 +2933,9 @@ async function handleGetTransporterDashboardSummary(req, res) {
 router.get('/dashboard', authenticateToken, handleGetDashboard);
 router.get('/transporter/dashboard-summary', authenticateToken, handleGetTransporterDashboardSummary);
 router.get('/requirements', authenticateToken, handleGetRequirements);
+router.get('/requirements/open', authenticateToken, handleGetOpenRequirements);
 router.get('/rate-requests', authenticateToken, handleGetRequirements);
+router.get('/requirements/:id/rebid-history', authenticateToken, handleGetRebidHistory);
 router.get('/requirements/:id/rates', authenticateToken, handleGetRequirementRates);
 router.get('/rate-requests/:id/rates', authenticateToken, handleGetRequirementRates);
 router.post('/requirements/:requirementId/items/:itemId/counter-offer-all', authenticateToken, requireRole('admin'), handleAdminCounterAll);
@@ -2717,6 +2950,7 @@ router.post('/rate-submissions/:id/accept-final-rate', authenticateToken, handle
 router.post('/requirements/:requirementId/items/:itemId/dispatch', authenticateToken, handleCreateTruckDispatch);
 router.post('/requirements/:requirementId/items/:itemId/release-remaining-for-requote', authenticateToken, requireRole('admin'), handleReleaseRemainingForRequote);
 router.post('/requirements/:requirementId/items/:itemId/release-for-requote', authenticateToken, requireRole('admin'), handleReleaseRemainingForRequote);
+router.post('/requirements/:requirementId/items/:itemId/reopen-for-quote', authenticateToken, requireRole('admin'), handleReleaseRemainingForRequote);
 router.get('/requirements/:requirementId/items/:itemId/dispatches', authenticateToken, handleGetRequirementItemDispatches);
 router.get('/dispatches', authenticateToken, handleGetDispatches);
 router.get('/dispatches/:id', authenticateToken, handleGetDispatchById);
