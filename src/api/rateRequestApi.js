@@ -98,10 +98,39 @@ export async function getDispatchById(id) {
 }
 
 export async function releaseRemainingForRequote(requirementId, itemId, reason = '') {
-  return apiClient(`/api/requirements/${requirementId}/items/${itemId}/release-remaining-for-requote`, {
+  return apiClient(`/api/requirements/${requirementId}/items/${itemId}/release-remaining`, {
     method: 'POST',
     body: JSON.stringify({ reason })
   });
 }
 
+export async function requestDispatchAccess(requirementId, itemId) {
+  return apiClient(`/api/requirements/${requirementId}/items/${itemId}/request-dispatch-access`, {
+    method: 'POST'
+  });
+}
 
+export async function getDispatchAccessRequests() {
+  return apiClient('/api/admin/dispatch-access-requests', {
+    method: 'GET'
+  });
+}
+
+export async function approveDispatchAccessRequest(id) {
+  return apiClient(`/api/admin/dispatch-access-requests/${id}/approve`, {
+    method: 'POST'
+  });
+}
+
+export async function rejectDispatchAccessRequest(id, remarks = '') {
+  return apiClient(`/api/admin/dispatch-access-requests/${id}/reject`, {
+    method: 'POST',
+    body: JSON.stringify({ remarks })
+  });
+}
+
+export async function getTransporterDispatchAuthorizations() {
+  return apiClient('/api/transporters/dispatch-authorizations', {
+    method: 'GET'
+  });
+}

@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { createRateRequest, createRequirement, updateRequirement, deleteRequirement, deleteRequirementItem, archiveRequirement, cancelRequirement, restoreRequirement, releaseRemainingForRequote } from '../api/rateRequestApi';
+import { createRateRequest, createRequirement, updateRequirement, deleteRequirement, deleteRequirementItem, archiveRequirement, cancelRequirement, restoreRequirement, releaseRemainingForRequote, getDispatchAccessRequests, approveDispatchAccessRequest, rejectDispatchAccessRequest } from '../api/rateRequestApi';
 import { sendAdminCounterAll, finalizeBid } from '../api/rateSubmissionApi';
 import { createTransporter, updateTransporterStatus, resetTransporterPassword, deleteTransporter } from '../api/transporterApi';
 import { createProduct, updateProduct, deleteProduct, createCompanyUnit, updateCompanyUnit, deleteCompanyUnit } from '../api/masterDataApi';
@@ -62,6 +62,7 @@ export const AdminDashboard = () => {
       if (hash.startsWith('contracts')) return 'contracts';
       if (hash.startsWith('masters') || hash.startsWith('title_masters')) return 'title_masters';
       if (hash.startsWith('backup') || hash.startsWith('db_backup')) return 'db_backup';
+      if (hash.startsWith('dispatch_requests')) return 'dispatch_requests';
       if (hash.startsWith('security')) return 'security';
       if (hash.startsWith('requirements')) return 'requirements';
     }
@@ -75,6 +76,61 @@ export const AdminDashboard = () => {
   });
 
   const [reqFilterTab, setReqFilterTab] = useState('all');
+
+  const [dispatchAccessRequests, setDispatchAccessRequests] = useState([]);
+  const [dispatchAccessFilter, setDispatchAccessFilter] = useState('pending');
+  const [dispatchAccessLoading, setDispatchAccessLoading] = useState(false);
+  const [dispatchAccessNotice, setDispatchAccessNotice] = useState(null);
+
+  const refreshDispatchAccessRequests = async () => {
+    try {
+      setDispatchAccessLoading(true);
+      const res = await getDispatchAccessRequests();
+      if (res && res.success) {
+        setDispatchAccessRequests(res.data || []);
+      }
+    } catch (e) {
+      console.warn('Could not load dispatch access requests:', e.message);
+    } finally {
+      setDispatchAccessLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    refreshDispatchAccessRequests();
+  }, [activeTab]);
+
+  const handleApproveDispatchAccess = async (reqId) => {
+    try {
+      const res = await approveDispatchAccessRequest(reqId);
+      if (res && res.success) {
+        setDispatchAccessNotice('✅ Transporter dispatch access approved successfully!');
+        await refreshDispatchAccessRequests();
+        setTimeout(() => setDispatchAccessNotice(null), 4000);
+      } else {
+        alert(res?.error || 'Failed to approve request.');
+      }
+    } catch (e) {
+      alert(e?.message || 'Error approving request.');
+    }
+  };
+
+  const handleRejectDispatchAccess = async (reqId) => {
+    const remarks = window.prompt('Enter rejection remarks (optional):', 'Rate not acceptable / alternate allocation');
+    if (remarks === null) return; // cancelled
+    try {
+      const res = await rejectDispatchAccessRequest(reqId, remarks);
+      if (res && res.success) {
+        setDispatchAccessNotice('❌ Dispatch access request rejected.');
+        await refreshDispatchAccessRequests();
+        setTimeout(() => setDispatchAccessNotice(null), 4000);
+      } else {
+        alert(res?.error || 'Failed to reject request.');
+      }
+    } catch (e) {
+      alert(e?.message || 'Error rejecting request.');
+    }
+  };
 
   useEffect(() => {
     localStorage.setItem('transflow_admin_active_tab', activeTab);
@@ -2248,6 +2304,43 @@ export const AdminDashboard = () => {
           >
             <Database size={17} /> 🗄️ System Backup & Restore
           </button>
+
+          <button
+            onClick={() => {
+              setSelectedRequestForComparison(null);
+              setActiveTab('dispatch_requests');
+            }}
+            className="btn"
+            style={{
+              background: (activeTab === 'dispatch_requests' && !selectedRequestForComparison)
+                ? 'linear-gradient(135deg, #0284c7 0%, #38bdf8 100%)'
+                : 'rgba(30, 41, 59, 0.65)',
+              color: (activeTab === 'dispatch_requests' && !selectedRequestForComparison) ? '#ffffff' : 'var(--text-sub)',
+              border: (activeTab === 'dispatch_requests' && !selectedRequestForComparison)
+                ? '2px solid #7dd3fc'
+                : '1px solid rgba(255, 255, 255, 0.15)',
+              boxShadow: (activeTab === 'dispatch_requests' && !selectedRequestForComparison)
+                ? '0 0 22px rgba(56, 189, 248, 0.6), 0 0 45px rgba(56, 189, 248, 0.3)'
+                : 'none',
+              fontWeight: (activeTab === 'dispatch_requests' && !selectedRequestForComparison) ? '900' : '700',
+              transform: (activeTab === 'dispatch_requests' && !selectedRequestForComparison) ? 'scale(1.05)' : 'scale(1)',
+              padding: '10px 18px',
+              fontSize: '0.88rem',
+              borderRadius: '12px',
+              transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px'
+            }}
+          >
+            <Truck size={17} /> 🚚 Dispatch Access Requests
+            {dispatchAccessRequests.filter(r => r.authorization_status === 'PENDING').length > 0 && (
+              <span style={{ background: '#ef4444', color: '#ffffff', borderRadius: '50%', padding: '2px 7px', fontSize: '0.74rem', fontWeight: '900', marginLeft: '4px' }}>
+                {dispatchAccessRequests.filter(r => r.authorization_status === 'PENDING').length}
+              </span>
+            )}
+          </button>
       </div>
       </div>
 
@@ -3940,6 +4033,228 @@ export const AdminDashboard = () => {
                       <tr>
                         <td colSpan="6" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>
                           No security events logged yet.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* 🚚 TAB: DISPATCH ACCESS REQUESTS & APPROVAL QUEUE */}
+          {activeTab === 'dispatch_requests' && (
+            <div className="card glass-panel" style={{ padding: '24px', borderRadius: '16px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '14px' }}>
+                <div>
+                  <h3 style={{ fontSize: '1.25rem', fontWeight: '900', color: '#ffffff', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <Truck size={24} color="#38bdf8" /> 🚚 Multi-Transporter Fixed-Rate Dispatch Access Requests
+                  </h3>
+                  <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+                    Review, approve, or reject access requests from eligible transporters wishing to dispatch remaining quantities at the locked finalized rate.
+                  </p>
+                </div>
+
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <button
+                    onClick={() => setDispatchAccessFilter('pending')}
+                    className={`btn ${dispatchAccessFilter === 'pending' ? 'btn-primary' : 'btn-secondary'}`}
+                    style={{ padding: '6px 14px', fontSize: '0.8rem', fontWeight: '800', borderRadius: '20px' }}
+                  >
+                    Pending ({dispatchAccessRequests.filter(r => r.authorization_status === 'PENDING').length})
+                  </button>
+                  <button
+                    onClick={() => setDispatchAccessFilter('approved')}
+                    className={`btn ${dispatchAccessFilter === 'approved' ? 'btn-primary' : 'btn-secondary'}`}
+                    style={{ padding: '6px 14px', fontSize: '0.8rem', fontWeight: '800', borderRadius: '20px' }}
+                  >
+                    Approved ({dispatchAccessRequests.filter(r => r.authorization_status === 'APPROVED' || r.authorization_status === 'WINNER').length})
+                  </button>
+                  <button
+                    onClick={() => setDispatchAccessFilter('rejected')}
+                    className={`btn ${dispatchAccessFilter === 'rejected' ? 'btn-primary' : 'btn-secondary'}`}
+                    style={{ padding: '6px 14px', fontSize: '0.8rem', fontWeight: '800', borderRadius: '20px' }}
+                  >
+                    Rejected ({dispatchAccessRequests.filter(r => r.authorization_status === 'REJECTED').length})
+                  </button>
+                  <button
+                    onClick={() => setDispatchAccessFilter('all')}
+                    className={`btn ${dispatchAccessFilter === 'all' ? 'btn-primary' : 'btn-secondary'}`}
+                    style={{ padding: '6px 14px', fontSize: '0.8rem', fontWeight: '800', borderRadius: '20px' }}
+                  >
+                    All ({dispatchAccessRequests.length})
+                  </button>
+                  <button
+                    onClick={refreshDispatchAccessRequests}
+                    className="btn btn-secondary"
+                    style={{ padding: '6px 12px', fontSize: '0.8rem', borderRadius: '20px' }}
+                    title="Refresh requests"
+                  >
+                    <RefreshCw size={14} className={dispatchAccessLoading ? 'animate-spin' : ''} />
+                  </button>
+                </div>
+              </div>
+
+              {dispatchAccessNotice && (
+                <div style={{ background: '#064e3b', border: '1px solid #10b981', color: '#a7f3d0', padding: '10px 16px', borderRadius: '10px', marginBottom: '16px', fontWeight: '800', fontSize: '0.88rem' }}>
+                  {dispatchAccessNotice}
+                </div>
+              )}
+
+              <div className="custom-table-container">
+                <table className="custom-table">
+                  <thead>
+                    <tr>
+                      <th>Req No / Sub-indent</th>
+                      <th>Cargo & Route</th>
+                      <th>Qty (Total / Disp / Rem)</th>
+                      <th>Fixed Rate</th>
+                      <th>Original Winner</th>
+                      <th>Requesting Transporter</th>
+                      <th>Request Date</th>
+                      <th>Status</th>
+                      <th style={{ textAlign: 'right' }}>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {dispatchAccessRequests
+                      .filter(r => {
+                        if (dispatchAccessFilter === 'pending') return r.authorization_status === 'PENDING';
+                        if (dispatchAccessFilter === 'approved') return r.authorization_status === 'APPROVED' || r.authorization_status === 'WINNER';
+                        if (dispatchAccessFilter === 'rejected') return r.authorization_status === 'REJECTED';
+                        return true;
+                      })
+                      .map((req) => (
+                        <tr key={req.id}>
+                          <td>
+                            <div style={{ fontWeight: '900', color: '#38bdf8', fontSize: '0.88rem' }}>
+                              {req.req_no || 'REQ'}
+                            </div>
+                            <div style={{ fontSize: '0.76rem', color: '#94a3b8', fontFamily: 'monospace' }}>
+                              {req.item_sub_indent_no || req.sub_indent_no || req.requirement_item_id}
+                            </div>
+                          </td>
+
+                          <td>
+                            <div style={{ fontWeight: '800', color: '#0f172a', fontSize: '0.86rem' }}>
+                              {req.product_name || req.req_title || 'Cargo'}
+                            </div>
+                            <div style={{ fontSize: '0.76rem', color: '#475569' }}>
+                              📍 {req.item_pickup || req.parent_pickup || 'Origin'} ➔ 🎯 {req.item_drop || req.parent_drop || 'Destination'}
+                            </div>
+                          </td>
+
+                          <td>
+                            <div style={{ fontSize: '0.82rem', fontWeight: '800', color: '#0f172a' }}>
+                              {Number(req.item_quantity_mt || 0).toLocaleString()} MT Total
+                            </div>
+                            <div style={{ fontSize: '0.74rem', color: '#059669', fontWeight: '700' }}>
+                              ✅ {Number(req.dispatched_quantity_mt || 0).toLocaleString()} MT Dispatched
+                            </div>
+                            <div style={{ fontSize: '0.74rem', color: '#d97706', fontWeight: '800' }}>
+                              ⏳ {Number(req.remaining_quantity_mt || 0).toLocaleString()} MT Remaining
+                            </div>
+                          </td>
+
+                          <td>
+                            <span style={{ fontSize: '0.92rem', fontWeight: '900', color: '#059669', background: '#dcfce7', border: '1.5px solid #86efac', padding: '3px 8px', borderRadius: '6px' }}>
+                              ₹{req.fixed_rate}/MT
+                            </span>
+                          </td>
+
+                          <td>
+                            {req.original_winner ? (
+                              <div>
+                                <div style={{ fontWeight: '800', color: '#0f172a', fontSize: '0.84rem' }}>
+                                  🏆 {req.original_winner.company_name}
+                                </div>
+                                <div style={{ fontSize: '0.72rem', color: '#64748b' }}>
+                                  Code: {req.original_winner.code}
+                                </div>
+                              </div>
+                            ) : (
+                              <span style={{ color: '#94a3b8', fontSize: '0.78rem' }}>N/A</span>
+                            )}
+                          </td>
+
+                          <td>
+                            <div style={{ fontWeight: '800', color: '#0284c7', fontSize: '0.86rem' }}>
+                              {req.transporter_name || req.transporter_id}
+                            </div>
+                            <div style={{ fontSize: '0.74rem', color: '#475569' }}>
+                              Code: {req.transporter_code || '-'} | 📞 {req.transporter_mobile || '-'}
+                            </div>
+                          </td>
+
+                          <td>
+                            <div style={{ fontSize: '0.78rem', color: '#475569', fontWeight: '600' }}>
+                              {req.requested_at ? new Date(req.requested_at).toLocaleString() : (req.created_at ? new Date(req.created_at).toLocaleString() : '-')}
+                            </div>
+                          </td>
+
+                          <td>
+                            <span
+                              className={`badge ${
+                                req.authorization_status === 'WINNER'
+                                  ? 'badge-awarded'
+                                  : req.authorization_status === 'APPROVED'
+                                  ? 'badge-open'
+                                  : req.authorization_status === 'REJECTED'
+                                  ? 'badge-cancelled'
+                                  : 'badge-pending'
+                              }`}
+                              style={{ fontWeight: '800', fontSize: '0.76rem', padding: '4px 8px' }}
+                            >
+                              {req.authorization_status === 'WINNER'
+                                ? '🏆 WINNER'
+                                : req.authorization_status === 'APPROVED'
+                                ? '✅ APPROVED'
+                                : req.authorization_status === 'REJECTED'
+                                ? '❌ REJECTED'
+                                : '⏳ PENDING'}
+                            </span>
+                          </td>
+
+                          <td style={{ textAlign: 'right' }}>
+                            {req.authorization_status === 'PENDING' ? (
+                              <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end' }}>
+                                <button
+                                  type="button"
+                                  onClick={() => handleApproveDispatchAccess(req.id)}
+                                  className="btn btn-success"
+                                  style={{ padding: '4px 10px', fontSize: '0.78rem', fontWeight: '800', borderRadius: '6px' }}
+                                >
+                                  ✅ Approve
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleRejectDispatchAccess(req.id)}
+                                  className="btn btn-secondary"
+                                  style={{ padding: '4px 8px', fontSize: '0.78rem', fontWeight: '800', borderRadius: '6px', color: '#ef4444', borderColor: '#f87171' }}
+                                >
+                                  ❌ Reject
+                                </button>
+                              </div>
+                            ) : req.authorization_status === 'APPROVED' ? (
+                              <span style={{ fontSize: '0.76rem', color: '#059669', fontWeight: '800' }}>
+                                Approved by {req.approved_by || 'Admin'}
+                              </span>
+                            ) : req.authorization_status === 'REJECTED' ? (
+                              <div style={{ fontSize: '0.74rem', color: '#ef4444', textAlign: 'right' }}>
+                                <div>Rejected</div>
+                                {req.remarks && <div style={{ fontSize: '0.7rem', color: '#64748b' }}>{req.remarks}</div>}
+                              </div>
+                            ) : (
+                              <span style={{ fontSize: '0.76rem', color: '#64748b' }}>Locked</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+
+                    {dispatchAccessRequests.length === 0 && (
+                      <tr>
+                        <td colSpan="9" style={{ textAlign: 'center', padding: '36px', color: 'var(--text-muted)' }}>
+                          No dispatch access requests found.
                         </td>
                       </tr>
                     )}

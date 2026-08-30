@@ -11,7 +11,7 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "oxlint",
-    "test": "node tests/security_regression.test.js && node tests/smart_delete_policy.test.js && node tests/transporter_dispatch_workflow.test.js && node tests/transporter_dashboard_navigation.test.js && node tests/release_remaining_requote.test.js && node tests/production_dispatch_identity_fix.test.js && node tests/fixed_rate_remaining_dispatch.test.js && node tests/admin_dashboard_stat_cards_navigation.test.js && node tests/schema_migration_dispatch_columns.test.js && node tests/production_reconciliation_migration.test.js",
+    "test": "node tests/security_regression.test.js && node tests/smart_delete_policy.test.js && node tests/transporter_dispatch_workflow.test.js && node tests/transporter_dashboard_navigation.test.js && node tests/release_remaining_requote.test.js && node tests/production_dispatch_identity_fix.test.js && node tests/fixed_rate_remaining_dispatch.test.js && node tests/admin_dashboard_stat_cards_navigation.test.js && node tests/schema_migration_dispatch_columns.test.js && node tests/production_reconciliation_migration.test.js && node tests/dispatch_access_authorization_workflow.test.js",
     "preview": "vite preview"
   },
   "dependencies": {

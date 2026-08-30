@@ -214,6 +214,51 @@ export async function ensureRequirementsTableExists() {
       await ensureColumnExists('transport_requirement_items', name, def);
     }
 
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS requirement_dispatch_authorizations (
+        id VARCHAR(100) NOT NULL PRIMARY KEY,
+        requirement_id VARCHAR(100) NOT NULL,
+        requirement_item_id VARCHAR(100) NOT NULL,
+        sub_indent_no VARCHAR(100) DEFAULT NULL,
+        transporter_id VARCHAR(100) NOT NULL,
+        fixed_rate DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+        authorization_status VARCHAR(50) NOT NULL DEFAULT 'PENDING',
+        requested_at DATETIME DEFAULT NULL,
+        requested_by VARCHAR(100) DEFAULT NULL,
+        approved_at DATETIME DEFAULT NULL,
+        approved_by VARCHAR(100) DEFAULT NULL,
+        rejected_at DATETIME DEFAULT NULL,
+        rejected_by VARCHAR(100) DEFAULT NULL,
+        remarks TEXT DEFAULT NULL,
+        created_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY uq_req_item_transporter (requirement_id, requirement_item_id, transporter_id),
+        INDEX idx_auth_lookup (requirement_id, requirement_item_id, authorization_status),
+        INDEX idx_trans_status (transporter_id, authorization_status)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+
+    // Backfill existing finalized bids as WINNER authorizations
+    await pool.query(`
+      INSERT IGNORE INTO requirement_dispatch_authorizations (
+        id, requirement_id, requirement_item_id, sub_indent_no, transporter_id, fixed_rate, authorization_status, approved_at, approved_by, created_at
+      )
+      SELECT 
+        CONCAT('auth_win_', rs.id),
+        rs.requirement_id,
+        COALESCE(rs.item_id, 'MAIN'),
+        NULL,
+        rs.transporter_id,
+        COALESCE(rs.final_rate, rs.rate_per_mt, 0),
+        'WINNER',
+        COALESCE(rs.finalized_at, rs.updated_at, NOW()),
+        'admin',
+        COALESCE(rs.created_at, NOW())
+      FROM rate_submissions rs
+      WHERE (rs.is_finalized = 1 OR UPPER(COALESCE(rs.bid_status, '')) = 'FINALIZED' OR rs.final_rate > 0)
+        AND rs.transporter_id IS NOT NULL;
+    `).catch(() => {});
+
     console.log('[SCHEMA MIGRATION] COMPLETED');
 
     // Run safe reconciliation on startup to synchronize actual dispatch totals
@@ -1817,6 +1862,21 @@ async function handleFinalizeBid(req, res) {
       [id, sub.requirement_id, sub.item_id || 'MAIN', sub.transporter_id, prevRate, agreedRate, req.user.username || 'admin', `Bid finalized by Admin at ₹${agreedRate}/MT`]
     );
 
+    // Automatically create/update WINNER authorization for winning transporter
+    const authId = `auth_win_${id}`;
+    await pool.query(
+      `INSERT INTO requirement_dispatch_authorizations (
+         id, requirement_id, requirement_item_id, sub_indent_no, transporter_id, fixed_rate, authorization_status, approved_at, approved_by, created_at
+       ) VALUES (?, ?, ?, ?, ?, ?, 'WINNER', NOW(), ?, NOW())
+       ON DUPLICATE KEY UPDATE 
+         fixed_rate = VALUES(fixed_rate),
+         authorization_status = 'WINNER',
+         approved_at = NOW(),
+         approved_by = VALUES(approved_by),
+         updated_at = NOW()`,
+      [authId, sub.requirement_id, sub.item_id || 'MAIN', null, sub.transporter_id, agreedRate, req.user.username || 'admin']
+    ).catch(e => console.warn('Authorizations insert notice:', e.message));
+
     const [updatedRows] = await pool.query('SELECT * FROM rate_submissions WHERE id = ? LIMIT 1', [id]);
     return res.json({
       success: true,
@@ -2226,16 +2286,33 @@ async function handleCreateTruckDispatch(req, res) {
       });
     }
 
-    if (finalizedSub.transporter_id) {
-      const winningTransporterId = String(finalizedSub.transporter_id);
-      const isWinner = transMatchIds.some(tid => String(tid) === winningTransporterId || String(tid).toLowerCase() === winningTransporterId.toLowerCase());
-      if (!isWinner && req.user?.role !== 'admin') {
+    if (req.user?.role !== 'admin') {
+      // Check requirement_dispatch_authorizations for WINNER or APPROVED status
+      const [authRows] = await conn.query(
+        `SELECT * FROM requirement_dispatch_authorizations 
+         WHERE requirement_id IN (?) 
+           AND (requirement_item_id IN (?) OR requirement_item_id = 'MAIN')
+           AND transporter_id IN (?)
+           AND authorization_status IN ('WINNER', 'APPROVED')
+         LIMIT 1`,
+        [resolvedReqIds, resolvedItemIds.length > 0 ? resolvedItemIds : ['MAIN'], transMatchIds]
+      );
+
+      let isAuthorized = authRows.length > 0;
+
+      // Fallback check against finalized bid transporter_id for legacy records
+      if (!isAuthorized && finalizedSub && finalizedSub.transporter_id) {
+        const winningTransporterId = String(finalizedSub.transporter_id);
+        isAuthorized = transMatchIds.some(tid => String(tid) === winningTransporterId || String(tid).toLowerCase() === winningTransporterId.toLowerCase());
+      }
+
+      if (!isAuthorized) {
         await conn.rollback();
         conn.release();
         return res.status(403).json({
           success: false,
           code: 'TRANSPORTER_NOT_AUTHORIZED_FOR_DISPATCH',
-          error: 'Only the winning finalized transporter is authorized to dispatch trucks for this allocation.'
+          error: 'You are not authorized to dispatch against this allocation.'
         });
       }
     }
@@ -3181,6 +3258,279 @@ router.get('/admin/dispatch-integrity-report', authenticateToken, requireRole('a
       success: false,
       error: { code: 'INTEGRITY_REPORT_FAILED', message: err.message }
     });
+  }
+});
+
+// -------------------------------------------------------------
+// DISPATCH ACCESS REQUEST & APPROVAL ENDPOINTS 🚚🤝
+// -------------------------------------------------------------
+
+// POST /api/requirements/:id/items/:itemId/request-dispatch-access — Transporter requests dispatch access at fixed rate
+router.post('/requirements/:id/items/:itemId/request-dispatch-access', authenticateToken, async (req, res) => {
+  const { id: reqId, itemId } = req.params;
+  const authUser = req.user;
+  const transporterId = authUser.transporter_id || authUser.id;
+
+  if (!transporterId || authUser.role !== 'transporter') {
+    return res.status(403).json({ success: false, code: 'UNAUTHORIZED', error: 'Only verified transporters can request dispatch access.' });
+  }
+
+  await ensureRequirementsTableExists();
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+
+    // 1. Resolve requirement and item
+    const [reqRows] = await conn.query('SELECT * FROM transport_requirements WHERE id = ?', [reqId]);
+    if (reqRows.length === 0) {
+      await conn.rollback();
+      conn.release();
+      return res.status(404).json({ success: false, code: 'REQ_NOT_FOUND', error: 'Requirement not found.' });
+    }
+
+    const [itemRows] = await conn.query(
+      'SELECT * FROM transport_requirement_items WHERE requirement_id = ? AND (id = ? OR sub_indent_no = ?)',
+      [reqId, itemId, itemId]
+    );
+    const item = itemRows[0];
+    const actualItemId = item ? item.id : itemId;
+    const subIndentNo = item ? item.sub_indent_no : null;
+
+    // 2. Resolve fixed finalized rate for this item
+    const [finBids] = await conn.query(
+      `SELECT * FROM rate_submissions 
+       WHERE requirement_id = ? AND (item_id = ? OR item_id = ? OR item_id = 'MAIN')
+         AND (is_finalized = 1 OR UPPER(COALESCE(bid_status, '')) = 'FINALIZED' OR final_rate > 0)
+       ORDER BY is_finalized DESC, finalized_at DESC LIMIT 1`,
+      [reqId, actualItemId, subIndentNo || actualItemId]
+    );
+
+    let fixedRate = finBids[0]?.final_rate || finBids[0]?.rate_per_mt;
+    if (!fixedRate) {
+      const [dispRateRows] = await conn.query(
+        `SELECT finalized_rate FROM truck_dispatches 
+         WHERE requirement_id = ? AND (requirement_item_id = ? OR requirement_item_id = ?) AND finalized_rate > 0
+         ORDER BY dispatched_at DESC LIMIT 1`,
+        [reqId, actualItemId, subIndentNo || actualItemId]
+      );
+      if (dispRateRows.length > 0) fixedRate = dispRateRows[0].finalized_rate;
+    }
+
+    if (!fixedRate) {
+      await conn.rollback();
+      conn.release();
+      return res.status(400).json({ success: false, code: 'RATE_NOT_FINALIZED', error: 'No fixed finalized rate exists for this requirement item.' });
+    }
+
+    // 3. Check existing authorization record
+    const [existingAuth] = await conn.query(
+      `SELECT * FROM requirement_dispatch_authorizations 
+       WHERE requirement_id = ? AND requirement_item_id = ? AND transporter_id = ?`,
+      [reqId, actualItemId, transporterId]
+    );
+
+    if (existingAuth.length > 0) {
+      const currentStatus = existingAuth[0].authorization_status;
+      if (currentStatus === 'WINNER' || currentStatus === 'APPROVED') {
+        await conn.rollback();
+        conn.release();
+        return res.status(400).json({ success: false, code: 'ALREADY_AUTHORIZED', error: 'You are already authorized to dispatch trucks for this item.' });
+      }
+      if (currentStatus === 'PENDING') {
+        await conn.rollback();
+        conn.release();
+        return res.status(400).json({ success: false, code: 'REQUEST_ALREADY_PENDING', error: 'Your dispatch access request is already pending Admin approval.' });
+      }
+
+      // If previously REJECTED, update to PENDING again
+      await conn.query(
+        `UPDATE requirement_dispatch_authorizations 
+         SET authorization_status = 'PENDING', fixed_rate = ?, requested_at = NOW(), requested_by = ?, rejected_at = NULL, rejected_by = NULL, updated_at = NOW()
+         WHERE id = ?`,
+        [fixedRate, authUser.username || transporterId, existingAuth[0].id]
+      );
+
+      await conn.commit();
+      conn.release();
+      return res.json({
+        success: true,
+        message: 'Dispatch access request submitted successfully. Awaiting Admin approval.',
+        data: { ...existingAuth[0], authorization_status: 'PENDING', fixed_rate: fixedRate }
+      });
+    }
+
+    // Insert new PENDING authorization
+    const authId = `auth_req_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+    const newAuth = {
+      id: authId,
+      requirement_id: reqId,
+      requirement_item_id: actualItemId,
+      sub_indent_no: subIndentNo,
+      transporter_id: transporterId,
+      fixed_rate: fixedRate,
+      authorization_status: 'PENDING',
+      requested_at: new Date(),
+      requested_by: authUser.username || transporterId
+    };
+
+    await conn.query(
+      `INSERT INTO requirement_dispatch_authorizations (
+         id, requirement_id, requirement_item_id, sub_indent_no, transporter_id, fixed_rate, authorization_status, requested_at, requested_by
+       ) VALUES (?, ?, ?, ?, ?, ?, 'PENDING', NOW(), ?)`,
+      [authId, reqId, actualItemId, subIndentNo, transporterId, fixedRate, authUser.username || transporterId]
+    );
+
+    await conn.commit();
+    conn.release();
+
+    return res.json({
+      success: true,
+      message: 'Dispatch access request submitted successfully. Awaiting Admin approval.',
+      data: newAuth
+    });
+
+  } catch (err) {
+    await conn.rollback();
+    conn.release();
+    console.error('❌ request-dispatch-access Error:', err.message);
+    return res.status(500).json({ success: false, code: 'DATABASE_ERROR', error: err.message });
+  }
+});
+
+// GET /api/admin/dispatch-access-requests — Admin lists all dispatch authorization requests
+router.get('/admin/dispatch-access-requests', authenticateToken, requireRole('admin'), async (req, res) => {
+  await ensureRequirementsTableExists();
+  try {
+    const [rows] = await pool.query(`
+      SELECT 
+        rda.*,
+        tr.req_no,
+        tr.title AS req_title,
+        tr.pickup_origin AS parent_pickup,
+        tr.drop_location AS parent_drop,
+        tr.target_date AS req_target_date,
+        tri.sub_indent_no AS item_sub_indent_no,
+        tri.product_name,
+        tri.quantity_mt AS item_quantity_mt,
+        tri.dispatched_quantity_mt,
+        tri.remaining_quantity_mt,
+        tri.pickup_origin AS item_pickup,
+        tri.drop_location AS item_drop,
+        t.company_name AS transporter_name,
+        t.code AS transporter_code,
+        t.mobile AS transporter_mobile,
+        t.email AS transporter_email
+      FROM requirement_dispatch_authorizations rda
+      LEFT JOIN transport_requirements tr ON rda.requirement_id = tr.id
+      LEFT JOIN transport_requirement_items tri ON rda.requirement_item_id = tri.id
+      LEFT JOIN transporters t ON rda.transporter_id = t.id
+      ORDER BY rda.created_at DESC
+    `);
+
+    // Enrich with Original Winning Transporter details
+    const enriched = await Promise.all(rows.map(async (row) => {
+      const [winRows] = await pool.query(`
+        SELECT rda2.*, t2.company_name AS winner_name, t2.code AS winner_code
+        FROM requirement_dispatch_authorizations rda2
+        LEFT JOIN transporters t2 ON rda2.transporter_id = t2.id
+        WHERE rda2.requirement_id = ? AND rda2.requirement_item_id = ? AND rda2.authorization_status = 'WINNER'
+        LIMIT 1
+      `, [row.requirement_id, row.requirement_item_id]);
+
+      return {
+        ...row,
+        original_winner: winRows[0] ? {
+          transporter_id: winRows[0].transporter_id,
+          company_name: winRows[0].winner_name,
+          code: winRows[0].winner_code,
+          fixed_rate: winRows[0].fixed_rate
+        } : null
+      };
+    }));
+
+    return res.json({ success: true, count: enriched.length, data: enriched });
+  } catch (err) {
+    console.error('❌ GET /api/admin/dispatch-access-requests Error:', err.message);
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// POST /api/admin/dispatch-access-requests/:id/approve — Admin approves request
+router.post('/admin/dispatch-access-requests/:id/approve', authenticateToken, requireRole('admin'), async (req, res) => {
+  const { id } = req.params;
+  try {
+    const [rows] = await pool.query('SELECT * FROM requirement_dispatch_authorizations WHERE id = ?', [id]);
+    if (rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Dispatch access request not found.' });
+    }
+
+    await pool.query(
+      `UPDATE requirement_dispatch_authorizations 
+       SET authorization_status = 'APPROVED', approved_at = NOW(), approved_by = ?, updated_at = NOW()
+       WHERE id = ?`,
+      [req.user.username || 'admin', id]
+    );
+
+    const [updated] = await pool.query('SELECT * FROM requirement_dispatch_authorizations WHERE id = ?', [id]);
+    return res.json({
+      success: true,
+      message: 'Dispatch access approved successfully.',
+      data: updated[0]
+    });
+  } catch (err) {
+    console.error('❌ Approve request error:', err.message);
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// POST /api/admin/dispatch-access-requests/:id/reject — Admin rejects request
+router.post('/admin/dispatch-access-requests/:id/reject', authenticateToken, requireRole('admin'), async (req, res) => {
+  const { id } = req.params;
+  const { remarks } = req.body;
+  try {
+    const [rows] = await pool.query('SELECT * FROM requirement_dispatch_authorizations WHERE id = ?', [id]);
+    if (rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Dispatch access request not found.' });
+    }
+
+    await pool.query(
+      `UPDATE requirement_dispatch_authorizations 
+       SET authorization_status = 'REJECTED', rejected_at = NOW(), rejected_by = ?, remarks = COALESCE(?, remarks), updated_at = NOW()
+       WHERE id = ?`,
+      [req.user.username || 'admin', remarks || 'Rejected by Admin', id]
+    );
+
+    const [updated] = await pool.query('SELECT * FROM requirement_dispatch_authorizations WHERE id = ?', [id]);
+    return res.json({
+      success: true,
+      message: 'Dispatch access request rejected.',
+      data: updated[0]
+    });
+  } catch (err) {
+    console.error('❌ Reject request error:', err.message);
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// GET /api/transporters/dispatch-authorizations — Transporter queries their dispatch authorizations
+router.get('/transporters/dispatch-authorizations', authenticateToken, async (req, res) => {
+  const authUser = req.user;
+  const transporterId = authUser.transporter_id || authUser.id;
+  await ensureRequirementsTableExists();
+  try {
+    let rows;
+    if (authUser.role === 'admin') {
+      [rows] = await pool.query('SELECT * FROM requirement_dispatch_authorizations ORDER BY created_at DESC');
+    } else {
+      [rows] = await pool.query(
+        'SELECT * FROM requirement_dispatch_authorizations WHERE transporter_id = ? ORDER BY created_at DESC',
+        [transporterId]
+      );
+    }
+    return res.json({ success: true, data: rows });
+  } catch (err) {
+    console.error('❌ GET dispatch-authorizations error:', err.message);
+    return res.status(500).json({ success: false, error: err.message });
   }
 });
 

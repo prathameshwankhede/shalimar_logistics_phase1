@@ -4,7 +4,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { submitBid, submitTransporterResponse, fetchTransporterDashboardSummary } from '../api/rateSubmissionApi';
-import { acceptFinalRate, createTruckDispatch } from '../api/rateRequestApi';
+import { acceptFinalRate, createTruckDispatch, requestDispatchAccess, getTransporterDispatchAuthorizations } from '../api/rateRequestApi';
 import { NegotiationHistoryModal } from './NegotiationHistoryModal';
 import { ContractModal } from './ContractModal';
 import { ERPPaymentModal } from './ERPPaymentModal';
@@ -35,6 +35,19 @@ export const TransporterPortal = () => {
 
   // 📊 MYSQL-BACKED DASHBOARD SUMMARY COUNTERS
   const [dashboardSummary, setDashboardSummary] = useState(null);
+  const [myAuthorizations, setMyAuthorizations] = useState([]);
+  const [requestingAccessId, setRequestingAccessId] = useState(null);
+
+  const refreshAuthorizations = async () => {
+    try {
+      const res = await getTransporterDispatchAuthorizations();
+      if (res && res.success) {
+        setMyAuthorizations(res.data || []);
+      }
+    } catch (e) {
+      console.warn('Could not load authorizations:', e.message);
+    }
+  };
 
   const refreshDashboardSummary = async () => {
     try {
@@ -52,12 +65,14 @@ export const TransporterPortal = () => {
 
   useEffect(() => {
     refreshDashboardSummary();
+    refreshAuthorizations();
   }, [currentTransporter, currentUser, db?.rate_submissions, db?.rate_requests]);
 
   // 🛡️ SAFE DATA REFRESH HELPER: Guarantees no ReferenceError or unhandled rejection during refresh
   const safeRefreshRequirements = async () => {
     try {
       refreshDashboardSummary();
+      refreshAuthorizations();
       if (typeof refreshRequirements === 'function') {
         return await refreshRequirements();
       } else if (typeof refreshDB === 'function') {
@@ -65,6 +80,26 @@ export const TransporterPortal = () => {
       }
     } catch (e) {
       console.error('Data refresh error:', e);
+    }
+  };
+
+  const handleRequestAccess = async (reqItem) => {
+    const parentId = reqItem.requirement_id || reqItem.id;
+    const itemId = reqItem.item_id || reqItem.sub_indent_no || reqItem.id;
+    setRequestingAccessId(itemId);
+    try {
+      const res = await requestDispatchAccess(parentId, itemId);
+      if (res && res.success) {
+        setSuccessNotice(`🤝 Dispatch access request submitted for ₹${reqItem.fixed_rate}/MT! Awaiting Admin approval.`);
+        await refreshAuthorizations();
+        await safeRefreshRequirements();
+      } else {
+        alert(res?.error || 'Failed to submit dispatch access request.');
+      }
+    } catch (err) {
+      alert(err?.message || 'Error submitting dispatch access request.');
+    } finally {
+      setRequestingAccessId(null);
     }
   };
 
@@ -507,7 +542,6 @@ export const TransporterPortal = () => {
 
         const effectiveFinalizedBid = finalizedBid || parentFinalizedBid;
 
-        let isFixedRateAllocation = false;
         let fixedRate = null;
         let myWinningBid = null;
         let winningTransporterId = null;
@@ -530,9 +564,20 @@ export const TransporterPortal = () => {
            String(currentUser?.username).toLowerCase() === String(winningTransporterId).toLowerCase())
         );
 
-        if (fixedRate !== null) {
-          isFixedRateAllocation = isWinningTransporter;
+        const myAuth = (myAuthorizations || []).find(a => 
+          (String(a.requirement_id) === String(parentReq.id)) &&
+          (String(a.requirement_item_id) === String(item.id) || String(a.requirement_item_id) === String(subIndentNo) || String(a.requirement_item_id) === 'MAIN')
+        );
+
+        let authStatus = null;
+        if (isWinningTransporter) {
+          authStatus = 'WINNER';
+        } else if (myAuth) {
+          authStatus = myAuth.authorization_status;
         }
+
+        const canDispatch = authStatus === 'WINNER' || authStatus === 'APPROVED';
+        const isFixedRateAllocation = fixedRate !== null;
 
         openRateRequests.push({
           ...parentReq,
@@ -563,8 +608,10 @@ export const TransporterPortal = () => {
           source_item_id: item.source_item_id || null,
           is_reopened: Boolean(item.source_item_id),
           is_fixed_rate_allocation: isFixedRateAllocation,
-          can_dispatch: isWinningTransporter,
-          is_awarded_to_other: Boolean(fixedRate !== null && !isWinningTransporter),
+          can_dispatch: canDispatch,
+          auth_status: authStatus,
+          is_winning_transporter: isWinningTransporter,
+          is_awarded_to_other: Boolean(fixedRate !== null && !isWinningTransporter && authStatus !== 'APPROVED'),
           winning_transporter_id: winningTransporterId,
           fixed_rate: fixedRate,
           finalized_rate: fixedRate,
@@ -616,8 +663,21 @@ export const TransporterPortal = () => {
          String(currentUser?.username).toLowerCase() === String(winningTransporterId).toLowerCase())
       );
 
+      const myAuth = (myAuthorizations || []).find(a => 
+        (String(a.requirement_id) === String(parentReq.id)) &&
+        (String(a.requirement_item_id) === String(parentReq.id) || String(a.requirement_item_id) === 'MAIN')
+      );
+
+      let authStatus = null;
+      if (isWinningTransporter) {
+        authStatus = 'WINNER';
+      } else if (myAuth) {
+        authStatus = myAuth.authorization_status;
+      }
+
+      const canDispatch = authStatus === 'WINNER' || authStatus === 'APPROVED';
       if (fixedRate !== null) {
-        isFixedRateAllocation = isWinningTransporter;
+        isFixedRateAllocation = true;
       }
 
       openRateRequests.push({
@@ -633,8 +693,10 @@ export const TransporterPortal = () => {
         remaining_quantity_mt: remQty,
         unit: parentReq.unit || 'MT',
         is_fixed_rate_allocation: isFixedRateAllocation,
-        can_dispatch: isWinningTransporter,
-        is_awarded_to_other: Boolean(fixedRate !== null && !isWinningTransporter),
+        can_dispatch: canDispatch,
+        auth_status: authStatus,
+        is_winning_transporter: isWinningTransporter,
+        is_awarded_to_other: Boolean(fixedRate !== null && !isWinningTransporter && authStatus !== 'APPROVED'),
         winning_transporter_id: winningTransporterId,
         fixed_rate: fixedRate,
         finalized_rate: fixedRate,
@@ -2154,35 +2216,58 @@ export const TransporterPortal = () => {
                                                     </td>
 
                                                     <td style={{ padding: '10px 14px' }}>
-                                                      {req.is_fixed_rate_allocation && req.can_dispatch ? (
+                                                      {req.is_fixed_rate_allocation ? (
                                                         <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-                                                          <span style={{ fontSize: '0.88rem', fontWeight: '900', color: '#059669', background: '#dcfce7', border: '1.5px solid #86efac', padding: '4px 10px', borderRadius: '8px' }}>
-                                                            ₹{req.fixed_rate}/MT (Fixed)
-                                                          </span>
-                                                          <button
-                                                            type="button"
-                                                            onClick={() => handleOpenDispatchModal(req, req.finalized_bid || { final_rate: req.fixed_rate, acceptance_status: 'ACCEPTED' })}
-                                                            className="btn btn-primary"
-                                                            style={{ padding: '6px 14px', fontSize: '0.82rem', fontWeight: '900', borderRadius: '8px', background: '#0284c7', color: '#ffffff', border: 'none', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
-                                                          >
-                                                            <Truck size={14} /> Dispatch Truck
-                                                          </button>
+                                                          {req.can_dispatch ? (
+                                                            <>
+                                                              <span style={{ fontSize: '0.88rem', fontWeight: '900', color: '#059669', background: '#dcfce7', border: '1.5px solid #86efac', padding: '4px 10px', borderRadius: '8px' }}>
+                                                                {req.auth_status === 'WINNER' ? '🏆 Awarded to You' : '✅ Access Approved'} — ₹{req.fixed_rate}/MT (Fixed)
+                                                              </span>
+                                                              <button
+                                                                type="button"
+                                                                onClick={() => handleOpenDispatchModal(req, req.finalized_bid || { final_rate: req.fixed_rate, acceptance_status: 'ACCEPTED' })}
+                                                                className="btn btn-primary"
+                                                                style={{ padding: '6px 14px', fontSize: '0.82rem', fontWeight: '900', borderRadius: '8px', background: '#0284c7', color: '#ffffff', border: 'none', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                                                              >
+                                                                <Truck size={14} /> Dispatch Truck
+                                                              </button>
+                                                            </>
+                                                          ) : req.auth_status === 'PENDING' ? (
+                                                            <span style={{ fontSize: '0.82rem', fontWeight: '900', color: '#b45309', background: '#fef3c7', border: '1.5px solid #f59e0b', padding: '5px 12px', borderRadius: '8px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                                              ⏳ Dispatch Access Request Pending (₹{req.fixed_rate}/MT Fixed)
+                                                            </span>
+                                                          ) : req.auth_status === 'REJECTED' ? (
+                                                            <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                                                              <span style={{ fontSize: '0.8rem', fontWeight: '800', color: '#dc2626', background: '#fee2e2', border: '1px solid #f87171', padding: '4px 8px', borderRadius: '8px' }}>
+                                                                ❌ Access Request Rejected (₹{req.fixed_rate}/MT)
+                                                              </span>
+                                                              <button
+                                                                type="button"
+                                                                onClick={() => handleRequestAccess(req)}
+                                                                disabled={requestingAccessId === (req.item_id || req.id)}
+                                                                className="btn btn-secondary"
+                                                                style={{ padding: '4px 8px', fontSize: '0.75rem', fontWeight: '800', borderRadius: '6px' }}
+                                                              >
+                                                                {requestingAccessId === (req.item_id || req.id) ? 'Submitting...' : 'Re-apply'}
+                                                              </button>
+                                                            </div>
+                                                          ) : (
+                                                            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                                              <span style={{ fontSize: '0.84rem', fontWeight: '800', color: '#0369a1', background: '#e0f2fe', border: '1px solid #7dd3fc', padding: '4px 8px', borderRadius: '8px' }}>
+                                                                🔒 ₹{req.fixed_rate}/MT (Fixed)
+                                                              </span>
+                                                              <button
+                                                                type="button"
+                                                                onClick={() => handleRequestAccess(req)}
+                                                                disabled={requestingAccessId === (req.item_id || req.id)}
+                                                                className="btn btn-secondary"
+                                                                style={{ padding: '6px 12px', fontSize: '0.8rem', fontWeight: '900', borderRadius: '8px', background: '#0284c7', color: '#ffffff', border: 'none', cursor: 'pointer' }}
+                                                              >
+                                                                {requestingAccessId === (req.item_id || req.id) ? 'Submitting...' : 'Request Dispatch Access'}
+                                                              </button>
+                                                            </div>
+                                                          )}
                                                         </div>
-                                                      ) : (req.is_awarded_to_other || (!req.can_dispatch && req.fixed_rate !== null)) ? (
-                                                        <span style={{
-                                                          fontSize: '0.8rem',
-                                                          background: '#f1f5f9',
-                                                          color: '#64748b',
-                                                          border: '1px solid #cbd5e1',
-                                                          padding: '5px 12px',
-                                                          borderRadius: '8px',
-                                                          fontWeight: '800',
-                                                          display: 'inline-flex',
-                                                          alignItems: 'center',
-                                                          gap: '4px'
-                                                        }}>
-                                                          🔒 Awarded to Other Transporter
-                                                        </span>
                                                       ) : hasSubmittedQuote ? (
                                                         renderTransporterNegotiationCell(myExistingBid, req)
                                                       ) : (isAwarded || (req.dispatch_status && req.dispatch_status !== 'PENDING')) ? (
@@ -2494,19 +2579,57 @@ export const TransporterPortal = () => {
                           </td>
 
                           <td>
-                            {req.is_fixed_rate_allocation && req.can_dispatch ? (
+                            {req.is_fixed_rate_allocation ? (
                               <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-                                <span style={{ fontSize: '0.88rem', fontWeight: '900', color: '#059669', background: '#dcfce7', border: '1.5px solid #86efac', padding: '4px 10px', borderRadius: '8px' }}>
-                                  ₹{req.fixed_rate}/MT (Fixed)
-                                </span>
-                                <button
-                                  type="button"
-                                  onClick={() => handleOpenDispatchModal(req, req.finalized_bid || { final_rate: req.fixed_rate, acceptance_status: 'ACCEPTED' })}
-                                  className="btn btn-primary"
-                                  style={{ padding: '6px 14px', fontSize: '0.82rem', fontWeight: '900', borderRadius: '8px', background: '#0284c7', color: '#ffffff', border: 'none', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
-                                >
-                                  <Truck size={14} /> Dispatch Truck
-                                </button>
+                                {req.can_dispatch ? (
+                                  <>
+                                    <span style={{ fontSize: '0.88rem', fontWeight: '900', color: '#059669', background: '#dcfce7', border: '1.5px solid #86efac', padding: '4px 10px', borderRadius: '8px' }}>
+                                      {req.auth_status === 'WINNER' ? '🏆 Awarded to You' : '✅ Access Approved'} — ₹{req.fixed_rate}/MT (Fixed)
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleOpenDispatchModal(req, req.finalized_bid || { final_rate: req.fixed_rate, acceptance_status: 'ACCEPTED' })}
+                                      className="btn btn-primary"
+                                      style={{ padding: '6px 14px', fontSize: '0.82rem', fontWeight: '900', borderRadius: '8px', background: '#0284c7', color: '#ffffff', border: 'none', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                                    >
+                                      <Truck size={14} /> Dispatch Truck
+                                    </button>
+                                  </>
+                                ) : req.auth_status === 'PENDING' ? (
+                                  <span style={{ fontSize: '0.82rem', fontWeight: '900', color: '#b45309', background: '#fef3c7', border: '1.5px solid #f59e0b', padding: '5px 12px', borderRadius: '8px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                    ⏳ Dispatch Access Request Pending (₹{req.fixed_rate}/MT Fixed)
+                                  </span>
+                                ) : req.auth_status === 'REJECTED' ? (
+                                  <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                                    <span style={{ fontSize: '0.8rem', fontWeight: '800', color: '#dc2626', background: '#fee2e2', border: '1px solid #f87171', padding: '4px 8px', borderRadius: '8px' }}>
+                                      ❌ Access Request Rejected (₹{req.fixed_rate}/MT)
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleRequestAccess(req)}
+                                      disabled={requestingAccessId === (req.item_id || req.id)}
+                                      className="btn btn-secondary"
+                                      style={{ padding: '4px 8px', fontSize: '0.75rem', fontWeight: '800', borderRadius: '6px' }}
+                                    >
+                                      {requestingAccessId === (req.item_id || req.id) ? 'Submitting...' : 'Re-apply'}
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                    <span style={{ fontSize: '0.84rem', fontWeight: '800', color: '#0369a1', background: '#e0f2fe', border: '1px solid #7dd3fc', padding: '4px 8px', borderRadius: '8px' }}>
+                                      🔒 ₹{req.fixed_rate}/MT (Fixed)
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleRequestAccess(req)}
+                                      disabled={requestingAccessId === (req.item_id || req.id)}
+                                      className="btn btn-secondary"
+                                      style={{ padding: '6px 12px', fontSize: '0.8rem', fontWeight: '900', borderRadius: '8px', background: '#0284c7', color: '#ffffff', border: 'none', cursor: 'pointer' }}
+                                    >
+                                      {requestingAccessId === (req.item_id || req.id) ? 'Submitting...' : 'Request Dispatch Access'}
+                                    </button>
+                                  </div>
+                                )}
                               </div>
                             ) : (req.is_awarded_to_other || (!req.can_dispatch && req.fixed_rate !== null)) ? (
                               <span style={{
