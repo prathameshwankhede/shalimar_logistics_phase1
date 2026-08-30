@@ -37,6 +37,25 @@ function sanitizeStateForClient(rawState) {
   return copy;
 }
 
+// Safe Idempotent Column Helper with Explicit Logging & Schema Verification 🛡️
+async function ensureColumnExists(tableName, columnName, columnDefinition) {
+  try {
+    const dbName = pool?.pool?.config?.connectionConfig?.database;
+    const [cols] = await pool.query(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND COLUMN_NAME = ?`,
+      [dbName, tableName, columnName]
+    );
+    if (cols.length === 0) {
+      await pool.query(`ALTER TABLE \`${tableName}\` ADD COLUMN \`${columnName}\` ${columnDefinition}`);
+      console.log(`✅ [SCHEMA MIGRATION] Added column ${columnName} to ${tableName}`);
+    }
+  } catch (err) {
+    if (!err.message.includes('Duplicate column') && !err.message.includes('already exists')) {
+      console.warn(`⚠️ [SCHEMA MIGRATION] Notice for ${tableName}.${columnName}:`, err.message);
+    }
+  }
+}
+
 // -------------------------------------------------------------
 // Dedicated Transport Requirements & Rate Requests CRUD API
 // Parent: transport_requirements | Child: transport_requirement_items
@@ -63,18 +82,18 @@ async function ensureRequirementsTableExists() {
     `);
 
     const reqCols = [
-      "total_quantity_mt DECIMAL(12,3) DEFAULT NULL",
-      "quantity_mt DECIMAL(12,3) DEFAULT NULL",
-      "product_name VARCHAR(255) DEFAULT NULL",
-      "unit VARCHAR(50) DEFAULT 'MT'",
-      "archived_at DATETIME NULL",
-      "archived_by VARCHAR(100) NULL",
-      "cancelled_at DATETIME NULL",
-      "cancelled_by VARCHAR(100) NULL",
-      "cancellation_reason TEXT NULL"
+      { name: 'total_quantity_mt', def: 'DECIMAL(12,3) DEFAULT NULL' },
+      { name: 'quantity_mt', def: 'DECIMAL(12,3) DEFAULT NULL' },
+      { name: 'product_name', def: 'VARCHAR(255) DEFAULT NULL' },
+      { name: 'unit', def: "VARCHAR(50) DEFAULT 'MT'" },
+      { name: 'archived_at', def: 'DATETIME NULL' },
+      { name: 'archived_by', def: 'VARCHAR(100) NULL' },
+      { name: 'cancelled_at', def: 'DATETIME NULL' },
+      { name: 'cancelled_by', def: 'VARCHAR(100) NULL' },
+      { name: 'cancellation_reason', def: 'TEXT NULL' }
     ];
-    for (const colDef of reqCols) {
-      await pool.query(`ALTER TABLE transport_requirements ADD COLUMN ${colDef}`).catch(() => {});
+    for (const { name, def } of reqCols) {
+      await ensureColumnExists('transport_requirements', name, def);
     }
 
     await pool.query(`
@@ -97,11 +116,11 @@ async function ensureRequirementsTableExists() {
     `);
 
     const childCols = [
-      "sub_indent_no VARCHAR(100) DEFAULT NULL",
-      "target_date DATE DEFAULT NULL"
+      { name: 'sub_indent_no', def: 'VARCHAR(100) DEFAULT NULL' },
+      { name: 'target_date', def: 'DATE DEFAULT NULL' }
     ];
-    for (const colDef of childCols) {
-      await pool.query(`ALTER TABLE transport_requirement_items ADD COLUMN ${colDef}`).catch(() => {});
+    for (const { name, def } of childCols) {
+      await ensureColumnExists('transport_requirement_items', name, def);
     }
     await pool.query('ALTER TABLE transport_requirements ADD INDEX idx_req_status_created (status, created_at)').catch(() => {});
     await pool.query('ALTER TABLE transport_requirement_items ADD INDEX idx_sub_indent_no (sub_indent_no)').catch(() => {});
@@ -287,23 +306,23 @@ export async function ensureRateSubmissionsTableExists() {
     `);
 
     const cols = [
-      "item_id VARCHAR(100) DEFAULT 'MAIN'",
-      "quoted_quantity_mt DECIMAL(12,3) DEFAULT NULL",
-      "total_amount DECIMAL(14,2) DEFAULT NULL",
-      "remarks TEXT DEFAULT NULL",
-      "submitted_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP",
-      "original_rate DECIMAL(12,2) DEFAULT NULL",
-      "counter_offer_rate DECIMAL(12,2) DEFAULT NULL",
-      "counter_offer_status VARCHAR(50) DEFAULT NULL",
-      "counter_offer_at DATETIME DEFAULT NULL",
-      "counter_offer_by VARCHAR(50) DEFAULT NULL",
-      "counter_message TEXT DEFAULT NULL",
-      "final_rate DECIMAL(12,2) DEFAULT NULL",
-      "finalized_at DATETIME DEFAULT NULL",
-      "bid_status VARCHAR(50) DEFAULT 'Submitted'"
+      { name: 'item_id', def: "VARCHAR(100) DEFAULT 'MAIN'" },
+      { name: 'quoted_quantity_mt', def: 'DECIMAL(12,3) DEFAULT NULL' },
+      { name: 'total_amount', def: 'DECIMAL(14,2) DEFAULT NULL' },
+      { name: 'remarks', def: 'TEXT DEFAULT NULL' },
+      { name: 'submitted_at', def: 'TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP' },
+      { name: 'original_rate', def: 'DECIMAL(12,2) DEFAULT NULL' },
+      { name: 'counter_offer_rate', def: 'DECIMAL(12,2) DEFAULT NULL' },
+      { name: 'counter_offer_status', def: 'VARCHAR(50) DEFAULT NULL' },
+      { name: 'counter_offer_at', def: 'DATETIME DEFAULT NULL' },
+      { name: 'counter_offer_by', def: 'VARCHAR(50) DEFAULT NULL' },
+      { name: 'counter_message', def: 'TEXT DEFAULT NULL' },
+      { name: 'final_rate', def: 'DECIMAL(12,2) DEFAULT NULL' },
+      { name: 'finalized_at', def: 'DATETIME DEFAULT NULL' },
+      { name: 'bid_status', def: "VARCHAR(50) DEFAULT 'Submitted'" }
     ];
-    for (const colDef of cols) {
-      await pool.query(`ALTER TABLE rate_submissions ADD COLUMN ${colDef}`).catch(() => {});
+    for (const { name, def } of cols) {
+      await ensureColumnExists('rate_submissions', name, def);
     }
 
     // Backfill canonical fields from any existing legacy columns before dropping
@@ -577,24 +596,24 @@ export async function ensureTruckDispatchesTableExists() {
     `);
 
     const subCols = [
-      "is_finalized TINYINT(1) DEFAULT 0",
-      "finalized_rate DECIMAL(12,2) DEFAULT NULL",
-      "finalized_by VARCHAR(100) DEFAULT NULL",
-      "acceptance_status VARCHAR(50) DEFAULT NULL",
-      "transporter_accepted_at DATETIME DEFAULT NULL",
-      "transporter_accepted_by VARCHAR(100) DEFAULT NULL"
+      { name: 'is_finalized', def: 'TINYINT(1) DEFAULT 0' },
+      { name: 'finalized_rate', def: 'DECIMAL(12,2) DEFAULT NULL' },
+      { name: 'finalized_by', def: 'VARCHAR(100) DEFAULT NULL' },
+      { name: 'acceptance_status', def: 'VARCHAR(50) DEFAULT NULL' },
+      { name: 'transporter_accepted_at', def: 'DATETIME DEFAULT NULL' },
+      { name: 'transporter_accepted_by', def: 'VARCHAR(100) DEFAULT NULL' }
     ];
-    for (const col of subCols) {
-      await pool.query(`ALTER TABLE rate_submissions ADD COLUMN ${col}`).catch(() => {});
+    for (const { name, def } of subCols) {
+      await ensureColumnExists('rate_submissions', name, def);
     }
 
     const itemCols = [
-      "dispatch_status VARCHAR(50) DEFAULT 'PENDING'",
-      "dispatched_quantity_mt DECIMAL(12,3) DEFAULT 0",
-      "remaining_quantity_mt DECIMAL(12,3) DEFAULT NULL"
+      { name: 'dispatch_status', def: "VARCHAR(50) DEFAULT 'PENDING'" },
+      { name: 'dispatched_quantity_mt', def: 'DECIMAL(12,3) DEFAULT 0' },
+      { name: 'remaining_quantity_mt', def: 'DECIMAL(12,3) DEFAULT NULL' }
     ];
-    for (const col of itemCols) {
-      await pool.query(`ALTER TABLE transport_requirement_items ADD COLUMN ${col}`).catch(() => {});
+    for (const { name, def } of itemCols) {
+      await ensureColumnExists('transport_requirement_items', name, def);
     }
 
     await pool.query(`
@@ -2442,14 +2461,14 @@ async function ensureProductsTableExists() {
     `);
 
     const cols = [
-      "code VARCHAR(100)",
-      "category VARCHAR(255)",
-      "hsn_code VARCHAR(50)",
-      "default_unit VARCHAR(50) DEFAULT 'MT'",
-      "status VARCHAR(50) DEFAULT 'Active'"
+      { name: 'code', def: 'VARCHAR(100)' },
+      { name: 'category', def: 'VARCHAR(255)' },
+      { name: 'hsn_code', def: 'VARCHAR(50)' },
+      { name: 'default_unit', def: "VARCHAR(50) DEFAULT 'MT'" },
+      { name: 'status', def: "VARCHAR(50) DEFAULT 'Active'" }
     ];
-    for (const colDef of cols) {
-      await pool.query(`ALTER TABLE products ADD COLUMN ${colDef}`).catch(() => {});
+    for (const { name, def } of cols) {
+      await ensureColumnExists('products', name, def);
     }
   } catch (err) {
     console.warn('products table creation notice:', err.message);
@@ -3348,11 +3367,10 @@ router.delete('/requirements/:id', authenticateToken, requireRole('admin'), asyn
       return res.status(404).json({ success: false, error: 'Requirement record not found' });
     }
 
-    const actualReqId = existing[0].id;
-
-    // 2. Cascade cleanup related negotiation history and negotiations
-    await conn.query('DELETE FROM bid_negotiation_history WHERE requirement_id = ?', [actualReqId]).catch(() => {});
-    await conn.query('DELETE FROM rate_negotiations WHERE requirement_id = ?', [actualReqId]).catch(() => {});
+    // 2. Cascade cleanup related dispatches, negotiation history, and negotiations
+    await conn.query('DELETE FROM truck_dispatches WHERE requirement_id = ?', [actualReqId]);
+    await conn.query('DELETE FROM bid_negotiation_history WHERE requirement_id = ?', [actualReqId]);
+    await conn.query('DELETE FROM rate_negotiations WHERE requirement_id = ?', [actualReqId]);
 
     // 3. Cascade cleanup rate submissions
     await conn.query('DELETE FROM rate_submissions WHERE requirement_id = ?', [actualReqId]).catch(() => {});
