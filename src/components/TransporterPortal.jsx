@@ -669,6 +669,41 @@ export const TransporterPortal = () => {
 
     const isFinalized = Boolean(myExistingBid.is_finalized) || isBidFrozen(myExistingBid) || counterOfferStatus === 'ACCEPTED' || bidStatusUpper === 'COUNTER_ACCEPTED' || bidStatusUpper === 'FINALIZED' || Number(myExistingBid.final_rate) > 0;
     const isAccepted = String(myExistingBid.acceptance_status || '').toUpperCase() === 'ACCEPTED';
+
+    // CASE 0 — AWARDED TO ANOTHER TRANSPORTER (NON-WINNING TRANSPORTER VIEW)
+    const isAwardedToOther = (
+      req.dispatch_status &&
+      req.dispatch_status !== 'PENDING' &&
+      !isFinalized
+    );
+
+    if (isAwardedToOther) {
+      return (
+        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+          <span style={{
+            fontSize: '0.8rem',
+            background: '#f1f5f9',
+            color: '#64748b',
+            border: '1px solid #cbd5e1',
+            padding: '5px 12px',
+            borderRadius: '8px',
+            fontWeight: '800',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '4px'
+          }}>
+            🔒 Not Selected
+          </span>
+          <button
+            type="button"
+            onClick={() => setSelectedHistorySub(myExistingBid)}
+            style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: '0.78rem', fontWeight: '700', textDecoration: 'underline' }}
+          >
+            📜 History
+          </button>
+        </div>
+      );
+    }
     
     const isCounteredByAdmin = !isFinalized && (
       (counterOfferBy === 'ADMIN' && counterOfferStatus === 'PENDING') ||
@@ -1823,8 +1858,21 @@ export const TransporterPortal = () => {
                                                     <td style={{ padding: '10px 14px' }}>
                                                       {hasSubmittedQuote ? (
                                                         renderTransporterNegotiationCell(myExistingBid, req)
-                                                      ) : isAwarded ? (
-                                                        <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Requirements Closed</span>
+                                                      ) : (isAwarded || (req.dispatch_status && req.dispatch_status !== 'PENDING')) ? (
+                                                        <span style={{
+                                                          fontSize: '0.8rem',
+                                                          background: '#f1f5f9',
+                                                          color: '#64748b',
+                                                          border: '1px solid #cbd5e1',
+                                                          padding: '5px 12px',
+                                                          borderRadius: '8px',
+                                                          fontWeight: '800',
+                                                          display: 'inline-flex',
+                                                          alignItems: 'center',
+                                                          gap: '4px'
+                                                        }}>
+                                                          🔒 Not Selected
+                                                        </span>
                                                       ) : (
                                                         <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
                                                           <div style={{ position: 'relative' }}>
@@ -2069,8 +2117,21 @@ export const TransporterPortal = () => {
                           <td>
                             {hasSubmittedQuote ? (
                               renderTransporterNegotiationCell(myExistingBid, req)
-                            ) : isAwarded ? (
-                              <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Requirements Closed</span>
+                            ) : (isAwarded || (req.dispatch_status && req.dispatch_status !== 'PENDING')) ? (
+                              <span style={{
+                                fontSize: '0.8rem',
+                                background: '#f1f5f9',
+                                color: '#64748b',
+                                border: '1px solid #cbd5e1',
+                                padding: '5px 12px',
+                                borderRadius: '8px',
+                                fontWeight: '800',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px'
+                              }}>
+                                🔒 Not Selected
+                              </span>
                             ) : (
                               <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
                                 <div style={{ position: 'relative' }}>
