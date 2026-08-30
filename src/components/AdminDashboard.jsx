@@ -1952,14 +1952,15 @@ export const AdminDashboard = () => {
             <Layers size={26} color="#ffffff" />
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2px' }}>
-              <span style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: '800', letterSpacing: '0.05em' }}>RATE REQUESTS</span>
-              <span style={{ fontSize: '0.65rem', background: 'rgba(56, 189, 248, 0.2)', color: '#38bdf8', border: '1px solid rgba(56, 189, 248, 0.4)', padding: '1px 6px', borderRadius: '10px', fontWeight: '800' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+              <span style={{ fontSize: '0.74rem', color: 'var(--text-sub, #64748b)', fontWeight: '800', letterSpacing: '0.05em' }}>RATE REQUESTS</span>
+              <span style={{ fontSize: '0.65rem', background: 'rgba(56, 189, 248, 0.15)', color: '#0284c7', border: '1px solid rgba(56, 189, 248, 0.4)', padding: '1px 6px', borderRadius: '10px', fontWeight: '900' }}>
                 ● LIVE
               </span>
             </div>
-            <div style={{ fontSize: '1.65rem', fontWeight: '900', color: '#ffffff', letterSpacing: '-0.02em' }}>
-              {summaryRequirementsCount} <span style={{ fontSize: '0.9rem', color: '#38bdf8', fontWeight: '700' }}>Active</span>
+            <div style={{ fontSize: '1.75rem', fontWeight: '900', color: 'var(--text-main, #0f172a)', letterSpacing: '-0.02em', display: 'flex', alignItems: 'baseline', gap: '8px' }}>
+              <span>{summaryRequirementsCount}</span>
+              <span style={{ fontSize: '0.9rem', color: '#0284c7', fontWeight: '800' }}>Active</span>
             </div>
           </div>
         </button>
@@ -2022,14 +2023,15 @@ export const AdminDashboard = () => {
             <TrendingDown size={26} color="#ffffff" />
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2px' }}>
-              <span style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: '800', letterSpacing: '0.05em' }}>SUBMITTED BIDS</span>
-              <span style={{ fontSize: '0.65rem', background: 'rgba(52, 211, 153, 0.2)', color: '#34d399', border: '1px solid rgba(52, 211, 153, 0.4)', padding: '1px 6px', borderRadius: '10px', fontWeight: '800' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+              <span style={{ fontSize: '0.74rem', color: 'var(--text-sub, #64748b)', fontWeight: '800', letterSpacing: '0.05em' }}>SUBMITTED BIDS</span>
+              <span style={{ fontSize: '0.65rem', background: 'rgba(52, 211, 153, 0.15)', color: '#059669', border: '1px solid rgba(52, 211, 153, 0.4)', padding: '1px 6px', borderRadius: '10px', fontWeight: '900' }}>
                 ⚡ QUOTES
               </span>
             </div>
-            <div style={{ fontSize: '1.65rem', fontWeight: '900', color: '#ffffff', letterSpacing: '-0.02em' }}>
-              {summarySubmissionsCount} <span style={{ fontSize: '0.9rem', color: '#34d399', fontWeight: '700' }}>Offers</span>
+            <div style={{ fontSize: '1.75rem', fontWeight: '900', color: 'var(--text-main, #0f172a)', letterSpacing: '-0.02em', display: 'flex', alignItems: 'baseline', gap: '8px' }}>
+              <span>{summarySubmissionsCount}</span>
+              <span style={{ fontSize: '0.9rem', color: '#059669', fontWeight: '800' }}>Offers</span>
             </div>
           </div>
         </button>
@@ -2092,14 +2094,15 @@ export const AdminDashboard = () => {
             <Building2 size={26} color="#ffffff" />
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2px' }}>
-              <span style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: '800', letterSpacing: '0.05em' }}>TRANSPORTERS</span>
-              <span style={{ fontSize: '0.65rem', background: 'rgba(245, 158, 11, 0.2)', color: '#fbbf24', border: '1px solid rgba(245, 158, 11, 0.4)', padding: '1px 6px', borderRadius: '10px', fontWeight: '800' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+              <span style={{ fontSize: '0.74rem', color: 'var(--text-sub, #64748b)', fontWeight: '800', letterSpacing: '0.05em' }}>TRANSPORTERS</span>
+              <span style={{ fontSize: '0.65rem', background: 'rgba(245, 158, 11, 0.15)', color: '#d97706', border: '1px solid rgba(245, 158, 11, 0.4)', padding: '1px 6px', borderRadius: '10px', fontWeight: '900' }}>
                 🛡️ VERIFIED
               </span>
             </div>
-            <div style={{ fontSize: '1.65rem', fontWeight: '900', color: '#ffffff', letterSpacing: '-0.02em' }}>
-              {summaryTransportersCount} <span style={{ fontSize: '0.9rem', color: '#fbbf24', fontWeight: '700' }}>Vendors</span>
+            <div style={{ fontSize: '1.75rem', fontWeight: '900', color: 'var(--text-main, #0f172a)', letterSpacing: '-0.02em', display: 'flex', alignItems: 'baseline', gap: '8px' }}>
+              <span>{summaryTransportersCount}</span>
+              <span style={{ fontSize: '0.9rem', color: '#d97706', fontWeight: '800' }}>Vendors</span>
             </div>
           </div>
         </button>
