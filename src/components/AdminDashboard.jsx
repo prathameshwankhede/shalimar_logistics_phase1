@@ -2852,9 +2852,51 @@ export const AdminDashboard = () => {
                   })()}
 
               {/* MODE B: NORMAL REQUIREMENTS TABLE VIEW (!openedBatchKey) */}
-              {!openedBatchKey && (
-                <>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px', flexWrap: 'wrap', gap: '14px' }}>
+              {!openedBatchKey && (() => {
+                const isRequirement100PercentDone = (r, database) => {
+                  if (!r) return false;
+                  const reqNoStr = r.req_no || r.request_no || r.id;
+                  const childItems = (r.items && Array.isArray(r.items) && r.items.length > 0)
+                    ? r.items
+                    : (database?.transport_requirement_items || []).filter(item => String(item.requirement_id) === String(r.id) || String(item.requirement_id) === String(reqNoStr));
+
+                  const bids = (database?.rate_submissions || []).filter((s) =>
+                    String(s.rate_request_id) === String(r.id) ||
+                    String(s.rate_request_id) === String(reqNoStr) ||
+                    String(s.requirement_id) === String(r.id) ||
+                    String(s.requirement_id) === String(reqNoStr)
+                  );
+
+                  const isItemFinalized = (item, idx) => {
+                    const subCode = item.sub_indent_no || `${reqNoStr}/${(idx + 1).toString().padStart(2, '0')}`;
+                    const itemFinBid = bids.find((b) => {
+                      const matchItem = String(b.item_id) === String(item.id) ||
+                                        String(b.item_id) === String(item.sub_indent_no) ||
+                                        String(b.item_id) === String(subCode) ||
+                                        String(b.item_id) === String(idx + 1) ||
+                                        String(b.item_id) === String((idx + 1).toString().padStart(2, '0'));
+                      if (!matchItem) return false;
+                      return Boolean(b.is_finalized) || String(b.bid_status).toUpperCase() === 'FINALIZED' || Number(b.final_rate) > 0;
+                    });
+
+                    if (itemFinBid) return true;
+                    if (item.dispatch_status === 'FULLY_DISPATCHED' || item.allocation_status === 'COMPLETED') return true;
+                    return false;
+                  };
+
+                  if (childItems.length > 0) {
+                    // Must have 100% of sub-indent items finalized!
+                    return childItems.every((item, idx) => isItemFinalized(item, idx));
+                  }
+
+                  // Single item / direct requirement:
+                  const anyFinBid = bids.some((b) => Boolean(b.is_finalized) || String(b.bid_status).toUpperCase() === 'FINALIZED' || Number(b.final_rate) > 0);
+                  return anyFinBid;
+                };
+
+                return (
+                  <>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px', flexWrap: 'wrap', gap: '14px' }}>
                     <div>
                       <h3 style={{ fontSize: '1.1rem', fontWeight: '800', color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '8px' }}>
                         📦 Freight Transport Requirements Directory
@@ -2872,13 +2914,7 @@ export const AdminDashboard = () => {
                         className={`btn ${reqFilterTab === 'open' ? 'btn-primary' : 'btn-secondary'}`}
                         style={{ padding: '6px 16px', fontSize: '0.8rem', borderRadius: '20px', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '6px' }}
                       >
-                        🟢 Active Open Indents ({(db.rate_requests || []).filter((r) => {
-                          const childItems = r.items && Array.isArray(r.items) ? r.items : [];
-                          const bids = (db.rate_submissions || []).filter((s) => String(s.rate_request_id) === String(r.id) || String(s.rate_request_id) === String(r.req_no) || String(s.requirement_id) === String(r.id) || String(s.requirement_id) === String(r.req_no));
-                          const finBids = bids.filter((b) => Boolean(b.is_finalized) || String(b.bid_status).toUpperCase() === 'FINALIZED' || Number(b.final_rate) > 0);
-                          const isAwarded = ['AWARDED', 'FINALIZED', 'COMPLETED', 'CLOSED'].includes(String(r.status || '').toUpperCase()) || (childItems.length > 0 && childItems.every(ci => finBids.some(fb => String(fb.item_id) === String(ci.id) || String(fb.item_id) === String(ci.sub_indent_no)))) || (childItems.length === 0 && finBids.length > 0);
-                          return !isAwarded;
-                        }).length})
+                        🟢 Active Open Indents ({(db.rate_requests || []).filter((r) => !isRequirement100PercentDone(r, db)).length})
                       </button>
                       <button
                         type="button"
@@ -2886,13 +2922,7 @@ export const AdminDashboard = () => {
                         className={`btn ${reqFilterTab === 'done' ? 'btn-success' : 'btn-secondary'}`}
                         style={{ padding: '6px 16px', fontSize: '0.8rem', borderRadius: '20px', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '6px' }}
                       >
-                        ✅ Awarded & Done ({(db.rate_requests || []).filter((r) => {
-                          const childItems = r.items && Array.isArray(r.items) ? r.items : [];
-                          const bids = (db.rate_submissions || []).filter((s) => String(s.rate_request_id) === String(r.id) || String(s.rate_request_id) === String(r.req_no) || String(s.requirement_id) === String(r.id) || String(s.requirement_id) === String(r.req_no));
-                          const finBids = bids.filter((b) => Boolean(b.is_finalized) || String(b.bid_status).toUpperCase() === 'FINALIZED' || Number(b.final_rate) > 0);
-                          const isAwarded = ['AWARDED', 'FINALIZED', 'COMPLETED', 'CLOSED'].includes(String(r.status || '').toUpperCase()) || (childItems.length > 0 && childItems.every(ci => finBids.some(fb => String(fb.item_id) === String(ci.id) || String(fb.item_id) === String(ci.sub_indent_no)))) || (childItems.length === 0 && finBids.length > 0);
-                          return isAwarded;
-                        }).length})
+                        ✅ Awarded & Done ({(db.rate_requests || []).filter((r) => isRequirement100PercentDone(r, db)).length})
                       </button>
                       <button
                         type="button"
@@ -2922,12 +2952,9 @@ export const AdminDashboard = () => {
                       <tbody>
                         {(() => {
                           const filteredRequests = (db.rate_requests || []).filter((req) => {
-                            const childItems = req.items && Array.isArray(req.items) ? req.items : [];
-                            const bids = (db.rate_submissions || []).filter((s) => String(s.rate_request_id) === String(req.id) || String(s.rate_request_id) === String(req.req_no) || String(s.requirement_id) === String(req.id) || String(s.requirement_id) === String(req.req_no));
-                            const finBids = bids.filter((b) => Boolean(b.is_finalized) || String(b.bid_status).toUpperCase() === 'FINALIZED' || Number(b.final_rate) > 0);
-                            const isAwarded = ['AWARDED', 'FINALIZED', 'COMPLETED', 'CLOSED'].includes(String(req.status || '').toUpperCase()) || (childItems.length > 0 && childItems.every(ci => finBids.some(fb => String(fb.item_id) === String(ci.id) || String(fb.item_id) === String(ci.sub_indent_no)))) || (childItems.length === 0 && finBids.length > 0);
-                            if (reqFilterTab === 'open') return !isAwarded;
-                            if (reqFilterTab === 'done') return isAwarded;
+                            const is100PercentDone = isRequirement100PercentDone(req, db);
+                            if (reqFilterTab === 'open') return !is100PercentDone;
+                            if (reqFilterTab === 'done') return is100PercentDone;
                             return true;
                           });
 
@@ -2951,9 +2978,18 @@ export const AdminDashboard = () => {
 
                             let finalizedItemCount = 0;
                             if (childItems.length > 0) {
-                              childItems.forEach((child) => {
-                                const childFin = finalizedBids.some((b) => String(b.item_id) === String(child.id) || String(b.item_id) === String(child.sub_indent_no));
-                                if (childFin) finalizedItemCount++;
+                              childItems.forEach((child, cIdx) => {
+                                const subCode = child.sub_indent_no || `${reqNoStr}/${(cIdx + 1).toString().padStart(2, '0')}`;
+                                const childFin = finalizedBids.some((b) => 
+                                  String(b.item_id) === String(child.id) || 
+                                  String(b.item_id) === String(child.sub_indent_no) ||
+                                  String(b.item_id) === String(subCode) ||
+                                  String(b.item_id) === String(cIdx + 1) ||
+                                  String(b.item_id) === String((cIdx + 1).toString().padStart(2, '0'))
+                                );
+                                if (childFin || child.dispatch_status === 'FULLY_DISPATCHED' || child.allocation_status === 'COMPLETED') {
+                                  finalizedItemCount++;
+                                }
                               });
                             } else if (finalizedBids.length > 0) {
                               finalizedItemCount = 1;
@@ -2961,7 +2997,7 @@ export const AdminDashboard = () => {
 
                             const isCompleted = (totalQty > 0 && totalDispatched >= totalQty) || String(req.status).toUpperCase() === 'COMPLETED' || String(req.status).toUpperCase() === 'FULLY_DISPATCHED';
                             const isPartiallyDispatched = totalDispatched > 0 && totalDispatched < totalQty;
-                            const isAllFinalized = (childItems.length > 0 && finalizedItemCount >= childItems.length) || (childItems.length === 0 && finalizedBids.length > 0) || ['AWARDED', 'FINALIZED', 'COMPLETED', 'CLOSED'].includes(String(req.status || '').toUpperCase());
+                            const isAllFinalized = isRequirement100PercentDone(req, db);
                             const isPartFinalized = finalizedItemCount > 0 && finalizedItemCount < childItems.length;
 
                             return (
@@ -3187,7 +3223,8 @@ export const AdminDashboard = () => {
                     </table>
                   </div>
                 </>
-              )}
+              );
+            })()}
             </div>
           )}
 
