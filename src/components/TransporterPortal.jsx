@@ -1022,18 +1022,21 @@ export const TransporterPortal = () => {
       );
     }
 
-    // CASE A — LOWER COMPETING RATE / COUNTER OFFER
+    // CASE A — OTHER TRANSPORTER QUOTED LOWER RATE (L1)
     if (isCounteredByAdmin) {
       return (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', background: '#fffbeb', border: '1.5px solid #f59e0b', padding: '14px 18px', borderRadius: '12px', minWidth: '260px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', background: '#fffbeb', border: '1.5px solid #f59e0b', padding: '14px 18px', borderRadius: '12px', minWidth: '270px' }}>
           <div style={{ fontSize: '0.82rem', color: '#78350f', fontWeight: '700' }}>
             Your Original Bid: <strong style={{ color: '#92400e' }}>₹{origRate}/MT</strong>
           </div>
-          <div style={{ fontSize: '0.98rem', fontWeight: '900', color: '#b45309', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
-            <span>🔥 LOWER COMPETING BID:</span>
+          <div style={{ fontSize: '0.92rem', fontWeight: '900', color: '#b45309', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+            <span>🔥 OTHER TRANSPORTER QUOTED LOWER:</span>
             <span style={{ background: '#fef3c7', padding: '4px 12px', borderRadius: '6px', border: '1.5px solid #f59e0b', fontSize: '1.1rem', color: '#92400e', fontWeight: '900' }}>
               ₹{adminCounter}/MT
             </span>
+          </div>
+          <div style={{ fontSize: '0.78rem', color: '#92400e', fontWeight: '600' }}>
+            Another transporter has submitted a lower rate. Match this rate to win the contract:
           </div>
 
           <button
@@ -1059,7 +1062,7 @@ export const TransporterPortal = () => {
               marginTop: '4px'
             }}
           >
-            {isResponding ? '⏳ Accepting...' : `✓ Accept Counter Offer (₹${adminCounter})`}
+            {isResponding ? '⏳ Matching Rate...' : `✓ Match Lower Rate & Accept (₹${adminCounter})`}
           </button>
         </div>
       );
