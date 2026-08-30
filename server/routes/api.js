@@ -136,11 +136,11 @@ async function generateNextReqNo(clientOrPool) {
   }
 }
 
-function formatParentRequirementDto(parentRow, childItems = [], bidsCount = 0, itemStatsMap = {}) {
+function formatParentRequirementDto(parentRow, childItems = [], bidsCount = 0, itemStatsMap = {}, extraMetrics = {}) {
   if (!parentRow) return null;
   const parentReqNo = parentRow.req_no || parentRow.id || '';
 
-  const itemsFormatted = childItems.map((item, idx) => {
+  const itemsFormatted = (childItems || []).map((item, idx) => {
     const subIdxStr = (idx + 1).toString().padStart(2, '0');
     const autoSubIndentNo = item.sub_indent_no || `${parentReqNo}/${subIdxStr}`;
     const itemTargetDate = item.target_date
@@ -176,6 +176,45 @@ function formatParentRequirementDto(parentRow, childItems = [], bidsCount = 0, i
   const reqNo = parentRow.req_no || parentRow.id || '';
   const targetDateStr = parentRow.target_date ? (parentRow.target_date instanceof Date ? parentRow.target_date.toISOString().split('T')[0] : String(parentRow.target_date).split('T')[0]) : new Date().toISOString().split('T')[0];
 
+  const reqStatus = String(parentRow.status || 'Active').toUpperCase();
+  const hasFinalizedBid = Boolean(extraMetrics.has_finalized_bid || reqStatus === 'COMPLETED');
+  const negCount = Number(extraMetrics.negotiation_count || 0);
+  const histCount = Number(extraMetrics.history_count || 0);
+  const totalBids = Number(bidsCount || 0);
+
+  let can_delete = false;
+  let can_archive = false;
+  let can_cancel = false;
+  let can_restore = false;
+
+  if (reqStatus === 'ARCHIVED') {
+    can_delete = false;
+    can_archive = false;
+    can_cancel = false;
+    can_restore = true;
+  } else if (reqStatus === 'CANCELLED' || reqStatus === 'COMPLETED') {
+    can_delete = false;
+    can_archive = false;
+    can_cancel = false;
+    can_restore = false;
+  } else if (hasFinalizedBid) {
+    can_delete = false;
+    can_archive = true;
+    can_cancel = false;
+    can_restore = false;
+  } else if (totalBids > 0 || negCount > 0 || histCount > 0) {
+    can_delete = false;
+    can_archive = true;
+    can_cancel = true;
+    can_restore = false;
+  } else {
+    // DRAFT / ACTIVE with 0 bids and 0 negotiations
+    can_delete = true;
+    can_archive = true;
+    can_cancel = true;
+    can_restore = false;
+  }
+
   return {
     id: parentRow.id,
     req_no: reqNo,
@@ -193,7 +232,15 @@ function formatParentRequirementDto(parentRow, childItems = [], bidsCount = 0, i
     cancelled_at: parentRow.cancelled_at || null,
     cancelled_by: parentRow.cancelled_by || null,
     cancellation_reason: parentRow.cancellation_reason || null,
-    submitted_bids_count: bidsCount || Number(parentRow.submitted_bids_count || 0),
+    submitted_bids_count: totalBids,
+    bid_count: totalBids,
+    negotiation_count: negCount,
+    history_count: histCount,
+    has_finalized_bid: hasFinalizedBid,
+    can_delete,
+    can_archive,
+    can_cancel,
+    can_restore,
     approval_status: parentRow.approval_status || 'Pending',
     created_by: parentRow.created_by || 'admin',
     created_at: parentRow.created_at || new Date().toISOString(),
@@ -483,6 +530,8 @@ async function handleGetRequirements(req, res) {
   try {
     await ensureRequirementsTableExists();
     await ensureRateSubmissionsTableExists();
+    await ensureBidNegotiationHistoryTableExists();
+    await ensureRateNegotiationsTableExists();
 
     let reqQuery = 'SELECT * FROM transport_requirements';
     if (req.user && req.user.role === 'transporter') {
@@ -490,23 +539,38 @@ async function handleGetRequirements(req, res) {
     }
     reqQuery += ' ORDER BY created_at DESC LIMIT 300';
 
-    // ⚡ Fast parallel execution of parent requirements and grouped bid statistics
-    const [parentsResult, itemBidResult] = await Promise.all([
+    // ⚡ Fast parallel execution of parent requirements, grouped bid stats, negotiations, and history
+    const [parentsResult, itemBidResult, negResult, histResult] = await Promise.all([
       pool.query(reqQuery),
       pool.query(
-        "SELECT requirement_id, item_id, COUNT(DISTINCT transporter_id) as cnt, MIN(rate_per_mt) as min_rate FROM rate_submissions WHERE UPPER(COALESCE(bid_status, '')) IN ('SUBMITTED', 'COUNTER_OFFERED', 'COUNTER_RESPONDED', 'COUNTER_ACCEPTED', 'FINALIZED') GROUP BY requirement_id, item_id"
-      )
+        "SELECT requirement_id, item_id, COUNT(DISTINCT transporter_id) as cnt, MIN(rate_per_mt) as min_rate, SUM(CASE WHEN UPPER(COALESCE(bid_status, '')) IN ('FINALIZED', 'COUNTER_ACCEPTED') OR final_rate > 0 THEN 1 ELSE 0 END) as finalized_cnt FROM rate_submissions WHERE UPPER(COALESCE(bid_status, '')) IN ('SUBMITTED', 'COUNTER_OFFERED', 'COUNTER_RESPONDED', 'COUNTER_ACCEPTED', 'FINALIZED') GROUP BY requirement_id, item_id"
+      ),
+      pool.query("SELECT requirement_id, COUNT(*) as cnt FROM rate_negotiations GROUP BY requirement_id"),
+      pool.query("SELECT requirement_id, COUNT(*) as cnt FROM bid_negotiation_history GROUP BY requirement_id")
     ]);
 
     const parents = parentsResult[0] || [];
     const itemBidRows = itemBidResult[0] || [];
+    const negRows = negResult[0] || [];
+    const histRows = histResult[0] || [];
 
     if (parents.length === 0) {
       return res.json({ success: true, count: 0, data: [], requirements: [], rate_requests: [] });
     }
 
     const bidsCountMap = {};
+    const finalizedCountMap = {};
     const itemStatsMap = {};
+    const negCountMap = {};
+    const histCountMap = {};
+
+    negRows.forEach((n) => {
+      if (n.requirement_id) negCountMap[n.requirement_id] = Number(n.cnt || 0);
+    });
+
+    histRows.forEach((h) => {
+      if (h.requirement_id) histCountMap[h.requirement_id] = Number(h.cnt || 0);
+    });
 
     itemBidRows.forEach((b) => {
       const stats = {
@@ -518,6 +582,7 @@ async function handleGetRequirements(req, res) {
       if (b.item_id) itemStatsMap[b.item_id] = stats;
       if (b.requirement_id) {
         bidsCountMap[b.requirement_id] = (bidsCountMap[b.requirement_id] || 0) + Number(b.cnt || 0);
+        finalizedCountMap[b.requirement_id] = (finalizedCountMap[b.requirement_id] || 0) + Number(b.finalized_cnt || 0);
       }
     });
 
@@ -533,7 +598,15 @@ async function handleGetRequirements(req, res) {
       itemsMap[item.requirement_id].push(item);
     });
 
-    const formatted = parents.map((p) => formatParentRequirementDto(p, itemsMap[p.id] || [], bidsCountMap[p.id] || bidsCountMap[p.req_no] || 0, itemStatsMap));
+    const formatted = parents.map((p) => {
+      const totalBids = bidsCountMap[p.id] || bidsCountMap[p.req_no] || 0;
+      const extraMetrics = {
+        has_finalized_bid: (finalizedCountMap[p.id] || finalizedCountMap[p.req_no] || 0) > 0,
+        negotiation_count: negCountMap[p.id] || negCountMap[p.req_no] || 0,
+        history_count: histCountMap[p.id] || histCountMap[p.req_no] || 0
+      };
+      return formatParentRequirementDto(p, itemsMap[p.id] || [], totalBids, itemStatsMap, extraMetrics);
+    });
     return res.json({ success: true, count: formatted.length, data: formatted, requirements: formatted, rate_requests: formatted });
   } catch (err) {
     console.error('❌ GET /api/requirements Error:', err.message);
@@ -2160,13 +2233,36 @@ router.post('/transport-titles', authenticateToken, requireRole('admin'), async 
 router.get('/requirements/:id', authenticateToken, async (req, res) => {
   const { id } = req.params;
   await ensureRequirementsTableExists();
+  await ensureRateSubmissionsTableExists();
+  await ensureBidNegotiationHistoryTableExists();
+  await ensureRateNegotiationsTableExists();
   try {
-    const [parents] = await pool.query('SELECT * FROM transport_requirements WHERE id = ?', [id]);
+    const [parents] = await pool.query('SELECT * FROM transport_requirements WHERE id = ? OR req_no = ? LIMIT 1', [id, id]);
     if (parents.length === 0) {
       return res.status(404).json({ success: false, error: 'Requirement not found' });
     }
-    const [childRows] = await pool.query('SELECT * FROM transport_requirement_items WHERE requirement_id = ? ORDER BY id ASC', [id]);
-    const dto = formatParentRequirementDto(parents[0], childRows, parents[0]?.submitted_bids_count || 0);
+    const parentReq = parents[0];
+    const actualId = parentReq.id;
+
+    const [childRows, bidStats, negStats, histStats] = await Promise.all([
+      pool.query('SELECT * FROM transport_requirement_items WHERE requirement_id = ? ORDER BY id ASC', [actualId]),
+      pool.query("SELECT COUNT(*) as total_bids, SUM(CASE WHEN UPPER(COALESCE(bid_status, '')) IN ('FINALIZED', 'COUNTER_ACCEPTED') OR final_rate > 0 THEN 1 ELSE 0 END) as finalized_cnt FROM rate_submissions WHERE requirement_id = ?", [actualId]),
+      pool.query("SELECT COUNT(*) as cnt FROM rate_negotiations WHERE requirement_id = ?", [actualId]),
+      pool.query("SELECT COUNT(*) as cnt FROM bid_negotiation_history WHERE requirement_id = ?", [actualId])
+    ]);
+
+    const totalBids = Number(bidStats[0][0]?.total_bids || 0);
+    const finalizedCnt = Number(bidStats[0][0]?.finalized_cnt || 0);
+    const negCount = Number(negStats[0][0]?.cnt || 0);
+    const histCount = Number(histStats[0][0]?.cnt || 0);
+
+    const extraMetrics = {
+      has_finalized_bid: finalizedCnt > 0,
+      negotiation_count: negCount,
+      history_count: histCount
+    };
+
+    const dto = formatParentRequirementDto(parentReq, childRows[0] || [], totalBids, {}, extraMetrics);
     return res.json({ success: true, data: dto });
   } catch (err) {
     return res.status(500).json({ success: false, error: { code: 'DATABASE_ERROR', message: err.message } });
@@ -2475,12 +2571,55 @@ router.post('/requirements/:id/cancel', authenticateToken, requireRole('admin'),
 router.post('/requirements/:id/restore', authenticateToken, requireRole('admin'), async (req, res) => {
   const { id } = req.params;
   await ensureRequirementsTableExists();
+  await ensureRateSubmissionsTableExists();
   try {
     const [existing] = await pool.query('SELECT id, req_no, status FROM transport_requirements WHERE id = ? OR req_no = ?', [id, id]);
     if (existing.length === 0) {
       return res.status(404).json({ success: false, error: 'Requirement not found' });
     }
-    const targetId = existing[0].id;
+    const reqRecord = existing[0];
+    const targetId = reqRecord.id;
+    const currentStatus = String(reqRecord.status || 'Active').toUpperCase();
+
+    // 1. Explicitly block restore for CANCELLED requirements
+    if (currentStatus === 'CANCELLED') {
+      return res.status(400).json({
+        success: false,
+        code: 'CANCELLED_REQUIREMENT_CANNOT_RESTORE',
+        message: 'Cancelled requirements cannot be directly restored. Create a new requirement or use an explicit reopen workflow.'
+      });
+    }
+
+    // 2. Explicitly block restore for COMPLETED requirements
+    if (currentStatus === 'COMPLETED') {
+      return res.status(400).json({
+        success: false,
+        code: 'COMPLETED_REQUIREMENT_CANNOT_RESTORE',
+        message: 'Completed requirements cannot be restored.'
+      });
+    }
+
+    // 3. Explicitly block restore for FINALIZED requirements
+    const [finalizedRows] = await pool.query(
+      "SELECT COUNT(*) AS finalized_cnt FROM rate_submissions WHERE requirement_id = ? AND (UPPER(COALESCE(bid_status, '')) IN ('FINALIZED', 'COUNTER_ACCEPTED') OR final_rate > 0)",
+      [targetId]
+    );
+    if (Number(finalizedRows[0]?.finalized_cnt || 0) > 0) {
+      return res.status(400).json({
+        success: false,
+        code: 'FINALIZED_REQUIREMENT_CANNOT_RESTORE',
+        message: 'Finalized requirements cannot be restored to active.'
+      });
+    }
+
+    // 4. Only ARCHIVED is allowed to restore to Active
+    if (currentStatus !== 'ARCHIVED') {
+      return res.status(400).json({
+        success: false,
+        code: 'INVALID_RESTORE_STATE',
+        message: `Requirement is already ${reqRecord.status || 'Active'} and does not need to be restored.`
+      });
+    }
 
     await pool.query(
       'UPDATE transport_requirements SET status = ?, archived_at = NULL, archived_by = NULL, cancelled_at = NULL, cancelled_by = NULL, cancellation_reason = NULL WHERE id = ?',

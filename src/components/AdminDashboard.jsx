@@ -3014,8 +3014,8 @@ export const AdminDashboard = () => {
                                         <TrendingDown size={14} /> Compare Rates ({displayBidCount})
                                       </button>
                                     )}
-                                    {/* Action Buttons based on Lifecycle Status */}
-                                    {String(req.status).toUpperCase() === 'ARCHIVED' ? (
+                                    {/* Action Buttons based on Backend-Derived Business Permissions */}
+                                    {req.can_restore ? (
                                       <button
                                         type="button"
                                         onClick={() => handleRestoreRequirement(req)}
@@ -3026,8 +3026,18 @@ export const AdminDashboard = () => {
                                         🔄 Restore Active
                                       </button>
                                     ) : String(req.status).toUpperCase() === 'CANCELLED' ? (
-                                      <span style={{ fontSize: '0.75rem', color: '#ef4444', fontWeight: '800', padding: '4px 8px', background: 'rgba(239, 68, 68, 0.1)', borderRadius: '6px' }}>
-                                        🚫 Cancelled
+                                      <span
+                                        style={{ fontSize: '0.75rem', color: '#ef4444', fontWeight: '800', padding: '4px 8px', background: 'rgba(239, 68, 68, 0.1)', borderRadius: '6px', border: '1px solid rgba(239, 68, 68, 0.3)' }}
+                                        title={req.cancellation_reason ? `Reason: ${req.cancellation_reason}` : 'Cancelled requirement'}
+                                      >
+                                        🚫 CANCELLED
+                                      </span>
+                                    ) : String(req.status).toUpperCase() === 'COMPLETED' ? (
+                                      <span
+                                        style={{ fontSize: '0.75rem', color: '#10b981', fontWeight: '800', padding: '4px 8px', background: 'rgba(16, 185, 129, 0.1)', borderRadius: '6px', border: '1px solid rgba(16, 185, 129, 0.3)' }}
+                                        title="Order awarded and completed"
+                                      >
+                                        ✓ COMPLETED
                                       </span>
                                     ) : (
                                       <>
@@ -3041,38 +3051,41 @@ export const AdminDashboard = () => {
                                           <Edit size={14} />
                                         </button>
 
-                                        {displayBidCount > 0 && (
-                                          <>
-                                            <button
-                                              type="button"
-                                              onClick={() => handleArchiveRequirement(req)}
-                                              className="btn btn-secondary"
-                                              style={{ padding: '6px 10px', fontSize: '0.78rem', border: '1px solid #f59e0b', color: '#fbbf24', borderRadius: '8px' }}
-                                              title="Archive requirement (Preserves bids & audit trail)"
-                                            >
-                                              📦 Archive
-                                            </button>
-                                            <button
-                                              type="button"
-                                              onClick={() => handleCancelRequirement(req)}
-                                              className="btn btn-secondary"
-                                              style={{ padding: '6px 10px', fontSize: '0.78rem', border: '1px solid #ef4444', color: '#f87171', borderRadius: '8px' }}
-                                              title="Cancel requirement with reason"
-                                            >
-                                              🚫 Cancel
-                                            </button>
-                                          </>
+                                        {req.can_archive && (
+                                          <button
+                                            type="button"
+                                            onClick={() => handleArchiveRequirement(req)}
+                                            className="btn btn-secondary"
+                                            style={{ padding: '6px 10px', fontSize: '0.78rem', border: '1px solid #f59e0b', color: '#fbbf24', borderRadius: '8px' }}
+                                            title="Archive requirement (Preserves bids & audit trail)"
+                                          >
+                                            📦 Archive
+                                          </button>
                                         )}
 
-                                        <button
-                                          type="button"
-                                          onClick={() => handleDeleteRequirement(req)}
-                                          className="btn btn-danger"
-                                          style={{ padding: '6px 10px', fontSize: '0.78rem', borderRadius: '8px' }}
-                                          title={displayBidCount === 0 ? "Delete requirement permanently" : "Smart delete policy (Requires 0 bids)"}
-                                        >
-                                          <Trash2 size={14} />
-                                        </button>
+                                        {req.can_cancel && (
+                                          <button
+                                            type="button"
+                                            onClick={() => handleCancelRequirement(req)}
+                                            className="btn btn-secondary"
+                                            style={{ padding: '6px 10px', fontSize: '0.78rem', border: '1px solid #ef4444', color: '#f87171', borderRadius: '8px' }}
+                                            title="Cancel requirement with reason"
+                                          >
+                                            🚫 Cancel
+                                          </button>
+                                        )}
+
+                                        {req.can_delete && (
+                                          <button
+                                            type="button"
+                                            onClick={() => handleDeleteRequirement(req)}
+                                            className="btn btn-danger"
+                                            style={{ padding: '6px 10px', fontSize: '0.78rem', borderRadius: '8px' }}
+                                            title="Permanently delete requirement (0 bids)"
+                                          >
+                                            <Trash2 size={14} />
+                                          </button>
+                                        )}
                                       </>
                                     )}
                                   </div>

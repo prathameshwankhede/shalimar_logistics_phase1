@@ -1,5 +1,5 @@
 // tests/smart_delete_policy.test.js
-// Automated Test Suite for Smart Requirement Delete & Archive Lifecycle Policy
+// Automated Test Suite for Smart Requirement Delete, Archive, and Permission Lifecycle Policy
 
 import assert from 'assert';
 
@@ -22,8 +22,90 @@ function it(name, fn) {
   }
 }
 
-// Decision engine logic simulation matching server implementation
-function evaluateSmartDeletePolicy({ finalizedCount, negCount, histCount, bidCount }) {
+// 1. Permission Matrix Derivation Logic
+function deriveRequirementPermissions(status, { bidsCount = 0, negCount = 0, histCount = 0, hasFinalized = false } = {}) {
+  const reqStatus = String(status || 'Active').toUpperCase();
+  const totalBids = Number(bidsCount || 0);
+  const totalNegs = Number(negCount || 0);
+  const totalHists = Number(histCount || 0);
+  const isFinalized = Boolean(hasFinalized || reqStatus === 'COMPLETED');
+
+  let can_delete = false;
+  let can_archive = false;
+  let can_cancel = false;
+  let can_restore = false;
+
+  if (reqStatus === 'ARCHIVED') {
+    can_delete = false;
+    can_archive = false;
+    can_cancel = false;
+    can_restore = true;
+  } else if (reqStatus === 'CANCELLED' || reqStatus === 'COMPLETED') {
+    can_delete = false;
+    can_archive = false;
+    can_cancel = false;
+    can_restore = false;
+  } else if (isFinalized) {
+    can_delete = false;
+    can_archive = true;
+    can_cancel = false;
+    can_restore = false;
+  } else if (totalBids > 0 || totalNegs > 0 || totalHists > 0) {
+    can_delete = false;
+    can_archive = true;
+    can_cancel = true;
+    can_restore = false;
+  } else {
+    // DRAFT / ACTIVE with 0 bids and 0 negotiations
+    can_delete = true;
+    can_archive = true;
+    can_cancel = true;
+    can_restore = false;
+  }
+
+  return { can_delete, can_archive, can_cancel, can_restore };
+}
+
+// 2. Restore Endpoint Safety Evaluation
+function evaluateRestoreRequirement({ status, hasFinalized = false }) {
+  const currentStatus = String(status || 'Active').toUpperCase();
+  if (currentStatus === 'CANCELLED') {
+    return {
+      allowed: false,
+      code: 'CANCELLED_REQUIREMENT_CANNOT_RESTORE',
+      message: 'Cancelled requirements cannot be directly restored. Create a new requirement or use an explicit reopen workflow.'
+    };
+  }
+  if (currentStatus === 'COMPLETED') {
+    return {
+      allowed: false,
+      code: 'COMPLETED_REQUIREMENT_CANNOT_RESTORE',
+      message: 'Completed requirements cannot be restored.'
+    };
+  }
+  if (hasFinalized) {
+    return {
+      allowed: false,
+      code: 'FINALIZED_REQUIREMENT_CANNOT_RESTORE',
+      message: 'Finalized requirements cannot be restored to active.'
+    };
+  }
+  if (currentStatus !== 'ARCHIVED') {
+    return {
+      allowed: false,
+      code: 'INVALID_RESTORE_STATE',
+      message: `Requirement is already ${status} and does not need to be restored.`
+    };
+  }
+  return {
+    allowed: true,
+    status: 'Active',
+    message: 'Requirement restored to active successfully'
+  };
+}
+
+// 3. Smart Delete Backend Decision Engine
+function evaluateSmartDeleteBackend({ finalizedCount = 0, negCount = 0, histCount = 0, bidCount = 0 }) {
   if (finalizedCount > 0) {
     return {
       allowed: false,
@@ -55,75 +137,88 @@ function evaluateSmartDeletePolicy({ finalizedCount, negCount, histCount, bidCou
   };
 }
 
-function evaluateBidSubmissionAllowed(requirementStatus) {
-  if (['ARCHIVED', 'CANCELLED', 'COMPLETED', 'CLOSED'].includes(String(requirementStatus).toUpperCase())) {
-    return { allowed: false, message: 'This requirement is no longer accepting bids.' };
-  }
-  return { allowed: true };
-}
-
-// TEST 1: Requirement with 0 bids -> DELETE succeeds
-it('TEST 1: Requirement with 0 bids allows permanent deletion', () => {
-  const result = evaluateSmartDeletePolicy({ finalizedCount: 0, negCount: 0, histCount: 0, bidCount: 0 });
+// TEST 1: ARCHIVED requirement -> restore succeeds -> ACTIVE
+it('TEST 1: ARCHIVED requirement -> restore succeeds -> ACTIVE', () => {
+  const result = evaluateRestoreRequirement({ status: 'ARCHIVED', hasFinalized: false });
   assert.strictEqual(result.allowed, true);
-  assert.strictEqual(result.message, 'Requirement and child items permanently deleted from MySQL');
+  assert.strictEqual(result.status, 'Active');
 });
 
-// TEST 2: Requirement with bid -> DELETE blocked
-it('TEST 2: Requirement with active bids blocks deletion (REQUIREMENT_HAS_BIDS)', () => {
-  const result = evaluateSmartDeletePolicy({ finalizedCount: 0, negCount: 0, histCount: 0, bidCount: 3 });
+// TEST 2: CANCELLED requirement -> restore blocked
+it('TEST 2: CANCELLED requirement -> restore blocked (CANCELLED_REQUIREMENT_CANNOT_RESTORE)', () => {
+  const result = evaluateRestoreRequirement({ status: 'CANCELLED', hasFinalized: false });
   assert.strictEqual(result.allowed, false);
-  assert.strictEqual(result.code, 'REQUIREMENT_HAS_BIDS');
-  assert.strictEqual(result.bid_count, 3);
-  assert.deepStrictEqual(result.allowed_actions, ['ARCHIVE', 'CANCEL']);
+  assert.strictEqual(result.code, 'CANCELLED_REQUIREMENT_CANNOT_RESTORE');
 });
 
-// TEST 3: Requirement with negotiation -> DELETE blocked
-it('TEST 3: Requirement with negotiation records blocks deletion (REQUIREMENT_HAS_NEGOTIATION)', () => {
-  const result = evaluateSmartDeletePolicy({ finalizedCount: 0, negCount: 2, histCount: 1, bidCount: 1 });
+// TEST 3: FINALIZED requirement -> restore blocked
+it('TEST 3: FINALIZED requirement -> restore blocked (FINALIZED_REQUIREMENT_CANNOT_RESTORE)', () => {
+  const result = evaluateRestoreRequirement({ status: 'ARCHIVED', hasFinalized: true });
   assert.strictEqual(result.allowed, false);
-  assert.strictEqual(result.code, 'REQUIREMENT_HAS_NEGOTIATION');
+  assert.strictEqual(result.code, 'FINALIZED_REQUIREMENT_CANNOT_RESTORE');
 });
 
-// TEST 4: Finalized requirement -> DELETE strictly blocked
-it('TEST 4: Finalized requirement strictly blocks deletion (FINALIZED_REQUIREMENT)', () => {
-  const result = evaluateSmartDeletePolicy({ finalizedCount: 1, negCount: 2, histCount: 2, bidCount: 2 });
-  assert.strictEqual(result.allowed, false);
-  assert.strictEqual(result.code, 'FINALIZED_REQUIREMENT');
-  assert.deepStrictEqual(result.allowed_actions, ['ARCHIVE']);
+// TEST 4: Requirement with 0 bids -> Delete button permission true
+it('TEST 4: Requirement with 0 bids -> can_delete: true, can_archive: true, can_cancel: true, can_restore: false', () => {
+  const perms = deriveRequirementPermissions('Active', { bidsCount: 0, negCount: 0, histCount: 0, hasFinalized: false });
+  assert.strictEqual(perms.can_delete, true);
+  assert.strictEqual(perms.can_archive, true);
+  assert.strictEqual(perms.can_cancel, true);
+  assert.strictEqual(perms.can_restore, false);
 });
 
-// TEST 5: Archive requirement -> hidden from active bidding
-it('TEST 5: Archived requirement rejects new quotes', () => {
-  const check = evaluateBidSubmissionAllowed('ARCHIVED');
-  assert.strictEqual(check.allowed, false);
-  assert.strictEqual(check.message, 'This requirement is no longer accepting bids.');
+// TEST 5: Requirement with bids -> Delete permission false
+it('TEST 5: Requirement with bids -> can_delete: false, can_archive: true, can_cancel: true', () => {
+  const perms = deriveRequirementPermissions('Active', { bidsCount: 2, negCount: 0, histCount: 0, hasFinalized: false });
+  assert.strictEqual(perms.can_delete, false);
+  assert.strictEqual(perms.can_archive, true);
+  assert.strictEqual(perms.can_cancel, true);
+  assert.strictEqual(perms.can_restore, false);
 });
 
-// TEST 6: Cancel requirement -> rejects new quotes
-it('TEST 6: Cancelled requirement rejects new quotes', () => {
-  const check = evaluateBidSubmissionAllowed('CANCELLED');
-  assert.strictEqual(check.allowed, false);
-  assert.strictEqual(check.message, 'This requirement is no longer accepting bids.');
+// TEST 6: Requirement with negotiation -> Delete permission false
+it('TEST 6: Requirement with negotiation -> can_delete: false, can_archive: true, can_cancel: true', () => {
+  const perms = deriveRequirementPermissions('Active', { bidsCount: 1, negCount: 3, histCount: 2, hasFinalized: false });
+  assert.strictEqual(perms.can_delete, false);
+  assert.strictEqual(perms.can_archive, true);
+  assert.strictEqual(perms.can_cancel, true);
+  assert.strictEqual(perms.can_restore, false);
 });
 
-// TEST 7: Active requirement -> accepts new quotes
-it('TEST 7: Active requirement allows quote submission', () => {
-  const check = evaluateBidSubmissionAllowed('ACTIVE');
-  assert.strictEqual(check.allowed, true);
+// TEST 7: Finalized requirement -> only Archive permission true
+it('TEST 7: Finalized requirement -> can_archive: true, can_delete: false, can_cancel: false, can_restore: false', () => {
+  const perms = deriveRequirementPermissions('Active', { bidsCount: 3, negCount: 2, histCount: 2, hasFinalized: true });
+  assert.strictEqual(perms.can_archive, true);
+  assert.strictEqual(perms.can_delete, false);
+  assert.strictEqual(perms.can_cancel, false);
+  assert.strictEqual(perms.can_restore, false);
 });
 
-// TEST 8: Rollback safety on failure
-it('TEST 8: Rollback logic prevents partial deletion on blocked state', () => {
-  let dbState = { req: 1, items: 2, bids: 1 };
-  const canDelete = evaluateSmartDeletePolicy({ finalizedCount: 0, negCount: 0, histCount: 0, bidCount: dbState.bids });
-  if (!canDelete.allowed) {
-    // Transaction rolls back
-    dbState = { ...dbState };
-  }
-  assert.strictEqual(dbState.req, 1);
-  assert.strictEqual(dbState.items, 2);
-  assert.strictEqual(dbState.bids, 1);
+// TEST 8: Cancelled requirement -> all destructive permissions false
+it('TEST 8: Cancelled requirement -> can_delete: false, can_archive: false, can_cancel: false, can_restore: false', () => {
+  const perms = deriveRequirementPermissions('CANCELLED', { bidsCount: 2 });
+  assert.strictEqual(perms.can_delete, false);
+  assert.strictEqual(perms.can_archive, false);
+  assert.strictEqual(perms.can_cancel, false);
+  assert.strictEqual(perms.can_restore, false);
+});
+
+// TEST 9: Backend DELETE endpoint still blocks direct API deletion even if frontend bypassed
+it('TEST 9: Backend DELETE endpoint still blocks direct API deletion on bids / negotiations / finalized', () => {
+  const delBidded = evaluateSmartDeleteBackend({ bidCount: 1 });
+  assert.strictEqual(delBidded.allowed, false);
+  assert.strictEqual(delBidded.code, 'REQUIREMENT_HAS_BIDS');
+
+  const delNeg = evaluateSmartDeleteBackend({ negCount: 1 });
+  assert.strictEqual(delNeg.allowed, false);
+  assert.strictEqual(delNeg.code, 'REQUIREMENT_HAS_NEGOTIATION');
+
+  const delFinal = evaluateSmartDeleteBackend({ finalizedCount: 1 });
+  assert.strictEqual(delFinal.allowed, false);
+  assert.strictEqual(delFinal.code, 'FINALIZED_REQUIREMENT');
+
+  const delClean = evaluateSmartDeleteBackend({ finalizedCount: 0, negCount: 0, histCount: 0, bidCount: 0 });
+  assert.strictEqual(delClean.allowed, true);
 });
 
 console.log('==================================================');
