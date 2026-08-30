@@ -557,12 +557,53 @@ export async function ensureRateNegotiationsTableExists() {
 }
 
 // -------------------------------------------------------------
+// SECURITY AUDIT LOGS SCHEMA 🛡️
+// -------------------------------------------------------------
+let isSecurityAuditLogsTableEnsured = false;
+export async function ensureSecurityAuditLogsTableExists() {
+  if (isSecurityAuditLogsTableEnsured) return;
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS security_audit_logs (
+        id VARCHAR(64) NOT NULL PRIMARY KEY,
+        action VARCHAR(255) NOT NULL,
+        username VARCHAR(100) NOT NULL,
+        role VARCHAR(50) NOT NULL DEFAULT 'system',
+        user_role VARCHAR(50) DEFAULT NULL,
+        ip VARCHAR(50) DEFAULT NULL,
+        ip_address VARCHAR(50) DEFAULT NULL,
+        status VARCHAR(100) DEFAULT NULL,
+        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+        created_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_audit_timestamp (timestamp),
+        INDEX idx_audit_created_at (created_at),
+        INDEX idx_audit_username (username)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
+    // Ensure all required columns exist in case of legacy schema variations
+    await ensureColumnExists('security_audit_logs', 'role', "VARCHAR(50) NOT NULL DEFAULT 'system'");
+    await ensureColumnExists('security_audit_logs', 'user_role', "VARCHAR(50) DEFAULT NULL");
+    await ensureColumnExists('security_audit_logs', 'ip', "VARCHAR(50) DEFAULT NULL");
+    await ensureColumnExists('security_audit_logs', 'ip_address', "VARCHAR(50) DEFAULT NULL");
+    await ensureColumnExists('security_audit_logs', 'status', "VARCHAR(100) DEFAULT NULL");
+    await ensureColumnExists('security_audit_logs', 'timestamp', "DATETIME DEFAULT CURRENT_TIMESTAMP");
+    await ensureColumnExists('security_audit_logs', 'created_at', "TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP");
+
+    isSecurityAuditLogsTableEnsured = true;
+  } catch (err) {
+    console.warn('security_audit_logs table creation notice:', err.message);
+  }
+}
+
+// -------------------------------------------------------------
 // TRUCK DISPATCHES & CONCURRENCY-SAFE LR SEQUENCES SCHEMA 🚛📄
 // -------------------------------------------------------------
 let isTruckDispatchesTableEnsured = false;
 export async function ensureTruckDispatchesTableExists() {
   if (isTruckDispatchesTableEnsured) return;
   try {
+    await ensureSecurityAuditLogsTableExists();
     await pool.query(`
       CREATE TABLE IF NOT EXISTS lr_sequences (
         prefix VARCHAR(50) NOT NULL PRIMARY KEY,

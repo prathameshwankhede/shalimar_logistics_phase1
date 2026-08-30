@@ -42,6 +42,7 @@ function createMockWorkflowState() {
       { id: 'sub_other', requirement_id: 'req_001', item_id: 'item_001', transporter_id: 'trans_other', rate_per_mt: 520, bid_status: 'SUBMITTED', is_finalized: 0, acceptance_status: null }
     ],
     truck_dispatches: [],
+    security_audit_logs: [],
     lr_sequences: { 'LR-SNPL-2026': 0 }
   };
 }
@@ -191,6 +192,16 @@ function dispatchTruck(state, requirementId, itemId, authUser, payload) {
   };
 
   state.truck_dispatches.push(dispatch);
+
+  state.security_audit_logs.push({
+    id: `sec_${Date.now()}`,
+    action: `TRUCK_DISPATCHED (${payload.truck_number} - ${loadedQty} MT, LR: ${lrNumber})`,
+    username: authUser.username,
+    role: 'transporter',
+    ip: '127.0.0.1',
+    status: 'DISPATCHED 🚛',
+    timestamp: new Date().toISOString()
+  });
 
   const newTotalDispatched = alreadyDispatched + loadedQty;
   const newRemaining = item.quantity_mt - newTotalDispatched;
@@ -615,6 +626,33 @@ it('TEST 12: Other transporters receive 403 FORBIDDEN_DISPATCH_ACCESS when attem
   const res = getDispatches(state, 'req_001', 'item_001', otherUser);
   assert.strictEqual(res.status, 403);
   assert.strictEqual(res.code, 'FORBIDDEN_DISPATCH_ACCESS');
+});
+
+// TEST 13: Truck dispatch successfully creates a security audit log
+it('TEST 13: Truck dispatch successfully creates a security audit log', () => {
+  const state = createMockWorkflowState();
+  finalizeRate(state, 'sub_win', 480, { username: 'admin', role: 'admin' });
+  acceptFinalRate(state, 'req_001', 'item_001', { id: 'trans_win', transporter_id: 'trans_win', username: 'win_transporter', role: 'transporter' });
+
+  const winUser = { id: 'trans_win', transporter_id: 'trans_win', username: 'win_transporter', role: 'transporter' };
+  const res = dispatchTruck(state, 'req_001', 'item_001', winUser, {
+    truck_number: 'MH31FC4512',
+    loaded_quantity_mt: 25.0,
+    driver_name: 'Ramesh Kumar',
+    driver_mobile: '9876543210',
+    driver_license: 'MH3120210012345'
+  });
+
+  assert.strictEqual(res.status, 200);
+  assert.strictEqual(res.success, true);
+  assert.strictEqual(res.lr_number.startsWith('LR-SNPL-2026-'), true);
+  assert.strictEqual(res.remaining_quantity_mt, 55.0);
+  assert.strictEqual(state.truck_dispatches.length, 1);
+  assert.strictEqual(state.security_audit_logs.length, 1);
+  assert.strictEqual(state.security_audit_logs[0].username, 'win_transporter');
+  assert.strictEqual(state.security_audit_logs[0].role, 'transporter');
+  assert.strictEqual(state.security_audit_logs[0].status, 'DISPATCHED 🚛');
+  assert.strictEqual(state.security_audit_logs[0].action.includes('MH31FC4512'), true);
 });
 
 console.log('================================================================');
