@@ -3367,6 +3367,8 @@ router.delete('/requirements/:id', authenticateToken, requireRole('admin'), asyn
       return res.status(404).json({ success: false, error: 'Requirement record not found' });
     }
 
+    const actualReqId = existing[0].id;
+
     // 2. Cascade cleanup related dispatches, negotiation history, and negotiations
     await conn.query('DELETE FROM truck_dispatches WHERE requirement_id = ?', [actualReqId]);
     await conn.query('DELETE FROM bid_negotiation_history WHERE requirement_id = ?', [actualReqId]);

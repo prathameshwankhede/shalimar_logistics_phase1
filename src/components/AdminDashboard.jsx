@@ -1715,14 +1715,17 @@ export const AdminDashboard = () => {
 
   // 🗑️ PERMANENT DELETE REQUIREMENT HANDLER
   const handleDeleteRequirement = async (req) => {
-    if (!req || !req.id) return;
-    const reqNoStr = req.req_no || req.request_no || req.id;
+    if (!req) return;
+    const targetId = req.id || req.requirement_id || req.req_no || req.request_no;
+    if (!targetId) return;
+
+    const reqNoStr = req.req_no || req.request_no || targetId;
     if (!window.confirm("Are you sure you want to permanently delete this requirement and all its related items, bids, and negotiation data? This action cannot be undone.")) {
       return;
     }
 
     try {
-      const res = await deleteRequirement(req.id);
+      const res = await deleteRequirement(targetId);
       if (res && res.success) {
         setArchiveNotice(`🗑️ Requirement ${reqNoStr} deleted successfully from MySQL!`);
         setTimeout(() => setArchiveNotice(''), 4000);
