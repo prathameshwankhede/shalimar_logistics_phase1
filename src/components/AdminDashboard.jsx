@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { createRateRequest, createRequirement, updateRequirement, deleteRequirement, deleteRequirementItem } from '../api/rateRequestApi';
+import { createRateRequest, createRequirement, updateRequirement, deleteRequirement, deleteRequirementItem, archiveRequirement, cancelRequirement, restoreRequirement } from '../api/rateRequestApi';
 import { sendAdminCounterAll, finalizeBid } from '../api/rateSubmissionApi';
 import { createTransporter, updateTransporterStatus, resetTransporterPassword, deleteTransporter } from '../api/transporterApi';
 import { createProduct, updateProduct, deleteProduct, createCompanyUnit, updateCompanyUnit, deleteCompanyUnit } from '../api/masterDataApi';
@@ -1647,35 +1647,100 @@ export const AdminDashboard = () => {
 
 
 
-  // 🗑️ DELETE MISTAKEN / WRONG REQUIREMENT HANDLER
+  const handleArchiveRequirement = async (req) => {
+    if (!req || !req.id) return;
+    const reqNoStr = req.req_no || req.request_no || req.id;
+    if (!window.confirm(`📦 Confirm Archiving Requirement "${reqNoStr}"?\n\nThis will move the requirement to Archive status and hide it from active transporter bidding.`)) {
+      return;
+    }
+    try {
+      const res = await archiveRequirement(req.id);
+      if (res && res.success) {
+        setArchiveNotice(`📦 Requirement ${reqNoStr} has been archived.`);
+        setTimeout(() => setArchiveNotice(''), 4000);
+        if (typeof refreshDB === 'function') await refreshDB();
+        else if (typeof refreshRequirements === 'function') await refreshRequirements();
+      } else {
+        alert(`❌ Could not archive requirement: ${res?.error?.message || res?.error || 'Unknown error'}`);
+      }
+    } catch (err) {
+      alert(`❌ Error archiving requirement: ${err.message}`);
+    }
+  };
+
+  const handleCancelRequirement = async (req) => {
+    if (!req || !req.id) return;
+    const reqNoStr = req.req_no || req.request_no || req.id;
+    const reason = window.prompt(`🚫 Enter cancellation reason for Requirement "${reqNoStr}":`, 'Market rate variation / Procurement cancelled');
+    if (reason === null) return;
+    if (!reason.trim()) {
+      alert('Cancellation reason is required.');
+      return;
+    }
+    try {
+      const res = await cancelRequirement(req.id, reason.trim());
+      if (res && res.success) {
+        setArchiveNotice(`🚫 Requirement ${reqNoStr} has been marked CANCELLED.`);
+        setTimeout(() => setArchiveNotice(''), 4000);
+        if (typeof refreshDB === 'function') await refreshDB();
+        else if (typeof refreshRequirements === 'function') await refreshRequirements();
+      } else {
+        alert(`❌ Could not cancel requirement: ${res?.error?.message || res?.error || 'Unknown error'}`);
+      }
+    } catch (err) {
+      alert(`❌ Error cancelling requirement: ${err.message}`);
+    }
+  };
+
+  const handleRestoreRequirement = async (req) => {
+    if (!req || !req.id) return;
+    const reqNoStr = req.req_no || req.request_no || req.id;
+    if (!window.confirm(`🔄 Restore Requirement "${reqNoStr}" back to Active status?`)) {
+      return;
+    }
+    try {
+      const res = await restoreRequirement(req.id);
+      if (res && res.success) {
+        setArchiveNotice(`✅ Requirement ${reqNoStr} restored to Active.`);
+        setTimeout(() => setArchiveNotice(''), 4000);
+        if (typeof refreshDB === 'function') await refreshDB();
+        else if (typeof refreshRequirements === 'function') await refreshRequirements();
+      } else {
+        alert(`❌ Could not restore requirement: ${res?.error?.message || res?.error || 'Unknown error'}`);
+      }
+    } catch (err) {
+      alert(`❌ Error restoring requirement: ${err.message}`);
+    }
+  };
+
+  // 🗑️ SMART DELETE REQUIREMENT HANDLER
   const handleDeleteRequirement = async (req) => {
     if (!req || !req.id) return;
     const reqNoStr = req.req_no || req.request_no || req.id;
-    if (!window.confirm(`Are you sure you want to delete Requirement "${reqNoStr} - ${req.title || ''}"?\n\nThis will remove it from the database.`)) {
+    if (!window.confirm(`Are you sure you want to delete Requirement "${reqNoStr} - ${req.title || ''}"?\n\nIf it has zero bids, it will be permanently deleted.`)) {
       return;
     }
 
     try {
       const res = await deleteRequirement(req.id);
-      if (res && res.error) {
-        alert(`❌ Cannot delete requirement: ${typeof res.error === 'string' ? res.error : res.error.message || 'Server error'}`);
+      if (res && res.success) {
+        setArchiveNotice(`🗑️ Requirement ${reqNoStr} deleted successfully from MySQL!`);
+        setTimeout(() => setArchiveNotice(''), 4000);
+        if (typeof refreshDB === 'function') await refreshDB();
+        else if (typeof refreshRequirements === 'function') await refreshRequirements();
         return;
       }
 
-      const updatedRequests = (db.rate_requests || []).filter((r) => r.id !== req.id);
-      const updatedSubmissions = (db.rate_submissions || []).filter((s) => s.rate_request_id !== req.id);
-      const updatedAllocations = (db.allocations || []).filter((a) => a.rate_request_id !== req.id);
+      // If backend blocked deletion due to business policy:
+      if (res && (res.code === 'REQUIREMENT_HAS_BIDS' || res.code === 'REQUIREMENT_HAS_NEGOTIATION' || res.code === 'FINALIZED_REQUIREMENT' || res.allowed_actions)) {
+        const userChoice = window.confirm(`⚠️ Cannot Permanently Delete\n\n${res.message || 'This requirement contains transporter bids or negotiation history.'}\n\nClick [OK] to ARCHIVE this requirement instead, or [Cancel] to keep it as is.`);
+        if (userChoice) {
+          await handleArchiveRequirement(req);
+        }
+        return;
+      }
 
-      updateDB({
-        ...db,
-        rate_requests: updatedRequests,
-        transport_requirements: updatedRequests,
-        rate_submissions: updatedSubmissions,
-        allocations: updatedAllocations
-      });
-
-      setArchiveNotice(`🗑️ Requirement ${reqNoStr} deleted successfully from MySQL!`);
-      setTimeout(() => setArchiveNotice(''), 4000);
+      alert(`❌ Cannot delete requirement: ${typeof res.error === 'string' ? res.error : res.error?.message || res.message || 'Server error'}`);
     } catch (err) {
       console.error('Delete requirement error:', err);
       alert(`❌ Error deleting requirement: ${err.message}`);
@@ -2949,24 +3014,67 @@ export const AdminDashboard = () => {
                                         <TrendingDown size={14} /> Compare Rates ({displayBidCount})
                                       </button>
                                     )}
-                                    <button
-                                      type="button"
-                                      onClick={() => handleOpenEditModal(req)}
-                                      className="btn btn-secondary"
-                                      style={{ padding: '6px 10px', fontSize: '0.78rem', border: '1px solid #38bdf8', color: '#38bdf8', borderRadius: '8px' }}
-                                      title="Edit requirement details"
-                                    >
-                                      <Edit size={14} />
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => handleDeleteRequirement(req)}
-                                      className="btn btn-danger"
-                                      style={{ padding: '6px 10px', fontSize: '0.78rem', borderRadius: '8px' }}
-                                      title="Delete requirement"
-                                    >
-                                      <Trash2 size={14} />
-                                    </button>
+                                    {/* Action Buttons based on Lifecycle Status */}
+                                    {String(req.status).toUpperCase() === 'ARCHIVED' ? (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleRestoreRequirement(req)}
+                                        className="btn btn-secondary"
+                                        style={{ padding: '6px 10px', fontSize: '0.78rem', border: '1px solid #f59e0b', color: '#fbbf24', borderRadius: '8px' }}
+                                        title="Restore Requirement to Active"
+                                      >
+                                        🔄 Restore Active
+                                      </button>
+                                    ) : String(req.status).toUpperCase() === 'CANCELLED' ? (
+                                      <span style={{ fontSize: '0.75rem', color: '#ef4444', fontWeight: '800', padding: '4px 8px', background: 'rgba(239, 68, 68, 0.1)', borderRadius: '6px' }}>
+                                        🚫 Cancelled
+                                      </span>
+                                    ) : (
+                                      <>
+                                        <button
+                                          type="button"
+                                          onClick={() => handleOpenEditModal(req)}
+                                          className="btn btn-secondary"
+                                          style={{ padding: '6px 10px', fontSize: '0.78rem', border: '1px solid #38bdf8', color: '#38bdf8', borderRadius: '8px' }}
+                                          title="Edit requirement details"
+                                        >
+                                          <Edit size={14} />
+                                        </button>
+
+                                        {displayBidCount > 0 && (
+                                          <>
+                                            <button
+                                              type="button"
+                                              onClick={() => handleArchiveRequirement(req)}
+                                              className="btn btn-secondary"
+                                              style={{ padding: '6px 10px', fontSize: '0.78rem', border: '1px solid #f59e0b', color: '#fbbf24', borderRadius: '8px' }}
+                                              title="Archive requirement (Preserves bids & audit trail)"
+                                            >
+                                              📦 Archive
+                                            </button>
+                                            <button
+                                              type="button"
+                                              onClick={() => handleCancelRequirement(req)}
+                                              className="btn btn-secondary"
+                                              style={{ padding: '6px 10px', fontSize: '0.78rem', border: '1px solid #ef4444', color: '#f87171', borderRadius: '8px' }}
+                                              title="Cancel requirement with reason"
+                                            >
+                                              🚫 Cancel
+                                            </button>
+                                          </>
+                                        )}
+
+                                        <button
+                                          type="button"
+                                          onClick={() => handleDeleteRequirement(req)}
+                                          className="btn btn-danger"
+                                          style={{ padding: '6px 10px', fontSize: '0.78rem', borderRadius: '8px' }}
+                                          title={displayBidCount === 0 ? "Delete requirement permanently" : "Smart delete policy (Requires 0 bids)"}
+                                        >
+                                          <Trash2 size={14} />
+                                        </button>
+                                      </>
+                                    )}
                                   </div>
                                 </td>
                               </tr>

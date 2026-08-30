@@ -1,4 +1,4 @@
-// Hostinger Passenger Process Reload Signal v1.8.6 - Atomic Delete Cascade & Complete Referential Integrity
+// Hostinger Passenger Process Reload Signal v1.8.7 - Smart Requirement Delete & Archive Lifecycle Policy
 import express from 'express';
 import cors from 'cors';
 import path from 'path';

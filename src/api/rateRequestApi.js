@@ -41,3 +41,22 @@ export async function deleteRequirementItem(parentId, itemId) {
     method: 'DELETE'
   });
 }
+
+export async function archiveRequirement(id) {
+  return apiClient(`/api/requirements/${id}/archive`, {
+    method: 'POST'
+  });
+}
+
+export async function cancelRequirement(id, reason) {
+  return apiClient(`/api/requirements/${id}/cancel`, {
+    method: 'POST',
+    body: JSON.stringify({ reason })
+  });
+}
+
+export async function restoreRequirement(id) {
+  return apiClient(`/api/requirements/${id}/restore`, {
+    method: 'POST'
+  });
+}

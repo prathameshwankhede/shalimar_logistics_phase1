@@ -66,7 +66,12 @@ async function ensureRequirementsTableExists() {
       "total_quantity_mt DECIMAL(12,3) DEFAULT NULL",
       "quantity_mt DECIMAL(12,3) DEFAULT NULL",
       "product_name VARCHAR(255) DEFAULT NULL",
-      "unit VARCHAR(50) DEFAULT 'MT'"
+      "unit VARCHAR(50) DEFAULT 'MT'",
+      "archived_at DATETIME NULL",
+      "archived_by VARCHAR(100) NULL",
+      "cancelled_at DATETIME NULL",
+      "cancelled_by VARCHAR(100) NULL",
+      "cancellation_reason TEXT NULL"
     ];
     for (const colDef of reqCols) {
       await pool.query(`ALTER TABLE transport_requirements ADD COLUMN ${colDef}`).catch(() => {});
@@ -183,6 +188,11 @@ function formatParentRequirementDto(parentRow, childItems = [], bidsCount = 0, i
     dest_city: drop,
     target_date: targetDateStr,
     status: parentRow.status || 'Active',
+    archived_at: parentRow.archived_at || null,
+    archived_by: parentRow.archived_by || null,
+    cancelled_at: parentRow.cancelled_at || null,
+    cancelled_by: parentRow.cancelled_by || null,
+    cancellation_reason: parentRow.cancellation_reason || null,
     submitted_bids_count: bidsCount || Number(parentRow.submitted_bids_count || 0),
     approval_status: parentRow.approval_status || 'Pending',
     created_by: parentRow.created_by || 'admin',
@@ -474,9 +484,15 @@ async function handleGetRequirements(req, res) {
     await ensureRequirementsTableExists();
     await ensureRateSubmissionsTableExists();
 
+    let reqQuery = 'SELECT * FROM transport_requirements';
+    if (req.user && req.user.role === 'transporter') {
+      reqQuery += " WHERE UPPER(COALESCE(status, 'ACTIVE')) IN ('ACTIVE', 'DRAFT', 'OPEN')";
+    }
+    reqQuery += ' ORDER BY created_at DESC LIMIT 300';
+
     // ⚡ Fast parallel execution of parent requirements and grouped bid statistics
     const [parentsResult, itemBidResult] = await Promise.all([
-      pool.query('SELECT * FROM transport_requirements ORDER BY created_at DESC LIMIT 300'),
+      pool.query(reqQuery),
       pool.query(
         "SELECT requirement_id, item_id, COUNT(DISTINCT transporter_id) as cnt, MIN(rate_per_mt) as min_rate FROM rate_submissions WHERE UPPER(COALESCE(bid_status, '')) IN ('SUBMITTED', 'COUNTER_OFFERED', 'COUNTER_RESPONDED', 'COUNTER_ACCEPTED', 'FINALIZED') GROUP BY requirement_id, item_id"
       )
@@ -729,8 +745,8 @@ async function handleCreateRateSubmission(req, res) {
     const reqRecord = reqRows[0];
     const actualReqId = reqRecord.id;
 
-    if (reqRecord.status && reqRecord.status !== 'Active' && reqRecord.status !== 'Open') {
-      return res.status(400).json({ success: false, error: `Requirement '${targetReqId}' is closed for bids (status: ${reqRecord.status}).` });
+    if (reqRecord.status && ['ARCHIVED', 'CANCELLED', 'COMPLETED', 'CLOSED'].includes(String(reqRecord.status).toUpperCase())) {
+      return res.status(400).json({ success: false, message: 'This requirement is no longer accepting bids.', error: 'This requirement is no longer accepting bids.' });
     }
 
     // Verify transporter exists
@@ -2392,45 +2408,193 @@ router.delete('/requirements/:parentId/items/:itemId', authenticateToken, requir
   }
 });
 
-// DELETE /api/requirements/:id — Delete Parent Requirement, Child Items, Bids, and Negotiation History
+// POST /api/requirements/:id/archive — Archive Requirement (Admin Only)
+router.post('/requirements/:id/archive', authenticateToken, requireRole('admin'), async (req, res) => {
+  const { id } = req.params;
+  await ensureRequirementsTableExists();
+  try {
+    const adminIdentity = req.user.username || req.user.name || req.user.id || 'admin';
+    const [existing] = await pool.query('SELECT id, req_no, status FROM transport_requirements WHERE id = ? OR req_no = ?', [id, id]);
+    if (existing.length === 0) {
+      return res.status(404).json({ success: false, error: 'Requirement not found' });
+    }
+    const targetId = existing[0].id;
+
+    await pool.query(
+      'UPDATE transport_requirements SET status = ?, archived_at = NOW(), archived_by = ? WHERE id = ?',
+      ['ARCHIVED', adminIdentity, targetId]
+    );
+
+    return res.json({
+      success: true,
+      message: 'Requirement archived successfully',
+      id: targetId,
+      status: 'ARCHIVED'
+    });
+  } catch (err) {
+    console.error('❌ POST /api/requirements/:id/archive Error:', err.message);
+    return res.status(500).json({ success: false, error: { code: 'DATABASE_ERROR', message: err.message } });
+  }
+});
+
+// POST /api/requirements/:id/cancel — Cancel Requirement with Reason (Admin Only)
+router.post('/requirements/:id/cancel', authenticateToken, requireRole('admin'), async (req, res) => {
+  const { id } = req.params;
+  const { reason } = req.body;
+  if (!reason || !String(reason).trim()) {
+    return res.status(400).json({ success: false, error: 'Cancellation reason is required.' });
+  }
+  await ensureRequirementsTableExists();
+  try {
+    const adminIdentity = req.user.username || req.user.name || req.user.id || 'admin';
+    const [existing] = await pool.query('SELECT id, req_no, status FROM transport_requirements WHERE id = ? OR req_no = ?', [id, id]);
+    if (existing.length === 0) {
+      return res.status(404).json({ success: false, error: 'Requirement not found' });
+    }
+    const targetId = existing[0].id;
+
+    await pool.query(
+      'UPDATE transport_requirements SET status = ?, cancelled_at = NOW(), cancelled_by = ?, cancellation_reason = ? WHERE id = ?',
+      ['CANCELLED', adminIdentity, String(reason).trim(), targetId]
+    );
+
+    return res.json({
+      success: true,
+      message: 'Requirement cancelled successfully',
+      id: targetId,
+      status: 'CANCELLED',
+      cancellation_reason: String(reason).trim()
+    });
+  } catch (err) {
+    console.error('❌ POST /api/requirements/:id/cancel Error:', err.message);
+    return res.status(500).json({ success: false, error: { code: 'DATABASE_ERROR', message: err.message } });
+  }
+});
+
+// POST /api/requirements/:id/restore — Restore Requirement to Active (Admin Only)
+router.post('/requirements/:id/restore', authenticateToken, requireRole('admin'), async (req, res) => {
+  const { id } = req.params;
+  await ensureRequirementsTableExists();
+  try {
+    const [existing] = await pool.query('SELECT id, req_no, status FROM transport_requirements WHERE id = ? OR req_no = ?', [id, id]);
+    if (existing.length === 0) {
+      return res.status(404).json({ success: false, error: 'Requirement not found' });
+    }
+    const targetId = existing[0].id;
+
+    await pool.query(
+      'UPDATE transport_requirements SET status = ?, archived_at = NULL, archived_by = NULL, cancelled_at = NULL, cancelled_by = NULL, cancellation_reason = NULL WHERE id = ?',
+      ['Active', targetId]
+    );
+
+    return res.json({
+      success: true,
+      message: 'Requirement restored to active successfully',
+      id: targetId,
+      status: 'Active'
+    });
+  } catch (err) {
+    console.error('❌ POST /api/requirements/:id/restore Error:', err.message);
+    return res.status(500).json({ success: false, error: { code: 'DATABASE_ERROR', message: err.message } });
+  }
+});
+
+// DELETE /api/requirements/:id — Smart Requirement Delete Policy (Admin Only)
 router.delete('/requirements/:id', authenticateToken, requireRole('admin'), async (req, res) => {
   const { id } = req.params;
   await ensureRequirementsTableExists();
   await ensureRateSubmissionsTableExists();
   await ensureBidNegotiationHistoryTableExists();
   await ensureRateNegotiationsTableExists();
+
+  const conn = await pool.getConnection();
   try {
-    const conn = await pool.getConnection();
-    try {
-      await conn.beginTransaction();
+    await conn.beginTransaction();
 
-      // 1. Explicitly clean negotiation history & negotiations for this requirement
-      await conn.query('DELETE FROM bid_negotiation_history WHERE requirement_id = ? OR requirement_id = (SELECT req_no FROM transport_requirements WHERE id = ? LIMIT 1)', [id, id]).catch(() => {});
-      await conn.query('DELETE FROM rate_negotiations WHERE requirement_id = ? OR requirement_id = (SELECT req_no FROM transport_requirements WHERE id = ? LIMIT 1)', [id, id]).catch(() => {});
-
-      // 2. Delete rate submissions for this requirement
-      await conn.query('DELETE FROM rate_submissions WHERE requirement_id = ? OR requirement_id = (SELECT req_no FROM transport_requirements WHERE id = ? LIMIT 1)', [id, id]).catch(() => {});
-
-      // 3. Delete requirement items
-      await conn.query('DELETE FROM transport_requirement_items WHERE requirement_id = ?', [id]);
-
-      // 4. Delete parent requirement
-      const [result] = await conn.query('DELETE FROM transport_requirements WHERE id = ?', [id]);
-
-      await conn.commit();
-      conn.release();
-
-      if (result.affectedRows === 0) {
-        return res.status(404).json({ success: false, error: 'Requirement record not found' });
-      }
-
-      return res.json({ success: true, message: 'Requirement, child items, bids, and negotiation history deleted from MySQL' });
-    } catch (e) {
+    // 1. Lock/check requirement existence
+    const [existing] = await conn.query(
+      'SELECT id, req_no, status FROM transport_requirements WHERE id = ? OR req_no = ? FOR UPDATE',
+      [id, id]
+    );
+    if (existing.length === 0) {
       await conn.rollback();
       conn.release();
-      return res.status(500).json({ success: false, error: e.message });
+      return res.status(404).json({ success: false, error: 'Requirement record not found' });
     }
+
+    const actualReqId = existing[0].id;
+
+    // 2. Count finalized bids
+    const [finalizedRows] = await conn.query(
+      "SELECT COUNT(*) AS finalized_cnt FROM rate_submissions WHERE requirement_id = ? AND (UPPER(COALESCE(bid_status, '')) IN ('FINALIZED', 'COUNTER_ACCEPTED') OR final_rate > 0)",
+      [actualReqId]
+    );
+    const finalizedCount = Number(finalizedRows[0]?.finalized_cnt || 0);
+    if (finalizedCount > 0) {
+      await conn.rollback();
+      conn.release();
+      return res.status(400).json({
+        success: false,
+        code: 'FINALIZED_REQUIREMENT',
+        message: 'Finalized requirements cannot be permanently deleted. Archive the requirement instead.',
+        allowed_actions: ['ARCHIVE']
+      });
+    }
+
+    // 3. Count negotiations and history records
+    const [negRows] = await conn.query(
+      'SELECT COUNT(*) AS neg_cnt FROM rate_negotiations WHERE requirement_id = ?',
+      [actualReqId]
+    );
+    const [histRows] = await conn.query(
+      'SELECT COUNT(*) AS hist_cnt FROM bid_negotiation_history WHERE requirement_id = ?',
+      [actualReqId]
+    );
+    const negCount = Number(negRows[0]?.neg_cnt || 0);
+    const histCount = Number(histRows[0]?.hist_cnt || 0);
+    if (negCount > 0 || histCount > 0) {
+      await conn.rollback();
+      conn.release();
+      return res.status(400).json({
+        success: false,
+        code: 'REQUIREMENT_HAS_NEGOTIATION',
+        message: 'This requirement has active negotiation audit records and cannot be permanently deleted. Archive or cancel it instead.',
+        allowed_actions: ['ARCHIVE', 'CANCEL']
+      });
+    }
+
+    // 4. Count bids
+    const [bidRows] = await conn.query(
+      'SELECT COUNT(*) AS bid_cnt FROM rate_submissions WHERE requirement_id = ?',
+      [actualReqId]
+    );
+    const bidCount = Number(bidRows[0]?.bid_cnt || 0);
+    if (bidCount > 0) {
+      await conn.rollback();
+      conn.release();
+      return res.status(400).json({
+        success: false,
+        code: 'REQUIREMENT_HAS_BIDS',
+        message: 'This requirement has transporter bids and cannot be permanently deleted. Archive or cancel it instead.',
+        bid_count: bidCount,
+        allowed_actions: ['ARCHIVE', 'CANCEL']
+      });
+    }
+
+    // 5. If clean (0 bids, 0 negotiations, 0 history, 0 finalized), delete parent requirement
+    // Database FK CASCADE will automatically clean child items from transport_requirement_items
+    await conn.query('DELETE FROM transport_requirements WHERE id = ?', [actualReqId]);
+
+    await conn.commit();
+    conn.release();
+
+    return res.json({
+      success: true,
+      message: 'Requirement and child items permanently deleted from MySQL'
+    });
   } catch (err) {
+    await conn.rollback();
+    conn.release();
     console.error('❌ DELETE /api/requirements/:id Error:', err.message);
     return res.status(500).json({ success: false, error: { code: 'DATABASE_ERROR', message: err.message } });
   }
