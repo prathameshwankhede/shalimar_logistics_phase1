@@ -42,8 +42,8 @@ async function ensureColumnExists(tableName, columnName, columnDefinition) {
   try {
     const dbName = pool?.pool?.config?.connectionConfig?.database;
     const [cols] = await pool.query(
-      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND COLUMN_NAME = ?`,
-      [dbName, tableName, columnName]
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE (TABLE_SCHEMA = ? OR TABLE_SCHEMA = DATABASE()) AND TABLE_NAME = ? AND COLUMN_NAME = ?`,
+      [dbName || '', tableName, columnName]
     );
     if (cols.length === 0) {
       await pool.query(`ALTER TABLE \`${tableName}\` ADD COLUMN \`${columnName}\` ${columnDefinition}`);
@@ -53,6 +53,62 @@ async function ensureColumnExists(tableName, columnName, columnDefinition) {
     if (!err.message.includes('Duplicate column') && !err.message.includes('already exists')) {
       console.warn(`⚠️ [SCHEMA MIGRATION] Notice for ${tableName}.${columnName}:`, err.message);
     }
+  }
+}
+
+// -------------------------------------------------------------
+// Production-Safe Dispatch Balance Reconciliation Engine 🚛📊
+// -------------------------------------------------------------
+export async function reconcileItemDispatchBalances(targetPool = pool) {
+  try {
+    console.log('🔄 [RECONCILIATION] Starting transport_requirement_items dispatch balance reconciliation...');
+    // 1. Calculate actual loaded quantity sum from truck_dispatches per exact item UUID or sub_indent_no
+    const [result] = await targetPool.query(`
+      UPDATE transport_requirement_items tri
+      LEFT JOIN (
+        SELECT requirement_item_id, COALESCE(SUM(loaded_quantity_mt), 0.000) AS total_dispatched
+        FROM truck_dispatches
+        GROUP BY requirement_item_id
+      ) td ON (td.requirement_item_id = tri.id OR td.requirement_item_id = tri.sub_indent_no)
+      SET 
+        tri.dispatched_quantity_mt = COALESCE(td.total_dispatched, 0.000),
+        tri.remaining_quantity_mt = GREATEST(0.000, tri.quantity_mt - COALESCE(td.total_dispatched, 0.000)),
+        tri.dispatch_status = CASE 
+          WHEN (tri.quantity_mt - COALESCE(td.total_dispatched, 0.000)) <= 0.001 AND tri.quantity_mt > 0 THEN 'FULLY_DISPATCHED'
+          WHEN COALESCE(td.total_dispatched, 0.000) > 0 THEN 'PARTIALLY_DISPATCHED'
+          ELSE 'PENDING'
+        END,
+        tri.allocation_status = CASE
+          WHEN (tri.quantity_mt - COALESCE(td.total_dispatched, 0.000)) <= 0.001 AND tri.quantity_mt > 0 THEN 'COMPLETED'
+          WHEN tri.allocation_status = 'RELEASED_FOR_REQUOTE' THEN 'RELEASED_FOR_REQUOTE'
+          ELSE 'ACTIVE'
+        END,
+        tri.updated_at = NOW();
+    `);
+
+    // 2. Also reconcile parent transport_requirements status if all items are fully dispatched
+    await targetPool.query(`
+      UPDATE transport_requirements tr
+      SET status = CASE 
+        WHEN NOT EXISTS (
+          SELECT 1 FROM transport_requirement_items tri 
+          WHERE tri.requirement_id = tr.id AND tri.dispatch_status != 'FULLY_DISPATCHED'
+        ) THEN 'COMPLETED'
+        WHEN EXISTS (
+          SELECT 1 FROM transport_requirement_items tri 
+          WHERE tri.requirement_id = tr.id AND (tri.dispatch_status = 'PARTIALLY_DISPATCHED' OR tri.dispatched_quantity_mt > 0)
+        ) THEN 'PARTIALLY_DISPATCHED'
+        ELSE tr.status
+      END,
+      updated_at = NOW()
+      WHERE tr.status NOT IN ('ARCHIVED', 'CANCELLED', 'DELETED');
+    `).catch(() => {});
+
+    console.log(`✅ [RECONCILIATION] Completed transport_requirement_items dispatch balance reconciliation. Affected rows: ${result?.affectedRows || 0}`);
+    return { success: true, affectedRows: result?.affectedRows || 0 };
+  } catch (err) {
+    console.error('❌ [RECONCILIATION ERROR] Failed to reconcile dispatch balances:', err.message);
+    return { success: false, error: err.message };
   }
 }
 
@@ -133,28 +189,8 @@ export async function ensureRequirementsTableExists() {
       await ensureColumnExists('transport_requirement_items', name, def);
     }
 
-    // Safe Backfill for transport_requirement_items (Idempotent & Preserves Existing Dispatches)
-    try {
-      await pool.query(`
-        UPDATE transport_requirement_items tri
-        LEFT JOIN (
-          SELECT requirement_item_id, COALESCE(SUM(loaded_quantity_mt), 0) AS total_dispatched
-          FROM truck_dispatches
-          GROUP BY requirement_item_id
-        ) td ON (td.requirement_item_id = tri.id OR td.requirement_item_id = tri.sub_indent_no)
-        SET 
-          tri.dispatched_quantity_mt = COALESCE(td.total_dispatched, tri.dispatched_quantity_mt, 0.000),
-          tri.remaining_quantity_mt = GREATEST(0.000, tri.quantity_mt - COALESCE(td.total_dispatched, tri.dispatched_quantity_mt, 0.000)),
-          tri.dispatch_status = CASE 
-            WHEN (tri.quantity_mt - COALESCE(td.total_dispatched, tri.dispatched_quantity_mt, 0.000)) <= 0.001 AND tri.quantity_mt > 0 THEN 'FULLY_DISPATCHED'
-            WHEN COALESCE(td.total_dispatched, tri.dispatched_quantity_mt, 0) > 0 THEN 'PARTIALLY_DISPATCHED'
-            ELSE COALESCE(tri.dispatch_status, 'PENDING')
-          END
-        WHERE tri.remaining_quantity_mt IS NULL OR tri.dispatched_quantity_mt IS NULL
-      `);
-    } catch (backfillErr) {
-      console.warn('⚠️ [SCHEMA MIGRATION] transport_requirement_items backfill notice:', backfillErr.message);
-    }
+    // Run safe reconciliation on startup to synchronize actual dispatch totals
+    await reconcileItemDispatchBalances(pool);
 
     await pool.query('ALTER TABLE transport_requirements ADD INDEX idx_req_status_created (status, created_at)').catch(() => {});
     await pool.query('ALTER TABLE transport_requirement_items ADD INDEX idx_sub_indent_no (sub_indent_no)').catch(() => {});
@@ -2969,7 +3005,22 @@ router.post('/rate-submissions', authenticateToken, handleCreateRateSubmission);
 router.post('/bids', authenticateToken, handleCreateRateSubmission);
 router.get('/rate-submissions', authenticateToken, handleGetRateSubmissions);
 router.get('/transporters', authenticateToken, handleGetTransporters);
-router.get('/master-data', authenticateToken, handleGetMasterData);
+router.post('/admin/reconcile-dispatch-balances', authenticateToken, requireRole('admin'), async (req, res) => {
+  try {
+    const result = await reconcileItemDispatchBalances(pool);
+    return res.json({
+      success: true,
+      message: 'Dispatch balance reconciliation completed successfully.',
+      affectedRows: result.affectedRows
+    });
+  } catch (err) {
+    return res.status(500).json({
+      success: false,
+      error: { code: 'RECONCILIATION_FAILED', message: err.message }
+    });
+  }
+});
+
 router.get('/diag/schema', authenticateToken, requireRole('admin'), async (req, res) => {
   try {
     // 1. All tables
