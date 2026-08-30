@@ -47,7 +47,28 @@ app.use((req, res, next) => {
   next();
 });
 
-// Health check endpoint with deployment version and frontend dist status
+// Safe Git commit resolver from environment or repository metadata
+const getGitCommit = () => {
+  if (process.env.GIT_COMMIT || process.env.COMMIT_HASH || process.env.APP_VERSION_COMMIT) {
+    return process.env.GIT_COMMIT || process.env.COMMIT_HASH || process.env.APP_VERSION_COMMIT;
+  }
+  try {
+    const revPath = path.resolve(__dirname, '../.git/HEAD');
+    if (fs.existsSync(revPath)) {
+      const head = fs.readFileSync(revPath, 'utf8').trim();
+      if (head.startsWith('ref: ')) {
+        const refPath = path.resolve(__dirname, '../.git', head.substring(5));
+        if (fs.existsSync(refPath)) {
+          return fs.readFileSync(refPath, 'utf8').trim().substring(0, 7);
+        }
+      }
+      return head.substring(0, 7);
+    }
+  } catch (e) {}
+  return '027c9e2';
+};
+
+// Health check endpoint with safe public diagnostics
 app.get('/api/health', (req, res) => {
   const distCandidate1 = path.resolve(__dirname, '../dist');
   const distCandidate2 = path.resolve(process.cwd(), 'dist');
@@ -57,16 +78,10 @@ app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
     version: '1.9.0-phase1',
-    commit: '96af717',
-    deploy_timestamp: new Date().toISOString(),
+    commit: getGitCommit(),
     env: process.env.NODE_ENV || 'development',
-    port: PORT,
-    resolved_dist_path: distCandidate1,
     frontend_dist_exists: distExists,
-    frontend_index_exists: indexExists,
-    db_host: process.env.DB_HOST || process.env.DATABASE_HOST || '127.0.0.1',
-    db_user: process.env.DB_USER || process.env.DATABASE_USER || 'root',
-    db_name: process.env.DB_NAME || process.env.DATABASE_NAME || 'transflow_db'
+    frontend_index_exists: indexExists
   });
 });
 
