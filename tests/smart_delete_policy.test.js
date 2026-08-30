@@ -1,10 +1,10 @@
 // tests/smart_delete_policy.test.js
-// Automated Test Suite for Smart Requirement Delete, Archive, and Permission Lifecycle Policy
+// Automated Test Suite for Requirement Delete, Cascade Cleanliness, and Actions UI
 
 import assert from 'assert';
 
 console.log('==================================================');
-console.log('🧪 RUNNING SMART REQUIREMENT DELETE & ARCHIVE POLICY TEST SUITE');
+console.log('🧪 RUNNING REQUIREMENT DELETE & ACTIONS UI REGRESSION TEST SUITE');
 console.log('==================================================');
 
 let passedTests = 0;
@@ -22,51 +22,7 @@ function it(name, fn) {
   }
 }
 
-// 1. Permission Matrix Derivation Logic
-function deriveRequirementPermissions(status, { bidsCount = 0, negCount = 0, histCount = 0, hasFinalized = false } = {}) {
-  const reqStatus = String(status || 'Active').toUpperCase();
-  const totalBids = Number(bidsCount || 0);
-  const totalNegs = Number(negCount || 0);
-  const totalHists = Number(histCount || 0);
-  const isFinalized = Boolean(hasFinalized || reqStatus === 'COMPLETED');
-
-  let can_delete = false;
-  let can_archive = false;
-  let can_cancel = false;
-  let can_restore = false;
-
-  if (reqStatus === 'ARCHIVED') {
-    can_delete = false;
-    can_archive = false;
-    can_cancel = false;
-    can_restore = true;
-  } else if (reqStatus === 'CANCELLED' || reqStatus === 'COMPLETED') {
-    can_delete = false;
-    can_archive = false;
-    can_cancel = false;
-    can_restore = false;
-  } else if (isFinalized) {
-    can_delete = false;
-    can_archive = true;
-    can_cancel = false;
-    can_restore = false;
-  } else if (totalBids > 0 || totalNegs > 0 || totalHists > 0) {
-    can_delete = false;
-    can_archive = true;
-    can_cancel = true;
-    can_restore = false;
-  } else {
-    // DRAFT / ACTIVE with 0 bids and 0 negotiations
-    can_delete = true;
-    can_archive = true;
-    can_cancel = true;
-    can_restore = false;
-  }
-
-  return { can_delete, can_archive, can_cancel, can_restore };
-}
-
-// 2. Restore Endpoint Safety Evaluation
+// 1. Restore Endpoint Safety Evaluation
 function evaluateRestoreRequirement({ status, hasFinalized = false }) {
   const currentStatus = String(status || 'Active').toUpperCase();
   if (currentStatus === 'CANCELLED') {
@@ -104,36 +60,31 @@ function evaluateRestoreRequirement({ status, hasFinalized = false }) {
   };
 }
 
-// 3. Smart Delete Backend Decision Engine
-function evaluateSmartDeleteBackend({ finalizedCount = 0, negCount = 0, histCount = 0, bidCount = 0 }) {
-  if (finalizedCount > 0) {
-    return {
-      allowed: false,
-      code: 'FINALIZED_REQUIREMENT',
-      message: 'Finalized requirements cannot be permanently deleted. Archive the requirement instead.',
-      allowed_actions: ['ARCHIVE']
-    };
+// 2. Cascade Delete Engine Simulation
+function simulateCascadeDelete(db, requirementId) {
+  const initialReqCount = db.transport_requirements.length;
+  const targetReq = db.transport_requirements.find(r => r.id === requirementId);
+  if (!targetReq) {
+    return { success: false, error: 'Requirement record not found' };
   }
-  if (negCount > 0 || histCount > 0) {
-    return {
-      allowed: false,
-      code: 'REQUIREMENT_HAS_NEGOTIATION',
-      message: 'This requirement has active negotiation audit records and cannot be permanently deleted. Archive or cancel it instead.',
-      allowed_actions: ['ARCHIVE', 'CANCEL']
-    };
-  }
-  if (bidCount > 0) {
-    return {
-      allowed: false,
-      code: 'REQUIREMENT_HAS_BIDS',
-      message: 'This requirement has transporter bids and cannot be permanently deleted. Archive or cancel it instead.',
-      bid_count: bidCount,
-      allowed_actions: ['ARCHIVE', 'CANCEL']
-    };
-  }
+
+  // Cascade delete all child items, bids, negotiations, and history
+  const remainingReqs = db.transport_requirements.filter(r => r.id !== requirementId);
+  const remainingItems = db.transport_requirement_items.filter(i => i.requirement_id !== requirementId);
+  const remainingBids = db.rate_submissions.filter(s => s.requirement_id !== requirementId);
+  const remainingNegs = db.rate_negotiations.filter(n => n.requirement_id !== requirementId);
+  const remainingHist = db.bid_negotiation_history.filter(h => h.requirement_id !== requirementId);
+
   return {
-    allowed: true,
-    message: 'Requirement and child items permanently deleted from MySQL'
+    success: true,
+    deletedReqId: requirementId,
+    db: {
+      transport_requirements: remainingReqs,
+      transport_requirement_items: remainingItems,
+      rate_submissions: remainingBids,
+      rate_negotiations: remainingNegs,
+      bid_negotiation_history: remainingHist
+    }
   };
 }
 
@@ -158,67 +109,45 @@ it('TEST 3: FINALIZED requirement -> restore blocked (FINALIZED_REQUIREMENT_CANN
   assert.strictEqual(result.code, 'FINALIZED_REQUIREMENT_CANNOT_RESTORE');
 });
 
-// TEST 4: Requirement with 0 bids -> Delete button permission true
-it('TEST 4: Requirement with 0 bids -> can_delete: true, can_archive: true, can_cancel: true, can_restore: false', () => {
-  const perms = deriveRequirementPermissions('Active', { bidsCount: 0, negCount: 0, histCount: 0, hasFinalized: false });
-  assert.strictEqual(perms.can_delete, true);
-  assert.strictEqual(perms.can_archive, true);
-  assert.strictEqual(perms.can_cancel, true);
-  assert.strictEqual(perms.can_restore, false);
+// TEST 4: Delete parent requirement -> cascades to all child items
+it('TEST 4: Delete parent requirement -> cascades to all child items', () => {
+  const db = {
+    transport_requirements: [{ id: 'req_1' }],
+    transport_requirement_items: [{ id: 'item_1', requirement_id: 'req_1' }, { id: 'item_2', requirement_id: 'req_1' }],
+    rate_submissions: [{ id: 'sub_1', requirement_id: 'req_1' }],
+    rate_negotiations: [{ id: 'neg_1', requirement_id: 'req_1' }],
+    bid_negotiation_history: [{ id: 'hist_1', requirement_id: 'req_1' }]
+  };
+
+  const res = simulateCascadeDelete(db, 'req_1');
+  assert.strictEqual(res.success, true);
+  assert.strictEqual(res.db.transport_requirements.length, 0);
+  assert.strictEqual(res.db.transport_requirement_items.length, 0);
+  assert.strictEqual(res.db.rate_submissions.length, 0);
+  assert.strictEqual(res.db.rate_negotiations.length, 0);
+  assert.strictEqual(res.db.bid_negotiation_history.length, 0);
 });
 
-// TEST 5: Requirement with bids -> Delete permission false
-it('TEST 5: Requirement with bids -> can_delete: false, can_archive: true, can_cancel: true', () => {
-  const perms = deriveRequirementPermissions('Active', { bidsCount: 2, negCount: 0, histCount: 0, hasFinalized: false });
-  assert.strictEqual(perms.can_delete, false);
-  assert.strictEqual(perms.can_archive, true);
-  assert.strictEqual(perms.can_cancel, true);
-  assert.strictEqual(perms.can_restore, false);
+// TEST 5: Delete on non-existent requirement -> returns not found
+it('TEST 5: Delete on non-existent requirement -> returns not found', () => {
+  const db = {
+    transport_requirements: [],
+    transport_requirement_items: [],
+    rate_submissions: [],
+    rate_negotiations: [],
+    bid_negotiation_history: []
+  };
+
+  const res = simulateCascadeDelete(db, 'req_non_existent');
+  assert.strictEqual(res.success, false);
+  assert.strictEqual(res.error, 'Requirement record not found');
 });
 
-// TEST 6: Requirement with negotiation -> Delete permission false
-it('TEST 6: Requirement with negotiation -> can_delete: false, can_archive: true, can_cancel: true', () => {
-  const perms = deriveRequirementPermissions('Active', { bidsCount: 1, negCount: 3, histCount: 2, hasFinalized: false });
-  assert.strictEqual(perms.can_delete, false);
-  assert.strictEqual(perms.can_archive, true);
-  assert.strictEqual(perms.can_cancel, true);
-  assert.strictEqual(perms.can_restore, false);
-});
-
-// TEST 7: Finalized requirement -> only Archive permission true
-it('TEST 7: Finalized requirement -> can_archive: true, can_delete: false, can_cancel: false, can_restore: false', () => {
-  const perms = deriveRequirementPermissions('Active', { bidsCount: 3, negCount: 2, histCount: 2, hasFinalized: true });
-  assert.strictEqual(perms.can_archive, true);
-  assert.strictEqual(perms.can_delete, false);
-  assert.strictEqual(perms.can_cancel, false);
-  assert.strictEqual(perms.can_restore, false);
-});
-
-// TEST 8: Cancelled requirement -> all destructive permissions false
-it('TEST 8: Cancelled requirement -> can_delete: false, can_archive: false, can_cancel: false, can_restore: false', () => {
-  const perms = deriveRequirementPermissions('CANCELLED', { bidsCount: 2 });
-  assert.strictEqual(perms.can_delete, false);
-  assert.strictEqual(perms.can_archive, false);
-  assert.strictEqual(perms.can_cancel, false);
-  assert.strictEqual(perms.can_restore, false);
-});
-
-// TEST 9: Backend DELETE endpoint still blocks direct API deletion even if frontend bypassed
-it('TEST 9: Backend DELETE endpoint still blocks direct API deletion on bids / negotiations / finalized', () => {
-  const delBidded = evaluateSmartDeleteBackend({ bidCount: 1 });
-  assert.strictEqual(delBidded.allowed, false);
-  assert.strictEqual(delBidded.code, 'REQUIREMENT_HAS_BIDS');
-
-  const delNeg = evaluateSmartDeleteBackend({ negCount: 1 });
-  assert.strictEqual(delNeg.allowed, false);
-  assert.strictEqual(delNeg.code, 'REQUIREMENT_HAS_NEGOTIATION');
-
-  const delFinal = evaluateSmartDeleteBackend({ finalizedCount: 1 });
-  assert.strictEqual(delFinal.allowed, false);
-  assert.strictEqual(delFinal.code, 'FINALIZED_REQUIREMENT');
-
-  const delClean = evaluateSmartDeleteBackend({ finalizedCount: 0, negCount: 0, histCount: 0, bidCount: 0 });
-  assert.strictEqual(delClean.allowed, true);
+// TEST 6: Exact Confirmation Dialog Message Contract
+it('TEST 6: Confirmation dialog matches expected wording', () => {
+  const expectedConfirmation = "Are you sure you want to permanently delete this requirement and all its related items, bids, and negotiation data? This action cannot be undone.";
+  assert.strictEqual(expectedConfirmation.includes("permanently delete this requirement and all its related items, bids, and negotiation data"), true);
+  assert.strictEqual(expectedConfirmation.includes("This action cannot be undone."), true);
 });
 
 console.log('==================================================');

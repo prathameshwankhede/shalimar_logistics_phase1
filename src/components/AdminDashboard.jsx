@@ -1713,11 +1713,11 @@ export const AdminDashboard = () => {
     }
   };
 
-  // 🗑️ SMART DELETE REQUIREMENT HANDLER
+  // 🗑️ PERMANENT DELETE REQUIREMENT HANDLER
   const handleDeleteRequirement = async (req) => {
     if (!req || !req.id) return;
     const reqNoStr = req.req_no || req.request_no || req.id;
-    if (!window.confirm(`Are you sure you want to delete Requirement "${reqNoStr} - ${req.title || ''}"?\n\nIf it has zero bids, it will be permanently deleted.`)) {
+    if (!window.confirm("Are you sure you want to permanently delete this requirement and all its related items, bids, and negotiation data? This action cannot be undone.")) {
       return;
     }
 
@@ -1731,16 +1731,7 @@ export const AdminDashboard = () => {
         return;
       }
 
-      // If backend blocked deletion due to business policy:
-      if (res && (res.code === 'REQUIREMENT_HAS_BIDS' || res.code === 'REQUIREMENT_HAS_NEGOTIATION' || res.code === 'FINALIZED_REQUIREMENT' || res.allowed_actions)) {
-        const userChoice = window.confirm(`⚠️ Cannot Permanently Delete\n\n${res.message || 'This requirement contains transporter bids or negotiation history.'}\n\nClick [OK] to ARCHIVE this requirement instead, or [Cancel] to keep it as is.`);
-        if (userChoice) {
-          await handleArchiveRequirement(req);
-        }
-        return;
-      }
-
-      alert(`❌ Cannot delete requirement: ${typeof res.error === 'string' ? res.error : res.error?.message || res.message || 'Server error'}`);
+      alert(`❌ Cannot delete requirement: ${typeof res?.error === 'string' ? res.error : res?.error?.message || res?.message || 'Server error'}`);
     } catch (err) {
       console.error('Delete requirement error:', err);
       alert(`❌ Error deleting requirement: ${err.message}`);
@@ -3014,80 +3005,23 @@ export const AdminDashboard = () => {
                                         <TrendingDown size={14} /> Compare Rates ({displayBidCount})
                                       </button>
                                     )}
-                                    {/* Action Buttons based on Backend-Derived Business Permissions */}
-                                    {req.can_restore ? (
-                                      <button
-                                        type="button"
-                                        onClick={() => handleRestoreRequirement(req)}
-                                        className="btn btn-secondary"
-                                        style={{ padding: '6px 10px', fontSize: '0.78rem', border: '1px solid #f59e0b', color: '#fbbf24', borderRadius: '8px' }}
-                                        title="Restore Requirement to Active"
-                                      >
-                                        🔄 Restore Active
-                                      </button>
-                                    ) : String(req.status).toUpperCase() === 'CANCELLED' ? (
-                                      <span
-                                        style={{ fontSize: '0.75rem', color: '#ef4444', fontWeight: '800', padding: '4px 8px', background: 'rgba(239, 68, 68, 0.1)', borderRadius: '6px', border: '1px solid rgba(239, 68, 68, 0.3)' }}
-                                        title={req.cancellation_reason ? `Reason: ${req.cancellation_reason}` : 'Cancelled requirement'}
-                                      >
-                                        🚫 CANCELLED
-                                      </span>
-                                    ) : String(req.status).toUpperCase() === 'COMPLETED' ? (
-                                      <span
-                                        style={{ fontSize: '0.75rem', color: '#10b981', fontWeight: '800', padding: '4px 8px', background: 'rgba(16, 185, 129, 0.1)', borderRadius: '6px', border: '1px solid rgba(16, 185, 129, 0.3)' }}
-                                        title="Order awarded and completed"
-                                      >
-                                        ✓ COMPLETED
-                                      </span>
-                                    ) : (
-                                      <>
-                                        <button
-                                          type="button"
-                                          onClick={() => handleOpenEditModal(req)}
-                                          className="btn btn-secondary"
-                                          style={{ padding: '6px 10px', fontSize: '0.78rem', border: '1px solid #38bdf8', color: '#38bdf8', borderRadius: '8px' }}
-                                          title="Edit requirement details"
-                                        >
-                                          <Edit size={14} />
-                                        </button>
-
-                                        {req.can_archive && (
-                                          <button
-                                            type="button"
-                                            onClick={() => handleArchiveRequirement(req)}
-                                            className="btn btn-secondary"
-                                            style={{ padding: '6px 10px', fontSize: '0.78rem', border: '1px solid #f59e0b', color: '#fbbf24', borderRadius: '8px' }}
-                                            title="Archive requirement (Preserves bids & audit trail)"
-                                          >
-                                            📦 Archive
-                                          </button>
-                                        )}
-
-                                        {req.can_cancel && (
-                                          <button
-                                            type="button"
-                                            onClick={() => handleCancelRequirement(req)}
-                                            className="btn btn-secondary"
-                                            style={{ padding: '6px 10px', fontSize: '0.78rem', border: '1px solid #ef4444', color: '#f87171', borderRadius: '8px' }}
-                                            title="Cancel requirement with reason"
-                                          >
-                                            🚫 Cancel
-                                          </button>
-                                        )}
-
-                                        {req.can_delete && (
-                                          <button
-                                            type="button"
-                                            onClick={() => handleDeleteRequirement(req)}
-                                            className="btn btn-danger"
-                                            style={{ padding: '6px 10px', fontSize: '0.78rem', borderRadius: '8px' }}
-                                            title="Permanently delete requirement (0 bids)"
-                                          >
-                                            <Trash2 size={14} />
-                                          </button>
-                                        )}
-                                      </>
-                                    )}
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDeleteRequirement(req)}
+                                      className="btn btn-danger"
+                                      style={{
+                                        padding: '6px 12px',
+                                        fontSize: '0.78rem',
+                                        fontWeight: '700',
+                                        borderRadius: '8px',
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '5px'
+                                      }}
+                                      title="Permanently delete requirement and all its related items"
+                                    >
+                                      <Trash2 size={14} /> Delete
+                                    </button>
                                   </div>
                                 </td>
                               </tr>

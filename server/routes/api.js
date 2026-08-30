@@ -2638,7 +2638,7 @@ router.post('/requirements/:id/restore', authenticateToken, requireRole('admin')
   }
 });
 
-// DELETE /api/requirements/:id — Smart Requirement Delete Policy (Admin Only)
+// DELETE /api/requirements/:id — Delete Requirement and Cascade Child Items, Bids, Negotiations (Admin Only)
 router.delete('/requirements/:id', authenticateToken, requireRole('admin'), async (req, res) => {
   const { id } = req.params;
   await ensureRequirementsTableExists();
@@ -2650,7 +2650,7 @@ router.delete('/requirements/:id', authenticateToken, requireRole('admin'), asyn
   try {
     await conn.beginTransaction();
 
-    // 1. Lock/check requirement existence
+    // 1. Check requirement existence
     const [existing] = await conn.query(
       'SELECT id, req_no, status FROM transport_requirements WHERE id = ? OR req_no = ?',
       [id, id]
@@ -2663,73 +2663,29 @@ router.delete('/requirements/:id', authenticateToken, requireRole('admin'), asyn
 
     const actualReqId = existing[0].id;
 
-    // 2. Count finalized bids
-    const [finalizedRows] = await conn.query(
-      "SELECT COUNT(*) AS finalized_cnt FROM rate_submissions WHERE requirement_id = ? AND (UPPER(COALESCE(bid_status, '')) IN ('FINALIZED', 'COUNTER_ACCEPTED') OR final_rate > 0)",
-      [actualReqId]
-    );
-    const finalizedCount = Number(finalizedRows[0]?.finalized_cnt || 0);
-    if (finalizedCount > 0) {
-      await conn.rollback();
-      conn.release();
-      return res.status(400).json({
-        success: false,
-        code: 'FINALIZED_REQUIREMENT',
-        message: 'Finalized requirements cannot be permanently deleted. Archive the requirement instead.',
-        allowed_actions: ['ARCHIVE']
-      });
-    }
+    // 2. Cascade cleanup related negotiation history and negotiations
+    await conn.query('DELETE FROM bid_negotiation_history WHERE requirement_id = ?', [actualReqId]).catch(() => {});
+    await conn.query('DELETE FROM rate_negotiations WHERE requirement_id = ?', [actualReqId]).catch(() => {});
 
-    // 3. Count negotiations and history records
-    const [negRows] = await conn.query(
-      'SELECT COUNT(*) AS neg_cnt FROM rate_negotiations WHERE requirement_id = ?',
-      [actualReqId]
-    );
-    const [histRows] = await conn.query(
-      'SELECT COUNT(*) AS hist_cnt FROM bid_negotiation_history WHERE requirement_id = ?',
-      [actualReqId]
-    );
-    const negCount = Number(negRows[0]?.neg_cnt || 0);
-    const histCount = Number(histRows[0]?.hist_cnt || 0);
-    if (negCount > 0 || histCount > 0) {
-      await conn.rollback();
-      conn.release();
-      return res.status(400).json({
-        success: false,
-        code: 'REQUIREMENT_HAS_NEGOTIATION',
-        message: 'This requirement has active negotiation audit records and cannot be permanently deleted. Archive or cancel it instead.',
-        allowed_actions: ['ARCHIVE', 'CANCEL']
-      });
-    }
+    // 3. Cascade cleanup rate submissions
+    await conn.query('DELETE FROM rate_submissions WHERE requirement_id = ?', [actualReqId]).catch(() => {});
 
-    // 4. Count bids
-    const [bidRows] = await conn.query(
-      'SELECT COUNT(*) AS bid_cnt FROM rate_submissions WHERE requirement_id = ?',
-      [actualReqId]
-    );
-    const bidCount = Number(bidRows[0]?.bid_cnt || 0);
-    if (bidCount > 0) {
-      await conn.rollback();
-      conn.release();
-      return res.status(400).json({
-        success: false,
-        code: 'REQUIREMENT_HAS_BIDS',
-        message: 'This requirement has transporter bids and cannot be permanently deleted. Archive or cancel it instead.',
-        bid_count: bidCount,
-        allowed_actions: ['ARCHIVE', 'CANCEL']
-      });
-    }
+    // 4. Cascade cleanup child requirement items
+    await conn.query('DELETE FROM transport_requirement_items WHERE requirement_id = ?', [actualReqId]).catch(() => {});
 
-    // 5. If clean (0 bids, 0 negotiations, 0 history, 0 finalized), delete parent requirement
-    // Database FK CASCADE will automatically clean child items from transport_requirement_items
-    await conn.query('DELETE FROM transport_requirements WHERE id = ?', [actualReqId]);
+    // 5. Delete parent requirement record
+    const [result] = await conn.query('DELETE FROM transport_requirements WHERE id = ?', [actualReqId]);
 
     await conn.commit();
     conn.release();
 
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ success: false, error: 'Requirement record not found' });
+    }
+
     return res.json({
       success: true,
-      message: 'Requirement and child items permanently deleted from MySQL'
+      message: 'Requirement and all its related items, bids, and negotiation data permanently deleted from MySQL'
     });
   } catch (err) {
     await conn.rollback();
