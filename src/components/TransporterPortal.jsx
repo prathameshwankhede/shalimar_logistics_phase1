@@ -453,7 +453,7 @@ export const TransporterPortal = () => {
     return true;
   });
 
-  // Flatten parent requirements with child sub-indents into individual sub-indent items for transporter bidding
+  // Flatten parent requirements with child sub-indents into individual sub-indent items for transporter bidding & fixed-rate dispatch
   const openRateRequests = [];
   rawOpenRateRequests.forEach((parentReq) => {
     const childItems = parentReq.items || [];
@@ -463,33 +463,36 @@ export const TransporterPortal = () => {
         const parentReqNo = parentReq.req_no || parentReq.request_no || parentReq.id;
         const subIndentNo = item.sub_indent_no || `${parentReqNo}/${subIdxStr}`;
 
-        // Independent evaluation of item / sub-indent open status:
         // 1. Must not be fully dispatched or closed
         const dispStatusUpper = String(item.dispatch_status || '').toUpperCase();
-        const allocStatusUpper = String(item.allocation_status || '').toUpperCase();
-        if (dispStatusUpper === 'FULLY_DISPATCHED' || dispStatusUpper === 'RELEASED_FOR_REQUOTE' || allocStatusUpper === 'RELEASED_FOR_REQUOTE') {
+        if (dispStatusUpper === 'FULLY_DISPATCHED') {
           return;
         }
 
-        // 2. Remaining quantity must be > 0
-        const remQty = item.remaining_quantity_mt !== null && item.remaining_quantity_mt !== undefined
-          ? Number(item.remaining_quantity_mt)
-          : Number(item.quantity_mt || item.required_qty || 0) - Number(item.dispatched_quantity_mt || 0);
-        if (remQty <= 0 && Number(item.quantity_mt || item.required_qty || 0) > 0) {
+        // 2. Calculate canonical remaining quantity
+        const dispatches = (db.truck_dispatches || []).filter((d) => {
+          if (item && item.id) {
+            return d.requirement_item_id === item.id || d.requirement_item_id === item.sub_indent_no;
+          }
+          return d.requirement_id === parentReq.id;
+        });
+        const totalDispatched = dispatches.reduce((acc, curr) => acc + (parseFloat(curr.loaded_quantity_mt || curr.dispatched_qty) || 0), 0);
+        const allocatedQty = parseFloat(item.quantity_mt || item.required_qty || 0);
+        const remQty = Math.max(0, allocatedQty - totalDispatched);
+        if (remQty <= 0 && allocatedQty > 0) {
           return;
         }
 
-        // 3. Must not have a finalized/accepted winner in the current cycle
-        const itemAcceptedByAnyone = (db.rate_submissions || []).some((s) => {
+        // Check if item has a finalized rate
+        const finalizedBid = (db.rate_submissions || []).find((s) => {
           if (!s) return false;
           const sReqMatch = String(s.requirement_id) === String(parentReq.id) || String(s.rate_request_id) === String(parentReq.id) || String(s.rate_request_id) === String(parentReqNo);
           const sItemMatch = String(s.item_id) === String(item.id) || String(s.item_id) === String(subIndentNo);
-          return sReqMatch && sItemMatch && isBidFrozen(s);
+          return sReqMatch && sItemMatch && (Boolean(s.is_finalized) || String(s.bid_status).toUpperCase() === 'FINALIZED' || Number(s.final_rate) > 0);
         });
 
-        if (itemAcceptedByAnyone) {
-          return;
-        }
+        const isFixedRateAllocation = Boolean(finalizedBid && remQty > 0);
+        const fixedRate = finalizedBid ? Number(finalizedBid.final_rate || finalizedBid.rate_per_mt || 0) : null;
 
         openRateRequests.push({
           ...parentReq,
@@ -508,14 +511,22 @@ export const TransporterPortal = () => {
           drop_location: item.drop_location || parentReq.drop_location,
           material_type: item.product_name || item.material_type || parentReq.product_name,
           product_name: item.product_name || item.material_type || parentReq.product_name,
-          required_qty: remQty > 0 ? remQty : Number(item.quantity_mt || item.required_qty || 0),
-          quantity_mt: remQty > 0 ? remQty : Number(item.quantity_mt || item.required_qty || 0),
+          required_qty: remQty,
+          quantity_mt: remQty,
+          allocated_quantity_mt: allocatedQty,
+          dispatched_quantity_mt: totalDispatched,
+          remaining_quantity_mt: remQty,
           unit: item.unit || 'MT',
           target_date: item.target_date || parentReq.target_date,
           parent_total_qty: parentReq.total_quantity_mt || parentReq.quantity_mt,
           parent_req_no: parentReqNo,
-          source_item_id: item.source_item_id || null,
-          is_reopened: Boolean(item.source_item_id)
+          is_fixed_rate_allocation: isFixedRateAllocation,
+          fixed_rate: fixedRate,
+          finalized_rate: fixedRate,
+          finalized_bid: finalizedBid,
+          rate_editable: false,
+          requires_new_bid: !isFixedRateAllocation,
+          is_requote: false
         });
       });
     } else {
@@ -524,18 +535,42 @@ export const TransporterPortal = () => {
       if (statusUpper === 'AWARDED' || statusUpper === 'CLOSED' || statusUpper === 'COMPLETED' || statusUpper === 'FULLY_DISPATCHED') {
         return;
       }
-      const isAcceptedByAnyone = (db.rate_submissions || []).some(
-        (s) => (String(s.rate_request_id) === String(parentReq.id) || String(s.rate_request_id) === String(parentReq.request_no) || String(s.requirement_id) === String(parentReq.id)) && isBidFrozen(s)
-      );
-      if (!isAcceptedByAnyone) {
-        openRateRequests.push({
-          ...parentReq,
-          item_id: parentReq.id,
-          sub_indent_id: parentReq.id,
-          sub_indent_no: parentReq.req_no || parentReq.request_no || parentReq.id,
-          parent_req_no: parentReq.req_no || parentReq.request_no || parentReq.id
-        });
+      const dispatches = (db.truck_dispatches || []).filter((d) => d.requirement_id === parentReq.id);
+      const totalDispatched = dispatches.reduce((acc, curr) => acc + (parseFloat(curr.loaded_quantity_mt || curr.dispatched_qty) || 0), 0);
+      const allocatedQty = parseFloat(parentReq.quantity_mt || parentReq.total_quantity_mt || 0);
+      const remQty = Math.max(0, allocatedQty - totalDispatched);
+      if (remQty <= 0 && allocatedQty > 0) {
+        return;
       }
+
+      const finalizedBid = (db.rate_submissions || []).find((s) => {
+        if (!s) return false;
+        const sReqMatch = String(s.requirement_id) === String(parentReq.id) || String(s.rate_request_id) === String(parentReq.id);
+        return sReqMatch && (Boolean(s.is_finalized) || String(s.bid_status).toUpperCase() === 'FINALIZED' || Number(s.final_rate) > 0);
+      });
+
+      const isFixedRateAllocation = Boolean(finalizedBid && remQty > 0);
+      const fixedRate = finalizedBid ? Number(finalizedBid.final_rate || finalizedBid.rate_per_mt || 0) : null;
+
+      openRateRequests.push({
+        ...parentReq,
+        item_id: parentReq.id,
+        sub_indent_id: parentReq.id,
+        sub_indent_no: parentReq.req_no || parentReq.request_no || parentReq.id,
+        parent_req_no: parentReq.req_no || parentReq.request_no || parentReq.id,
+        required_qty: remQty > 0 ? remQty : allocatedQty,
+        quantity_mt: remQty > 0 ? remQty : allocatedQty,
+        allocated_quantity_mt: allocatedQty,
+        dispatched_quantity_mt: totalDispatched,
+        remaining_quantity_mt: remQty,
+        is_fixed_rate_allocation: isFixedRateAllocation,
+        fixed_rate: fixedRate,
+        finalized_rate: fixedRate,
+        finalized_bid: finalizedBid,
+        rate_editable: false,
+        requires_new_bid: !isFixedRateAllocation,
+        is_requote: false
+      });
     }
   });
 
@@ -2022,7 +2057,14 @@ export const TransporterPortal = () => {
                                                       <div style={{ fontWeight: '900', color: '#0284c7', fontSize: '0.9rem' }}>
                                                         {req.required_qty ? Number(req.required_qty).toLocaleString() : 0} {req.unit || 'MT'}
                                                       </div>
-                                                      <div style={{ fontSize: '0.74rem', color: '#64748b', fontWeight: '600', textTransform: 'uppercase' }}>{req.material_type || 'Cargo'}</div>
+                                                      <div style={{ fontSize: '0.74rem', color: '#64748b', fontWeight: '600', textTransform: 'uppercase' }}>
+                                                        {req.material_type || 'Cargo'}
+                                                        {req.allocated_quantity_mt > req.required_qty && (
+                                                          <span style={{ color: '#d97706', display: 'block', fontSize: '0.7rem' }}>
+                                                            (of {req.allocated_quantity_mt} MT total)
+                                                          </span>
+                                                        )}
+                                                      </div>
                                                     </td>
 
                                                     <td style={{ padding: '10px 14px' }}>
@@ -2030,7 +2072,21 @@ export const TransporterPortal = () => {
                                                     </td>
 
                                                     <td style={{ padding: '10px 14px' }}>
-                                                      {hasSubmittedQuote ? (
+                                                      {req.is_fixed_rate_allocation ? (
+                                                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                                                          <span style={{ fontSize: '0.88rem', fontWeight: '900', color: '#059669', background: '#dcfce7', border: '1.5px solid #86efac', padding: '4px 10px', borderRadius: '8px' }}>
+                                                            ₹{req.fixed_rate}/MT (Fixed)
+                                                          </span>
+                                                          <button
+                                                            type="button"
+                                                            onClick={() => handleOpenDispatchModal(req, req.finalized_bid || { final_rate: req.fixed_rate, acceptance_status: 'ACCEPTED' })}
+                                                            className="btn btn-primary"
+                                                            style={{ padding: '6px 14px', fontSize: '0.82rem', fontWeight: '900', borderRadius: '8px', background: '#0284c7', color: '#ffffff', border: 'none', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                                                          >
+                                                            <Truck size={14} /> Dispatch Truck
+                                                          </button>
+                                                        </div>
+                                                      ) : hasSubmittedQuote ? (
                                                         renderTransporterNegotiationCell(myExistingBid, req)
                                                       ) : (isAwarded || (req.dispatch_status && req.dispatch_status !== 'PENDING')) ? (
                                                         <span style={{
@@ -2112,7 +2168,19 @@ export const TransporterPortal = () => {
                                                     </td>
 
                                                     <td style={{ textAlign: 'right', padding: '10px 14px' }}>
-                                                      {hasSubmittedQuote ? (
+                                                      {req.is_fixed_rate_allocation ? (
+                                                        <span className="badge badge-open" style={{
+                                                          fontSize: '0.74rem',
+                                                          background: '#e0f2fe',
+                                                          color: '#0284c7',
+                                                          border: '1px solid #7dd3fc',
+                                                          padding: '5px 10px',
+                                                          borderRadius: '6px',
+                                                          fontWeight: '800'
+                                                        }}>
+                                                          ⚡ AVAILABLE FOR DISPATCH
+                                                        </span>
+                                                      ) : hasSubmittedQuote ? (
                                                         <span className="badge badge-awarded" style={{
                                                           fontSize: '0.76rem',
                                                           padding: '6px 12px',
@@ -2269,7 +2337,23 @@ export const TransporterPortal = () => {
 
                           <td>
                             <div style={{ fontWeight: '700', color: '#ffffff', fontSize: '0.92rem' }}>{displayCode}</div>
-                            {req.source_item_id && (
+                            {req.is_fixed_rate_allocation ? (
+                              <span className="badge" style={{
+                                fontSize: '0.7rem',
+                                background: '#ecfdf5',
+                                color: '#047857',
+                                border: '1px solid #10b981',
+                                padding: '2px 6px',
+                                borderRadius: '4px',
+                                fontWeight: '800',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '3px',
+                                marginTop: '2px'
+                              }}>
+                                📦 REMAINING QUANTITY (FIXED ₹{req.fixed_rate}/MT)
+                              </span>
+                            ) : req.source_item_id && (
                               <span className="badge badge-warning" style={{
                                 fontSize: '0.7rem',
                                 background: '#fef3c7',
@@ -2298,7 +2382,14 @@ export const TransporterPortal = () => {
 
                           <td>
                             <div style={{ fontWeight: '700', color: '#38bdf8' }}>{req.required_qty} {req.unit}</div>
-                            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{req.material_type}</div>
+                            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                              {req.material_type}
+                              {req.allocated_quantity_mt > req.required_qty && (
+                                <span style={{ color: '#fbbf24', display: 'block', fontSize: '0.7rem' }}>
+                                  (of {req.allocated_quantity_mt} MT total)
+                                </span>
+                              )}
+                            </div>
                           </td>
 
                           <td>
@@ -2306,7 +2397,21 @@ export const TransporterPortal = () => {
                           </td>
 
                           <td>
-                            {hasSubmittedQuote ? (
+                            {req.is_fixed_rate_allocation ? (
+                              <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                                <span style={{ fontSize: '0.88rem', fontWeight: '900', color: '#059669', background: '#dcfce7', border: '1.5px solid #86efac', padding: '4px 10px', borderRadius: '8px' }}>
+                                  ₹{req.fixed_rate}/MT (Fixed)
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenDispatchModal(req, req.finalized_bid || { final_rate: req.fixed_rate, acceptance_status: 'ACCEPTED' })}
+                                  className="btn btn-primary"
+                                  style={{ padding: '6px 14px', fontSize: '0.82rem', fontWeight: '900', borderRadius: '8px', background: '#0284c7', color: '#ffffff', border: 'none', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                                >
+                                  <Truck size={14} /> Dispatch Truck
+                                </button>
+                              </div>
+                            ) : hasSubmittedQuote ? (
                               renderTransporterNegotiationCell(myExistingBid, req)
                             ) : (isAwarded || (req.dispatch_status && req.dispatch_status !== 'PENDING')) ? (
                               <span style={{
@@ -2379,7 +2484,19 @@ export const TransporterPortal = () => {
                           </td>
 
                           <td style={{ textAlign: 'right' }}>
-                            {hasSubmittedQuote ? (
+                            {req.is_fixed_rate_allocation ? (
+                              <span className="badge badge-open" style={{
+                                fontSize: '0.74rem',
+                                background: '#e0f2fe',
+                                color: '#0284c7',
+                                border: '1px solid #7dd3fc',
+                                padding: '5px 10px',
+                                borderRadius: '6px',
+                                fontWeight: '800'
+                              }}>
+                                ⚡ AVAILABLE FOR DISPATCH
+                              </span>
+                            ) : hasSubmittedQuote ? (
                               <span className="badge badge-awarded" style={{
                                 fontSize: '0.76rem',
                                 padding: '6px 12px',
