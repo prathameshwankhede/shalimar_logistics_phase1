@@ -2513,7 +2513,7 @@ router.delete('/requirements/:id', authenticateToken, requireRole('admin'), asyn
 
     // 1. Lock/check requirement existence
     const [existing] = await conn.query(
-      'SELECT id, req_no, status FROM transport_requirements WHERE id = ? OR req_no = ? FOR UPDATE',
+      'SELECT id, req_no, status FROM transport_requirements WHERE id = ? OR req_no = ?',
       [id, id]
     );
     if (existing.length === 0) {
