@@ -2158,6 +2158,25 @@ async function handleCreateTruckDispatch(req, res) {
     }
 
     if (!finalizedSub) {
+      const [dispRateRows] = await conn.query(
+        `SELECT finalized_rate FROM truck_dispatches 
+         WHERE requirement_id IN (?) 
+           AND (requirement_item_id IN (?) OR requirement_item_id = 'MAIN')
+           AND finalized_rate > 0
+         ORDER BY dispatched_at DESC LIMIT 1`,
+        [resolvedReqIds, resolvedItemIds.length > 0 ? resolvedItemIds : ['MAIN']]
+      );
+      if (dispRateRows.length > 0) {
+        finalizedSub = {
+          final_rate: dispRateRows[0].finalized_rate,
+          rate_per_mt: dispRateRows[0].finalized_rate,
+          is_finalized: 1,
+          bid_status: 'FINALIZED'
+        };
+      }
+    }
+
+    if (!finalizedSub) {
       await conn.rollback();
       conn.release();
       return res.status(400).json({

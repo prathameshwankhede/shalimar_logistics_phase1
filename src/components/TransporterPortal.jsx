@@ -479,8 +479,18 @@ export const TransporterPortal = () => {
           return;
         }
 
-        // 3. Finalized Bid Evaluation:
-        // Find if there is a finalized winner for this item
+        // 3. Historical Duplicate Re-quote Guard:
+        // If this item was created as a historical replacement (source_item_id exists),
+        // check if the parent/source item already exists in the same batch with active status and covers this quantity.
+        if (item.source_item_id) {
+          const sourceItem = childItems.find(ci => ci.id === item.source_item_id);
+          if (sourceItem && sourceItem.dispatch_status !== 'FULLY_DISPATCHED' && parseFloat(sourceItem.remaining_quantity_mt || 0) > 0) {
+            // Source ancestor item already covers the remaining balance; skip child duplicate to avoid double counting!
+            return;
+          }
+        }
+
+        // 4. Deterministic Rate Source of Truth (Priority 1: Finalized Bid Submission -> Priority 2: Dispatch History)
         const finalizedBid = (db.rate_submissions || []).find((s) => {
           if (!s) return false;
           const sReqMatch = String(s.requirement_id) === String(parentReq.id) || String(s.rate_request_id) === String(parentReq.id) || String(s.rate_request_id) === String(parentReqNo);
@@ -488,15 +498,28 @@ export const TransporterPortal = () => {
           return sReqMatch && sItemMatch && (Boolean(s.is_finalized) || String(s.bid_status).toUpperCase() === 'FINALIZED' || Number(s.final_rate) > 0);
         });
 
+        // Also check if any finalized bid was made at parent requirement level (for single item or legacy matching)
+        const parentFinalizedBid = !finalizedBid && (childItems.length === 1) ? (db.rate_submissions || []).find((s) => {
+          if (!s) return false;
+          const sReqMatch = String(s.requirement_id) === String(parentReq.id) || String(s.rate_request_id) === String(parentReq.id) || String(s.rate_request_id) === String(parentReqNo);
+          return sReqMatch && (Boolean(s.is_finalized) || String(s.bid_status).toUpperCase() === 'FINALIZED' || Number(s.final_rate) > 0);
+        }) : null;
+
+        const effectiveFinalizedBid = finalizedBid || parentFinalizedBid;
+
         let isFixedRateAllocation = false;
         let fixedRate = null;
         let myWinningBid = null;
 
-        if (finalizedBid) {
+        if (effectiveFinalizedBid) {
           // All eligible transporters see this item in the special FIXED RATE & DIRECT DISPATCH format 🚚✨
           isFixedRateAllocation = true;
-          fixedRate = Number(finalizedBid.final_rate || finalizedBid.rate_per_mt || 0);
-          myWinningBid = finalizedBid;
+          fixedRate = Number(effectiveFinalizedBid.final_rate || effectiveFinalizedBid.rate_per_mt || 0);
+          myWinningBid = effectiveFinalizedBid;
+        } else if (dispatches.length > 0 && Number(dispatches[0]?.finalized_rate) > 0) {
+          // Priority 2: Existing truck_dispatches recorded finalized_rate
+          isFixedRateAllocation = true;
+          fixedRate = Number(dispatches[0].finalized_rate);
         }
 
         openRateRequests.push({
