@@ -57,10 +57,11 @@ app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
     version: '1.9.0-phase1',
-    commit: '7dd7237+',
+    commit: 'c981086+',
     deploy_timestamp: new Date().toISOString(),
     env: process.env.NODE_ENV || 'development',
     port: PORT,
+    resolved_dist_path: distCandidate1,
     frontend_dist_exists: distExists,
     frontend_index_exists: indexExists,
     db_host: process.env.DB_HOST || process.env.DATABASE_HOST || '127.0.0.1',
@@ -190,35 +191,35 @@ const resolvedDistPath = fs.existsSync(distPath1) ? distPath1 : (fs.existsSync(d
 console.log(`📂 Static asset directory configured: ${resolvedDistPath}`);
 app.use(express.static(resolvedDistPath, { index: false }));
 
-// Fallback for root "/" and client-side SPA routes
-app.get('*', (req, res, next) => {
-  if (req.path.startsWith('/api')) {
-    return next();
+// Fallback for root "/" and client-side SPA routes (Express 5.x compatible middleware)
+app.use((req, res, next) => {
+  if (req.method === 'GET' && !req.path.startsWith('/api')) {
+    const indexPath = path.resolve(resolvedDistPath, 'index.html');
+    if (fs.existsSync(indexPath)) {
+      return res.sendFile(indexPath);
+    }
+    const rootIndexPath = path.resolve(process.cwd(), 'index.html');
+    if (fs.existsSync(rootIndexPath)) {
+      return res.sendFile(rootIndexPath);
+    }
+    return res.status(200).send(`
+      <!DOCTYPE html>
+      <html lang="en">
+        <head>
+          <meta charset="UTF-8" />
+          <title>Shalimar Logistics</title>
+        </head>
+        <body>
+          <div style="font-family: sans-serif; text-align: center; padding: 50px;">
+            <h2>TransFlow Logistics Portal is Initializing...</h2>
+            <p>Please refresh the page in a few seconds.</p>
+            <script>setTimeout(() => window.location.reload(), 3000);</script>
+          </div>
+        </body>
+      </html>
+    `);
   }
-  const indexPath = path.resolve(resolvedDistPath, 'index.html');
-  if (fs.existsSync(indexPath)) {
-    return res.sendFile(indexPath);
-  }
-  const rootIndexPath = path.resolve(process.cwd(), 'index.html');
-  if (fs.existsSync(rootIndexPath)) {
-    return res.sendFile(rootIndexPath);
-  }
-  return res.status(200).send(`
-    <!DOCTYPE html>
-    <html lang="en">
-      <head>
-        <meta charset="UTF-8" />
-        <title>Shalimar Logistics</title>
-      </head>
-      <body>
-        <div style="font-family: sans-serif; text-align: center; padding: 50px;">
-          <h2>TransFlow Logistics Portal is Initializing...</h2>
-          <p>Please refresh the page in a few seconds.</p>
-          <script>setTimeout(() => window.location.reload(), 3000);</script>
-        </div>
-      </body>
-    </html>
-  `);
+  next();
 });
 
 // Hostinger Production Express Listener
