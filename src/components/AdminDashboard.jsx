@@ -2853,6 +2853,45 @@ export const AdminDashboard = () => {
 
               {/* MODE B: NORMAL REQUIREMENTS TABLE VIEW (!openedBatchKey) */}
               {!openedBatchKey && (() => {
+                const isRequirement100PercentDone = (r, database) => {
+                  if (!r) return false;
+                  const reqNoStr = r.req_no || r.request_no || r.id;
+                  const childItems = (r.items && Array.isArray(r.items) && r.items.length > 0)
+                    ? r.items
+                    : (database?.transport_requirement_items || []).filter(item => String(item.requirement_id) === String(r.id) || String(item.requirement_id) === String(reqNoStr));
+
+                  const bids = (database?.rate_submissions || []).filter((s) =>
+                    String(s.rate_request_id) === String(r.id) ||
+                    String(s.rate_request_id) === String(reqNoStr) ||
+                    String(s.requirement_id) === String(r.id) ||
+                    String(s.requirement_id) === String(reqNoStr)
+                  );
+
+                  const isItemFinalized = (item, idx) => {
+                    const subCode = item.sub_indent_no || `${reqNoStr}/${(idx + 1).toString().padStart(2, '0')}`;
+                    const itemFinBid = bids.find((b) => {
+                      const matchItem = String(b.item_id) === String(item.id) ||
+                                        String(b.item_id) === String(item.sub_indent_no) ||
+                                        String(b.item_id) === String(subCode) ||
+                                        String(b.item_id) === String(idx + 1) ||
+                                        String(b.item_id) === String((idx + 1).toString().padStart(2, '0'));
+                      if (!matchItem) return false;
+                      return Boolean(b.is_finalized) || String(b.bid_status).toUpperCase() === 'FINALIZED' || Number(b.final_rate) > 0;
+                    });
+
+                    if (itemFinBid) return true;
+                    if (item.dispatch_status === 'FULLY_DISPATCHED' || item.allocation_status === 'COMPLETED') return true;
+                    return false;
+                  };
+
+                  if (childItems.length > 0) {
+                    return childItems.every((item, idx) => isItemFinalized(item, idx));
+                  }
+
+                  const anyFinBid = bids.some((b) => Boolean(b.is_finalized) || String(b.bid_status).toUpperCase() === 'FINALIZED' || Number(b.final_rate) > 0);
+                  return anyFinBid;
+                };
+
                 const isRequirement100PercentCompleted = (r, database) => {
                   if (!r) return false;
                   const reqNoStr = r.req_no || r.request_no || r.id;
