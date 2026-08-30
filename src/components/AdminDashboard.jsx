@@ -2853,45 +2853,38 @@ export const AdminDashboard = () => {
 
               {/* MODE B: NORMAL REQUIREMENTS TABLE VIEW (!openedBatchKey) */}
               {!openedBatchKey && (() => {
-                const isRequirement100PercentDone = (r, database) => {
+                const isRequirement100PercentCompleted = (r, database) => {
                   if (!r) return false;
                   const reqNoStr = r.req_no || r.request_no || r.id;
                   const childItems = (r.items && Array.isArray(r.items) && r.items.length > 0)
                     ? r.items
                     : (database?.transport_requirement_items || []).filter(item => String(item.requirement_id) === String(r.id) || String(item.requirement_id) === String(reqNoStr));
 
-                  const bids = (database?.rate_submissions || []).filter((s) =>
-                    String(s.rate_request_id) === String(r.id) ||
-                    String(s.rate_request_id) === String(reqNoStr) ||
-                    String(s.requirement_id) === String(r.id) ||
-                    String(s.requirement_id) === String(reqNoStr)
+                  const totalQty = parseFloat(r.total_quantity_mt || r.required_qty || r.quantity_mt || 0);
+
+                  const dispatches = (database?.truck_dispatches || []).filter((d) =>
+                    String(d.requirement_id) === String(r.id) || String(d.requirement_id) === String(reqNoStr)
                   );
+                  const totalDispatched = dispatches.reduce((acc, curr) => acc + (parseFloat(curr.loaded_quantity_mt || curr.dispatched_qty) || 0), 0);
 
-                  const isItemFinalized = (item, idx) => {
-                    const subCode = item.sub_indent_no || `${reqNoStr}/${(idx + 1).toString().padStart(2, '0')}`;
-                    const itemFinBid = bids.find((b) => {
-                      const matchItem = String(b.item_id) === String(item.id) ||
-                                        String(b.item_id) === String(item.sub_indent_no) ||
-                                        String(b.item_id) === String(subCode) ||
-                                        String(b.item_id) === String(idx + 1) ||
-                                        String(b.item_id) === String((idx + 1).toString().padStart(2, '0'));
-                      if (!matchItem) return false;
-                      return Boolean(b.is_finalized) || String(b.bid_status).toUpperCase() === 'FINALIZED' || Number(b.final_rate) > 0;
-                    });
-
-                    if (itemFinBid) return true;
-                    if (item.dispatch_status === 'FULLY_DISPATCHED' || item.allocation_status === 'COMPLETED') return true;
-                    return false;
-                  };
+                  if (totalQty > 0 && totalDispatched >= totalQty) return true;
+                  if (['COMPLETED', 'FULLY_DISPATCHED', 'CLOSED'].includes(String(r.status || '').toUpperCase())) return true;
 
                   if (childItems.length > 0) {
-                    // Must have 100% of sub-indent items finalized!
-                    return childItems.every((item, idx) => isItemFinalized(item, idx));
+                    return childItems.every((ci, cIdx) => {
+                      const subCode = ci.sub_indent_no || `${reqNoStr}/${(cIdx + 1).toString().padStart(2, '0')}`;
+                      const itemDispatches = dispatches.filter(d => 
+                        String(d.requirement_item_id) === String(ci.id) || 
+                        String(d.requirement_item_id) === String(ci.sub_indent_no) ||
+                        String(d.requirement_item_id) === String(subCode)
+                      );
+                      const itemDispatched = itemDispatches.reduce((acc, curr) => acc + (parseFloat(curr.loaded_quantity_mt || curr.dispatched_qty) || 0), 0);
+                      const itemQty = parseFloat(ci.quantity_mt || ci.required_qty || 0);
+                      return (itemQty > 0 && itemDispatched >= itemQty) || ci.dispatch_status === 'FULLY_DISPATCHED' || ci.allocation_status === 'COMPLETED';
+                    });
                   }
 
-                  // Single item / direct requirement:
-                  const anyFinBid = bids.some((b) => Boolean(b.is_finalized) || String(b.bid_status).toUpperCase() === 'FINALIZED' || Number(b.final_rate) > 0);
-                  return anyFinBid;
+                  return false;
                 };
 
                 return (
@@ -2914,7 +2907,7 @@ export const AdminDashboard = () => {
                         className={`btn ${reqFilterTab === 'open' ? 'btn-primary' : 'btn-secondary'}`}
                         style={{ padding: '6px 16px', fontSize: '0.8rem', borderRadius: '20px', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '6px' }}
                       >
-                        🟢 Active Open Indents ({(db.rate_requests || []).filter((r) => !isRequirement100PercentDone(r, db)).length})
+                        🟢 Active Open Indents ({(db.rate_requests || []).filter((r) => !isRequirement100PercentCompleted(r, db)).length})
                       </button>
                       <button
                         type="button"
@@ -2922,7 +2915,7 @@ export const AdminDashboard = () => {
                         className={`btn ${reqFilterTab === 'done' ? 'btn-success' : 'btn-secondary'}`}
                         style={{ padding: '6px 16px', fontSize: '0.8rem', borderRadius: '20px', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '6px' }}
                       >
-                        ✅ Awarded & Done ({(db.rate_requests || []).filter((r) => isRequirement100PercentDone(r, db)).length})
+                        ✅ Awarded & Done ({(db.rate_requests || []).filter((r) => isRequirement100PercentCompleted(r, db)).length})
                       </button>
                       <button
                         type="button"
@@ -2952,7 +2945,7 @@ export const AdminDashboard = () => {
                       <tbody>
                         {(() => {
                           const filteredRequests = (db.rate_requests || []).filter((req) => {
-                            const is100PercentDone = isRequirement100PercentDone(req, db);
+                            const is100PercentDone = isRequirement100PercentCompleted(req, db);
                             if (reqFilterTab === 'open') return !is100PercentDone;
                             if (reqFilterTab === 'done') return is100PercentDone;
                             return true;
