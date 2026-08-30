@@ -61,7 +61,7 @@ async function ensureColumnExists(tableName, columnName, columnDefinition) {
 // Parent: transport_requirements | Child: transport_requirement_items
 // -------------------------------------------------------------
 let isRequirementsTableEnsured = false;
-async function ensureRequirementsTableExists() {
+export async function ensureRequirementsTableExists() {
   if (isRequirementsTableEnsured) return;
   try {
     await pool.query(`
@@ -2695,6 +2695,8 @@ async function handleReleaseRemainingForRequote(req, res) {
       conn.release();
     }
     console.error('❌ Release Remaining for Requote Error:', err.message);
+    return res.status(500).json({ success: false, error: { code: 'DATABASE_ERROR', message: err.message } });
+  }
 }
 
 // -------------------------------------------------------------
