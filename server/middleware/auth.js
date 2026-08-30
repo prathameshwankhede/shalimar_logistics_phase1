@@ -28,11 +28,9 @@ export const ROLE_PERMISSIONS = {
 };
 
 export function generateToken(user) {
-  const rawRole = String(user.role || user.user_type || user.account_type || '').trim().toLowerCase();
-  // Controlled canonicalization: map legacy vendor or transporter to canonical 'transporter'
-  const isTransporter = rawRole === 'transporter' || rawRole === 'vendor' || Boolean(user.transporter_id);
-  const canonicalRole = rawRole === 'admin' ? 'admin' : (isTransporter ? 'transporter' : (rawRole || 'transporter'));
-  const permissions = ROLE_PERMISSIONS[canonicalRole] || ROLE_PERMISSIONS.transporter;
+  const rawRole = String(user.role || '').trim().toLowerCase();
+  const canonicalRole = rawRole === 'admin' ? 'admin' : (rawRole === 'transporter' ? 'transporter' : 'user');
+  const permissions = ROLE_PERMISSIONS[canonicalRole] || [];
 
   return jwt.sign(
     {
@@ -61,10 +59,7 @@ export function authenticateToken(req, res, next) {
       return res.status(403).json({ error: 'Invalid or expired authentication token' });
     }
     if (decoded) {
-      const rawRole = String(decoded.role || decoded.user_type || decoded.account_type || '').trim().toLowerCase();
-      // Controlled canonicalization: handle stale tokens with legacy 'vendor' role
-      const isTransporter = rawRole === 'transporter' || (rawRole === 'vendor' && (decoded.transporter_id || decoded.id));
-      decoded.role = rawRole === 'admin' ? 'admin' : (isTransporter ? 'transporter' : rawRole);
+      decoded.role = String(decoded.role || '').trim().toLowerCase();
     }
     req.user = decoded;
     next();

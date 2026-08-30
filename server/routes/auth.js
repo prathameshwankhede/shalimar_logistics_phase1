@@ -102,27 +102,53 @@ router.post('/login', async (req, res) => {
 
     const rawRole = String(foundUser.role || foundUser.user_type || foundUser.account_type || '').trim().toLowerCase();
     
-    // Controlled canonicalization: map verified transporter records or legacy vendor roles to canonical 'transporter'
-    const isTransporterRecord = Boolean(
-      foundUser.transporter_id || 
-      rawRole === 'transporter' || 
-      rawRole === 'vendor' ||
-      foundUser.code
-    );
+    let canonicalRole = 'user';
+    let verifiedTransporterId = null;
 
-    let canonicalRole = rawRole;
     if (rawRole === 'admin') {
       canonicalRole = 'admin';
-    } else if (isTransporterRecord) {
-      canonicalRole = 'transporter';
-      foundUser.transporter_id = foundUser.transporter_id || foundUser.id;
     } else {
-      canonicalRole = rawRole || 'transporter';
+      // Canonical Proof: Verify actual database existence in transporters table
+      try {
+        let verifiedTransporter = null;
+        if (foundUser.transporter_id) {
+          const [tRows] = await pool.query('SELECT id, company_name, code, username FROM transporters WHERE id = ? LIMIT 1', [foundUser.transporter_id]);
+          if (tRows.length > 0) verifiedTransporter = tRows[0];
+        }
+        if (!verifiedTransporter) {
+          const [tRows] = await pool.query(
+            'SELECT id, company_name, code, username FROM transporters WHERE LOWER(username) = ? OR LOWER(code) = ? OR id = ? LIMIT 1',
+            [cleanUser, cleanUser, foundUser.id]
+          );
+          if (tRows.length > 0) verifiedTransporter = tRows[0];
+        }
+
+        if (verifiedTransporter) {
+          canonicalRole = 'transporter';
+          verifiedTransporterId = verifiedTransporter.id;
+          foundUser.name = foundUser.name || verifiedTransporter.company_name;
+        } else if (rawRole === 'transporter') {
+          // If explicitly marked as transporter in database users table
+          canonicalRole = 'transporter';
+          verifiedTransporterId = foundUser.transporter_id || foundUser.id;
+        } else {
+          canonicalRole = rawRole || 'user';
+        }
+      } catch (dbErr) {
+        if (rawRole === 'transporter') {
+          canonicalRole = 'transporter';
+          verifiedTransporterId = foundUser.transporter_id || foundUser.id;
+        } else {
+          canonicalRole = rawRole || 'user';
+        }
+      }
     }
 
     foundUser.role = canonicalRole;
+    foundUser.transporter_id = verifiedTransporterId;
+
     const token = generateToken(foundUser);
-    const permissions = ROLE_PERMISSIONS[canonicalRole] || ROLE_PERMISSIONS.transporter;
+    const permissions = ROLE_PERMISSIONS[canonicalRole] || (canonicalRole === 'transporter' ? ROLE_PERMISSIONS.transporter : []);
 
     // Minimal Safe User DTO (No passwords, hashes, or unrelated organization tables)
     const userDto = {
@@ -130,7 +156,7 @@ router.post('/login', async (req, res) => {
       username: foundUser.username,
       name: foundUser.name,
       role: canonicalRole,
-      transporter_id: foundUser.transporter_id || null,
+      transporter_id: verifiedTransporterId,
       permissions
     };
 

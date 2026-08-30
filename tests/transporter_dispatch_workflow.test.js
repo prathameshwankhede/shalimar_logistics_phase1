@@ -318,6 +318,30 @@ it('TEST 2F: User with invalid role (e.g. "auditor", "viewer") is rejected with 
   assert.strictEqual(res.error, 'Only transporters can accept finalized rates.');
 });
 
+// TEST 2G: Generic code field alone without verified transporter record does NOT grant transporter access
+it('TEST 2G: Generic code field alone without verified database transporter record is rejected', () => {
+  const state = createMockWorkflowState();
+  finalizeRate(state, 'sub_win', 480, { username: 'admin', role: 'admin' });
+
+  // User with code "C001" but role "employee" and no transporter table record
+  const unverifiedUser = { id: 'usr_emp', code: 'C001', username: 'john_doe', role: 'employee' };
+  const res = acceptFinalRate(state, 'req_001', 'item_001', unverifiedUser);
+  assert.strictEqual(res.status, 403);
+  assert.strictEqual(res.error, 'Only transporters can accept finalized rates.');
+});
+
+// TEST 2H: Transporter identity resolver requires verified existence in transporters table
+it('TEST 2H: Synthetic / unverified transporter_id without matching transporter record is rejected', () => {
+  const state = createMockWorkflowState();
+  finalizeRate(state, 'sub_win', 480, { username: 'admin', role: 'admin' });
+
+  // User has role "transporter" in JWT but ID does not match the winning transporter
+  const spoofedUser = { id: 'usr_fake', transporter_id: 'trans_fake', username: 'fake_trans', role: 'transporter' };
+  const res = acceptFinalRate(state, 'req_001', 'item_001', spoofedUser);
+  assert.strictEqual(res.status, 403);
+  assert.strictEqual(res.code, 'FORBIDDEN_NOT_WINNING_TRANSPORTER');
+});
+
 // TEST 3: Non-winning transporter receives 403 when trying to accept
 it('TEST 3: Non-winning transporter receives 403 FORBIDDEN_NOT_WINNING_TRANSPORTER on accept', () => {
   const state = createMockWorkflowState();

@@ -658,16 +658,19 @@ async function generateUniqueLrNumber(clientOrPool, customYear) {
 }
 
 // Server-side Authenticated Transporter Identity Resolver
+// Canonical proof: MUST match a verified record in the transporters database table
 async function resolveAuthenticatedTransporter(req) {
   if (!req.user) return null;
   const userRole = String(req.user.role || '').trim().toLowerCase();
   if (userRole !== 'transporter') return null;
 
+  // 1. Direct transporter_id lookup
   if (req.user.transporter_id) {
     const [rows] = await pool.query('SELECT * FROM transporters WHERE id = ? LIMIT 1', [req.user.transporter_id]);
     if (rows.length > 0) return rows[0];
   }
 
+  // 2. Lookup by username or code or id
   const searchKey = req.user.username || req.user.id;
   if (searchKey) {
     const [rows] = await pool.query(
@@ -677,16 +680,7 @@ async function resolveAuthenticatedTransporter(req) {
     if (rows.length > 0) return rows[0];
   }
 
-  if (req.user.id) {
-    const strippedId = String(req.user.id).replace(/^(usr_|trans_)/i, '');
-    const [rows] = await pool.query(
-      'SELECT * FROM transporters WHERE id = ? OR id LIKE ? OR code = ? OR code LIKE ? OR username = ? LIMIT 1',
-      [req.user.id, `%${strippedId}%`, req.user.id, `%${strippedId}%`, req.user.id]
-    );
-    if (rows.length > 0) return rows[0];
-  }
-
-  // Fallback: if user in users table has an associated transporter record
+  // 3. Check users table linkage to transporters table
   try {
     const [uRows] = await pool.query(
       'SELECT id, username, role, transporter_id FROM users WHERE id = ? OR username = ? LIMIT 1',
@@ -698,13 +692,8 @@ async function resolveAuthenticatedTransporter(req) {
     }
   } catch (e) {}
 
-  // Fallback representation for authenticated transporter user
-  return {
-    id: req.user.transporter_id || req.user.id,
-    code: req.user.username || req.user.id,
-    username: req.user.username,
-    company_name: req.user.name || req.user.username
-  };
+  // If no matching verified record exists in the transporters table, access is strictly denied
+  return null;
 }
 
 async function handleGetRequirements(req, res) {
