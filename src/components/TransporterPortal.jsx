@@ -698,10 +698,14 @@ export const TransporterPortal = () => {
 
     try {
       setIsSubmittingDispatch(true);
-      const reqId = req.requirement_id || req.id;
-      const itemId = req.item_id || req.sub_indent_id || 'MAIN';
+      const reqId = req.requirement_id || req.parent_req_no || req.id;
+      const itemId = req.id || req.item_id || req.sub_indent_id || req.sub_indent_no || 'MAIN';
 
       const payload = {
+        requirement_id: reqId,
+        item_id: itemId,
+        requirement_item_id: itemId,
+        sub_indent_no: req.sub_indent_no || null,
         truck_number: dispatchFormData.truck_number.trim().toUpperCase(),
         loaded_quantity_mt: loadedQty,
         driver_name: dispatchFormData.driver_name.trim(),

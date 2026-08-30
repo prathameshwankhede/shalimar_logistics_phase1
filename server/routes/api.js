@@ -2002,17 +2002,18 @@ async function handleCreateTruckDispatch(req, res) {
     }
 
     // 0.1. Explicitly Resolve and Lock Child Requirement Item
-    let resolvedItemIds = [itemId].filter(Boolean);
+    const bodyItemId = req.body?.item_id || req.body?.requirement_item_id || req.body?.sub_indent_no;
+    let resolvedItemIds = [itemId, bodyItemId].filter(Boolean);
     let originalItemRec = null;
-    let actualItemId = itemId;
+    let actualItemId = (itemId && itemId !== 'MAIN') ? itemId : (bodyItemId && bodyItemId !== 'MAIN' ? bodyItemId : itemId);
 
-    if (itemId && itemId !== 'MAIN') {
+    if (actualItemId && actualItemId !== 'MAIN') {
       const [iRows] = await conn.query(
         `SELECT * FROM transport_requirement_items 
          WHERE (requirement_id = ? OR requirement_id IN (?)) 
            AND (id = ? OR sub_indent_no = ? OR sub_indent_no LIKE ?) 
          LIMIT 1 FOR UPDATE`,
-        [actualReqId, resolvedReqIds, itemId, itemId, `%/${itemId}`]
+        [actualReqId, resolvedReqIds, actualItemId, actualItemId, `%/${actualItemId}`]
       );
       if (iRows.length > 0) {
         originalItemRec = iRows[0];
@@ -2029,6 +2030,19 @@ async function handleCreateTruckDispatch(req, res) {
             resolvedReqIds.push(parentReq.id, parentReq.req_no);
           }
         }
+      }
+    }
+
+    if (!originalItemRec && actualReqId) {
+      // Fallback: If only 1 child item exists for this parent requirement, bind to that item
+      const [singleItemRows] = await conn.query(
+        `SELECT * FROM transport_requirement_items WHERE requirement_id = ? OR requirement_id IN (?) ORDER BY id ASC LIMIT 2 FOR UPDATE`,
+        [actualReqId, resolvedReqIds]
+      );
+      if (singleItemRows.length === 1) {
+        originalItemRec = singleItemRows[0];
+        actualItemId = originalItemRec.id;
+        resolvedItemIds.push(originalItemRec.id, originalItemRec.sub_indent_no);
       }
     }
 
@@ -2124,25 +2138,39 @@ async function handleCreateTruckDispatch(req, res) {
         });
       }
       totalItemQty = parseFloat(originalItemRec.quantity_mt || originalItemRec.required_qty || 0);
-    } else {
-      totalItemQty = parseFloat(parentReq.quantity_mt || parentReq.total_quantity_mt || 0);
+    }
+    
+    if (totalItemQty <= 0 && parentReq) {
+      totalItemQty = parseFloat(parentReq.total_quantity_mt || parentReq.quantity_mt || parentReq.required_qty || 0);
     }
 
-    if (totalItemQty <= 0) {
-      totalItemQty = parseFloat(winningSub.quoted_quantity_mt || 100);
+    if (totalItemQty <= 0 && winningSub) {
+      totalItemQty = parseFloat(winningSub.quoted_quantity_mt || 0);
     }
 
     // 5. Lock and calculate total already dispatched quantity for this requirement item
-    const [dispatchedSumRows] = await conn.query(
-      `SELECT COALESCE(SUM(loaded_quantity_mt), 0) AS total_dispatched 
-       FROM truck_dispatches 
-       WHERE (requirement_id = ? OR requirement_id = ?) 
-         AND (requirement_item_id = ? OR requirement_item_id = ? OR requirement_item_id IN (?)) 
-       FOR UPDATE`,
-      [actualReqId, requirementId, actualItemId, itemId, resolvedItemIds]
-    );
+    let alreadyDispatched = 0;
+    if (originalItemRec) {
+      const [dispatchedSumRows] = await conn.query(
+        `SELECT COALESCE(SUM(loaded_quantity_mt), 0) AS total_dispatched 
+         FROM truck_dispatches 
+         WHERE (requirement_id IN (?)) 
+           AND (requirement_item_id = ? OR requirement_item_id = ? OR requirement_item_id IN (?)) 
+         FOR UPDATE`,
+        [resolvedReqIds, originalItemRec.id, originalItemRec.sub_indent_no, resolvedItemIds]
+      );
+      alreadyDispatched = parseFloat(dispatchedSumRows[0]?.total_dispatched || 0);
+    } else {
+      const [dispatchedSumRows] = await conn.query(
+        `SELECT COALESCE(SUM(loaded_quantity_mt), 0) AS total_dispatched 
+         FROM truck_dispatches 
+         WHERE requirement_id IN (?) 
+         FOR UPDATE`,
+        [resolvedReqIds]
+      );
+      alreadyDispatched = parseFloat(dispatchedSumRows[0]?.total_dispatched || 0);
+    }
 
-    const alreadyDispatched = parseFloat(dispatchedSumRows[0]?.total_dispatched || 0);
     const remainingQty = parseFloat(Math.max(0, totalItemQty - alreadyDispatched).toFixed(3));
 
     // 6. Enforce Tonnage Capacity Gate
@@ -2251,8 +2279,8 @@ async function handleCreateTruckDispatch(req, res) {
                released_for_requote_reason = 'Auto-reopened for competitive quotation after partial dispatch',
                replacement_item_id = ?,
                updated_at = NOW()
-           WHERE requirement_id = ? AND id = ?`,
-          [newTotalDispatched, authTransporter.company_name || authTransporter.username || 'Auto-Dispatch Re-open', replacementItemId, actualReqId, actualItemId]
+           WHERE requirement_id = ? AND (id = ? OR sub_indent_no = ?)`,
+          [newTotalDispatched, authTransporter.company_name || authTransporter.username || 'Auto-Dispatch Re-open', replacementItemId, actualReqId, actualItemId, actualItemId]
         );
       }
 

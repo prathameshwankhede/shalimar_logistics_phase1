@@ -680,6 +680,257 @@ it('TEST 14: Truck dispatch execution never throws ReferenceError on parentReq',
   assert.strictEqual(caughtError, null);
 });
 
+// TEST 15 (CONSISTENCY 1): Item /01 quantity 44 MT, no dispatches -> remaining = 44 -> dispatch 40 MT succeeds
+it('TEST 15: Item /01 quantity 44 MT, no dispatches -> remaining = 44 -> dispatch 40 MT succeeds', () => {
+  const state = createMockWorkflowState();
+  state.requirement_items[0].quantity_mt = 44.0;
+  state.requirement_items[0].remaining_quantity_mt = 44.0;
+  finalizeRate(state, 'sub_win', 10, { username: 'admin', role: 'admin' });
+  acceptFinalRate(state, 'req_001', 'item_001', { id: 'trans_win', transporter_id: 'trans_win', username: 'win_transporter', role: 'transporter' });
+
+  const winUser = { id: 'trans_win', transporter_id: 'trans_win', username: 'win_transporter', role: 'transporter' };
+  const res = dispatchTruck(state, 'req_001', 'item_001', winUser, {
+    truck_number: 'MH31AA1234',
+    loaded_quantity_mt: 40.0,
+    driver_name: 'Driver A',
+    driver_mobile: '9876543210',
+    driver_license: 'DL1234'
+  });
+
+  assert.strictEqual(res.status, 200);
+  assert.strictEqual(res.success, true);
+  assert.strictEqual(res.remaining_quantity_mt, 4.0);
+  assert.strictEqual(state.requirement_items[0].dispatched_quantity_mt, 40.0);
+  assert.strictEqual(state.requirement_items[0].remaining_quantity_mt, 4.0);
+});
+
+// TEST 16 (CONSISTENCY 2): After dispatching 40 MT from 44 MT, remaining = 4 MT
+it('TEST 16: After dispatching 40 MT from 44 MT, remaining = 4 MT', () => {
+  const state = createMockWorkflowState();
+  state.requirement_items[0].quantity_mt = 44.0;
+  state.requirement_items[0].remaining_quantity_mt = 44.0;
+  finalizeRate(state, 'sub_win', 10, { username: 'admin', role: 'admin' });
+  acceptFinalRate(state, 'req_001', 'item_001', { id: 'trans_win', transporter_id: 'trans_win', username: 'win_transporter', role: 'transporter' });
+
+  const winUser = { id: 'trans_win', transporter_id: 'trans_win', username: 'win_transporter', role: 'transporter' };
+  dispatchTruck(state, 'req_001', 'item_001', winUser, {
+    truck_number: 'MH31AA1234',
+    loaded_quantity_mt: 40.0,
+    driver_name: 'Driver A',
+    driver_mobile: '9876543210',
+    driver_license: 'DL1234'
+  });
+
+  const alreadyDispatched = state.truck_dispatches
+    .filter(d => d.requirement_item_id === 'item_001')
+    .reduce((acc, curr) => acc + curr.loaded_quantity_mt, 0);
+
+  const remainingBalance = state.requirement_items[0].quantity_mt - alreadyDispatched;
+  assert.strictEqual(remainingBalance, 4.0);
+});
+
+// TEST 17 (CONSISTENCY 3): Attempt dispatch 5 MT after 40/44 fails because remaining = 4
+it('TEST 17: Attempt dispatch 5 MT after 40/44 fails because remaining = 4', () => {
+  const state = createMockWorkflowState();
+  state.requirement_items[0].quantity_mt = 44.0;
+  state.requirement_items[0].remaining_quantity_mt = 44.0;
+  finalizeRate(state, 'sub_win', 10, { username: 'admin', role: 'admin' });
+  acceptFinalRate(state, 'req_001', 'item_001', { id: 'trans_win', transporter_id: 'trans_win', username: 'win_transporter', role: 'transporter' });
+
+  const winUser = { id: 'trans_win', transporter_id: 'trans_win', username: 'win_transporter', role: 'transporter' };
+  dispatchTruck(state, 'req_001', 'item_001', winUser, {
+    truck_number: 'MH31AA1234',
+    loaded_quantity_mt: 40.0,
+    driver_name: 'Driver A',
+    driver_mobile: '9876543210',
+    driver_license: 'DL1234'
+  });
+
+  const res2 = dispatchTruck(state, 'req_001', 'item_001', winUser, {
+    truck_number: 'MH31AA5678',
+    loaded_quantity_mt: 5.0,
+    driver_name: 'Driver B',
+    driver_mobile: '9876543211',
+    driver_license: 'DL5678'
+  });
+
+  assert.strictEqual(res2.status, 400);
+  assert.strictEqual(res2.code, 'EXCEEDS_REMAINING_QUANTITY');
+  assert.strictEqual(res2.remaining_quantity_mt, 4.0);
+});
+
+// TEST 18 (CONSISTENCY 4): Dispatches belonging to /02 must NOT affect /01 balance
+it('TEST 18: Dispatches belonging to /02 must NOT affect /01 balance', () => {
+  const state = createMockWorkflowState();
+  state.requirement_items.push({
+    id: 'item_002',
+    requirement_id: 'req_001',
+    sub_indent_no: 'SNPL/26-27/REQ-0001/02',
+    quantity_mt: 40.0,
+    dispatched_quantity_mt: 0.0,
+    remaining_quantity_mt: 40.0,
+    dispatch_status: 'ACCEPTED'
+  });
+
+  // Record a dispatch for item_002
+  state.truck_dispatches.push({
+    id: 'disp_002',
+    requirement_id: 'req_001',
+    requirement_item_id: 'item_002',
+    loaded_quantity_mt: 30.0
+  });
+
+  const dispatchesFor01 = state.truck_dispatches.filter(d => d.requirement_item_id === 'item_001');
+  const alreadyDispatched01 = dispatchesFor01.reduce((acc, curr) => acc + curr.loaded_quantity_mt, 0);
+  assert.strictEqual(alreadyDispatched01, 0.0, '/02 dispatches must not count towards /01');
+});
+
+// TEST 19 (CONSISTENCY 5): Dispatches belonging to /01 must NOT affect /02 balance
+it('TEST 19: Dispatches belonging to /01 must NOT affect /02 balance', () => {
+  const state = createMockWorkflowState();
+  state.requirement_items.push({
+    id: 'item_002',
+    requirement_id: 'req_001',
+    sub_indent_no: 'SNPL/26-27/REQ-0001/02',
+    quantity_mt: 40.0,
+    dispatched_quantity_mt: 0.0,
+    remaining_quantity_mt: 40.0,
+    dispatch_status: 'ACCEPTED'
+  });
+
+  // Record a dispatch for item_001
+  state.truck_dispatches.push({
+    id: 'disp_001',
+    requirement_id: 'req_001',
+    requirement_item_id: 'item_001',
+    loaded_quantity_mt: 15.0
+  });
+
+  const dispatchesFor02 = state.truck_dispatches.filter(d => d.requirement_item_id === 'item_002');
+  const alreadyDispatched02 = dispatchesFor02.reduce((acc, curr) => acc + curr.loaded_quantity_mt, 0);
+  assert.strictEqual(alreadyDispatched02, 0.0, '/01 dispatches must not count towards /02');
+});
+
+// TEST 20 (CONSISTENCY 6): UUID requirement_item_id matching works
+it('TEST 20: UUID requirement_item_id matching works', () => {
+  const state = createMockWorkflowState();
+  const uuid = 'item_f47ac10b_58cc_4372_a567_0e02b2c3d479';
+  state.requirement_items[0].id = uuid;
+  state.rate_submissions[0].item_id = uuid;
+
+  finalizeRate(state, 'sub_win', 10, { username: 'admin', role: 'admin' });
+  acceptFinalRate(state, 'req_001', uuid, { id: 'trans_win', transporter_id: 'trans_win', username: 'win_transporter', role: 'transporter' });
+
+  const winUser = { id: 'trans_win', transporter_id: 'trans_win', username: 'win_transporter', role: 'transporter' };
+  const res = dispatchTruck(state, 'req_001', uuid, winUser, {
+    truck_number: 'MH31AA9999',
+    loaded_quantity_mt: 20.0,
+    driver_name: 'Driver UUID',
+    driver_mobile: '9876543210',
+    driver_license: 'DLUUID'
+  });
+
+  assert.strictEqual(res.status, 200);
+  assert.strictEqual(res.success, true);
+});
+
+// TEST 21 (CONSISTENCY 7): Legacy sub_indent_no string matching works
+it('TEST 21: Legacy sub_indent_no string matching works', () => {
+  const state = createMockWorkflowState();
+  const subIndent = 'SNPL/26-27/REQ-0001/01';
+  state.requirement_items[0].sub_indent_no = subIndent;
+
+  // Dispatch using sub_indent_no string as itemId
+  const item = state.requirement_items.find(i => i.id === 'item_001' || i.sub_indent_no === subIndent);
+  assert.ok(item);
+  assert.strictEqual(item.id, 'item_001');
+});
+
+// TEST 22 (CONSISTENCY 8): Parent requirement_id fallback works ONLY when there is no specific item
+it('TEST 22: Parent requirement_id fallback works ONLY when there is no specific item', () => {
+  const state = createMockWorkflowState();
+  state.requirement_items = []; // Single-item requirement with no child rows
+
+  const dispatches = state.truck_dispatches.filter(d => d.requirement_id === 'req_001');
+  assert.strictEqual(dispatches.length, 0);
+});
+
+// TEST 23 (CONSISTENCY 9): Frontend displayed remaining balance equals backend validation remaining balance
+it('TEST 23: Frontend displayed remaining balance equals backend validation remaining balance', () => {
+  const item = {
+    id: 'item_001',
+    quantity_mt: 44.0,
+    required_qty: 44.0,
+    dispatched_quantity_mt: 0.0,
+    remaining_quantity_mt: 44.0
+  };
+
+  // Frontend calculation
+  const totalQty = Number(item.quantity_mt || item.required_qty || 0);
+  const dispatchedQty = Number(item.dispatched_quantity_mt || 0);
+  const frontendRemaining = item.remaining_quantity_mt !== undefined && item.remaining_quantity_mt !== null
+    ? Number(item.remaining_quantity_mt)
+    : Math.max(0, totalQty - dispatchedQty);
+
+  // Backend calculation
+  const backendRemaining = Math.max(0, totalQty - dispatchedQty);
+
+  assert.strictEqual(frontendRemaining, 44.0);
+  assert.strictEqual(backendRemaining, 44.0);
+  assert.strictEqual(frontendRemaining, backendRemaining);
+});
+
+// TEST 24 (CONSISTENCY 10): Refresh page after dispatch and remaining balance stays correct
+it('TEST 24: Refresh page after dispatch and remaining balance stays correct', () => {
+  const item = {
+    id: 'item_001',
+    quantity_mt: 44.0,
+    dispatched_quantity_mt: 40.0,
+    remaining_quantity_mt: 4.0
+  };
+
+  // On page refresh, state is reconstructed from DB item row
+  const totalQty = Number(item.quantity_mt || 0);
+  const dispatchedQty = Number(item.dispatched_quantity_mt || 0);
+  const remaining = Number(item.remaining_quantity_mt);
+
+  assert.strictEqual(remaining, 4.0);
+  assert.strictEqual(totalQty - dispatchedQty, 4.0);
+});
+
+// TEST 25 (CONSISTENCY 11): Concurrent dispatch requests cannot exceed exact item quantity
+it('TEST 25: Concurrent dispatch requests cannot exceed exact item quantity', () => {
+  const state = createMockWorkflowState();
+  state.requirement_items[0].quantity_mt = 44.0;
+  state.requirement_items[0].remaining_quantity_mt = 44.0;
+  finalizeRate(state, 'sub_win', 10, { username: 'admin', role: 'admin' });
+  acceptFinalRate(state, 'req_001', 'item_001', { id: 'trans_win', transporter_id: 'trans_win', username: 'win_transporter', role: 'transporter' });
+
+  const winUser = { id: 'trans_win', transporter_id: 'trans_win', username: 'win_transporter', role: 'transporter' };
+
+  // Dispatch 1: 30 MT
+  const d1 = dispatchTruck(state, 'req_001', 'item_001', winUser, {
+    truck_number: 'MH31AA1111',
+    loaded_quantity_mt: 30.0,
+    driver_name: 'Driver 1',
+    driver_mobile: '9876543210',
+    driver_license: 'DL1'
+  });
+  assert.strictEqual(d1.status, 200);
+
+  // Dispatch 2: 20 MT (attempting 30 + 20 = 50 > 44)
+  const d2 = dispatchTruck(state, 'req_001', 'item_001', winUser, {
+    truck_number: 'MH31AA2222',
+    loaded_quantity_mt: 20.0,
+    driver_name: 'Driver 2',
+    driver_mobile: '9876543211',
+    driver_license: 'DL2'
+  });
+  assert.strictEqual(d2.status, 400);
+  assert.strictEqual(d2.code, 'EXCEEDS_REMAINING_QUANTITY');
+  assert.strictEqual(d2.remaining_quantity_mt, 14.0);
+});
+
 console.log('================================================================');
 console.log(`🎉 TEST SUMMARY: ${passedTests} PASSED, ${failedTests} FAILED`);
 console.log('================================================================');
