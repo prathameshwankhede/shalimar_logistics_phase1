@@ -2434,13 +2434,17 @@ export const TransporterPortal = () => {
           {/* 1. Modern Awarded / Finalized Requirement Contracts */}
           {myFinalizedItems
             .filter(({ item, parentReq }) => {
-              const dispatches = (db.truck_dispatches || []).filter((d) =>
-                d.requirement_item_id === item.id || d.requirement_id === parentReq.id
-              );
+              const dispatches = (db.truck_dispatches || []).filter((d) => {
+                if (item && item.id) {
+                  return d.requirement_item_id === item.id || d.requirement_item_id === item.sub_indent_no;
+                }
+                return d.requirement_id === parentReq.id;
+              });
               const totalDispatched = dispatches.reduce((acc, curr) => acc + (parseFloat(curr.loaded_quantity_mt || curr.dispatched_qty) || 0), 0);
               const allocatedQty = parseFloat(item.quantity_mt || item.required_qty || parentReq.quantity_mt || parentReq.required_qty || 0);
               const remainingBalance = Math.max(0, allocatedQty - totalDispatched);
-              const isCompleted = remainingBalance <= 0 || item.dispatch_status === 'FULLY_DISPATCHED' || parentReq.status === 'Completed';
+              const isReleasedForRequote = item.dispatch_status === 'RELEASED_FOR_REQUOTE' || item.allocation_status === 'RELEASED_FOR_REQUOTE';
+              const isCompleted = (!isReleasedForRequote && remainingBalance <= 0) || item.dispatch_status === 'FULLY_DISPATCHED';
 
               if (allocationFilter === 'active') return !isCompleted;
               if (allocationFilter === 'completed') return isCompleted;
@@ -2456,9 +2460,12 @@ export const TransporterPortal = () => {
               const finalRate = Number(myBid.final_rate || myBid.rate_per_mt || myBid.rate_per_unit || 0);
               const isAccepted = String(myBid.acceptance_status || '').toUpperCase() === 'ACCEPTED';
 
-              const dispatches = (db.truck_dispatches || []).filter((d) =>
-                d.requirement_item_id === item.id || d.requirement_id === parentReq.id
-              );
+              const dispatches = (db.truck_dispatches || []).filter((d) => {
+                if (item && item.id) {
+                  return d.requirement_item_id === item.id || d.requirement_item_id === item.sub_indent_no;
+                }
+                return d.requirement_id === parentReq.id;
+              });
               const totalDispatched = dispatches.reduce((acc, curr) => acc + (parseFloat(curr.loaded_quantity_mt || curr.dispatched_qty) || 0), 0);
               const remainingBalance = Math.max(0, totalQty - totalDispatched);
               const isReleasedForRequote = item.dispatch_status === 'RELEASED_FOR_REQUOTE' || item.allocation_status === 'RELEASED_FOR_REQUOTE';

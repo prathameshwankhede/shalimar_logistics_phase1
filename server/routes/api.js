@@ -1702,13 +1702,15 @@ async function handleFinalizeBid(req, res) {
     );
 
     // Update item dispatch status
-    await pool.query(
-      `UPDATE transport_requirement_items
-       SET dispatch_status = 'AWAITING_ACCEPTANCE',
-           updated_at = NOW()
-       WHERE requirement_id = ? AND id = ?`,
-      [sub.requirement_id, sub.item_id]
-    ).catch(() => {});
+    if (sub.item_id && sub.item_id !== 'MAIN') {
+      await pool.query(
+        `UPDATE transport_requirement_items
+         SET dispatch_status = 'AWAITING_ACCEPTANCE',
+             updated_at = NOW()
+         WHERE requirement_id = ? AND (id = ? OR sub_indent_no = ? OR sub_indent_no LIKE ?)`,
+        [sub.requirement_id, sub.item_id, sub.item_id, `%/${sub.item_id}`]
+      ).catch(() => {});
+    }
 
     const negId = `neg_${Date.now()}_${Math.random().toString(36).substring(2,7)}`;
     await pool.query(

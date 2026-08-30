@@ -741,6 +741,211 @@ it('TEST 22: Admin can see and finalize quotes for /02', () => {
   assert.strictEqual(subB.final_rate, 19);
 });
 
+// Helper to simulate Transporter Portal Awarded Contracts / Allocations list generation
+function getMyFinalizedItemsForPortal(state, user) {
+  const itemsList = [];
+  (state.requirements || []).forEach((req) => {
+    const childItems = state.items.filter(i => i.requirement_id === req.id);
+    if (childItems.length > 0) {
+      childItems.forEach((child) => {
+        const myBid = (state.rate_submissions || []).find((s) => {
+          const matchUser = s.transporter_id === user.id || s.transporter_id === user.transporter_id;
+          const matchItem = s.item_id === child.id || s.item_id === child.sub_indent_no;
+          const matchReq = s.requirement_id === req.id;
+          return matchUser && matchItem && matchReq;
+        });
+
+        const isFinalized = myBid && (
+          Boolean(myBid.is_finalized) ||
+          String(myBid.bid_status || '').toUpperCase() === 'FINALIZED' ||
+          String(myBid.acceptance_status || '').toUpperCase() === 'ACCEPTED' ||
+          Number(myBid.final_rate) > 0
+        );
+
+        if (isFinalized) {
+          itemsList.push({
+            item: child,
+            parentReq: req,
+            myBid,
+            isMultiItem: true,
+            uniqueKey: `awarded_${req.id}_${child.id || child.sub_indent_no}`
+          });
+        }
+      });
+    }
+  });
+  return itemsList;
+}
+
+// TEST A: Create /02 -> multiple transporters quote -> admin finalizes transporter A -> /02 disappears from Open Requirements
+it('TEST A: Create /02 -> multiple transporters quote -> admin finalizes transporter A -> /02 disappears from Open Requirements', () => {
+  const state = createTestState();
+  const userA = { id: 'trans_A', transporter_id: 'trans_A', role: 'transporter' };
+  const userB = { id: 'trans_B', transporter_id: 'trans_B', role: 'transporter' };
+  const admin = { id: 'usr_admin', username: 'admin', role: 'admin' };
+
+  // Dispatch /01 to create /02
+  const dispRes = executeDispatchTransaction(state, { user: userA, reqId: 'req_004', itemId: 'item_004_01', loadedQty: 5 });
+  const item02Id = dispRes.reopened_item_id;
+
+  // Both submit quotes
+  submitQuote(state, { user: userA, reqId: 'req_004', itemId: item02Id, rate: 22 });
+  submitQuote(state, { user: userB, reqId: 'req_004', itemId: item02Id, rate: 19 });
+
+  // Prior to finalization: /02 is open
+  assert.strictEqual(getOpenRequirementsForPortal(state).length, 1);
+
+  // Admin finalizes Transporter A
+  finalizeCycleWinner(state, { user: admin, reqId: 'req_004', itemId: item02Id, transporterId: 'trans_A', finalRate: 22 });
+
+  // After finalization: /02 disappears from Open Requirements
+  const openReqs = getOpenRequirementsForPortal(state);
+  assert.strictEqual(openReqs.length, 0, '/02 must disappear from Open Requirements once finalized');
+});
+
+// TEST B: Winning transporter A sees /02 in Awarded Contracts & Dispatch
+it('TEST B: Winning transporter A sees /02 in Awarded Contracts & Dispatch', () => {
+  const state = createTestState();
+  const userA = { id: 'trans_A', transporter_id: 'trans_A', role: 'transporter' };
+  const userB = { id: 'trans_B', transporter_id: 'trans_B', role: 'transporter' };
+  const admin = { id: 'usr_admin', username: 'admin', role: 'admin' };
+
+  const dispRes = executeDispatchTransaction(state, { user: userA, reqId: 'req_004', itemId: 'item_004_01', loadedQty: 5 });
+  const item02Id = dispRes.reopened_item_id;
+
+  submitQuote(state, { user: userA, reqId: 'req_004', itemId: item02Id, rate: 22 });
+  submitQuote(state, { user: userB, reqId: 'req_004', itemId: item02Id, rate: 19 });
+  finalizeCycleWinner(state, { user: admin, reqId: 'req_004', itemId: item02Id, transporterId: 'trans_A', finalRate: 22 });
+
+  const contractsA = getMyFinalizedItemsForPortal(state, userA);
+  const found02 = contractsA.find(c => c.item.sub_indent_no === 'SNPL/26-27/REQ-0004/02');
+  assert.ok(found02, 'Winning transporter A must see /02 in Awarded Contracts');
+  assert.strictEqual(found02.myBid.final_rate, 22);
+});
+
+// TEST C: Losing transporter B does not see /02 in Awarded Contracts
+it('TEST C: Losing transporter B does not see /02 in Awarded Contracts', () => {
+  const state = createTestState();
+  const userA = { id: 'trans_A', transporter_id: 'trans_A', role: 'transporter' };
+  const userB = { id: 'trans_B', transporter_id: 'trans_B', role: 'transporter' };
+  const admin = { id: 'usr_admin', username: 'admin', role: 'admin' };
+
+  const dispRes = executeDispatchTransaction(state, { user: userA, reqId: 'req_004', itemId: 'item_004_01', loadedQty: 5 });
+  const item02Id = dispRes.reopened_item_id;
+
+  submitQuote(state, { user: userA, reqId: 'req_004', itemId: item02Id, rate: 22 });
+  submitQuote(state, { user: userB, reqId: 'req_004', itemId: item02Id, rate: 19 });
+  finalizeCycleWinner(state, { user: admin, reqId: 'req_004', itemId: item02Id, transporterId: 'trans_A', finalRate: 22 });
+
+  const contractsB = getMyFinalizedItemsForPortal(state, userB);
+  const found02 = contractsB.find(c => c.item.sub_indent_no === 'SNPL/26-27/REQ-0004/02');
+  assert.strictEqual(Boolean(found02), false, 'Losing transporter B must NOT see /02 in Awarded Contracts');
+});
+
+// TEST D: /01 finalized bid cannot affect /02 visibility
+it('TEST D: /01 finalized bid cannot affect /02 visibility', () => {
+  const state = createTestState();
+  const userA = { id: 'trans_A', transporter_id: 'trans_A', role: 'transporter' };
+  const userB = { id: 'trans_B', transporter_id: 'trans_B', role: 'transporter' };
+
+  // Dispatch /01 partially
+  executeDispatchTransaction(state, { user: userA, reqId: 'req_004', itemId: 'item_004_01', loadedQty: 5 });
+
+  // Before /02 is finalized, /02 must be visible in Open Requirements despite /01 being finalized
+  const openReqs = getOpenRequirementsForPortal(state);
+  assert.strictEqual(openReqs.some(r => r.sub_indent_no === 'SNPL/26-27/REQ-0004/02'), true);
+
+  // Contracts for Transporter B must not show /01 or /02
+  const contractsB = getMyFinalizedItemsForPortal(state, userB);
+  assert.strictEqual(contractsB.length, 0);
+});
+
+// TEST E: After browser refresh, finalized /02 remains visible to winning transporter
+it('TEST E: After browser refresh, finalized /02 remains visible to winning transporter', () => {
+  const state = createTestState();
+  const userA = { id: 'trans_A', transporter_id: 'trans_A', role: 'transporter' };
+  const admin = { id: 'usr_admin', username: 'admin', role: 'admin' };
+
+  const dispRes = executeDispatchTransaction(state, { user: userA, reqId: 'req_004', itemId: 'item_004_01', loadedQty: 5 });
+  const item02Id = dispRes.reopened_item_id;
+
+  submitQuote(state, { user: userA, reqId: 'req_004', itemId: item02Id, rate: 22 });
+  finalizeCycleWinner(state, { user: admin, reqId: 'req_004', itemId: item02Id, transporterId: 'trans_A', finalRate: 22 });
+
+  // Simulate refresh 1
+  const contracts1 = getMyFinalizedItemsForPortal(state, userA);
+  assert.ok(contracts1.find(c => c.item.sub_indent_no === 'SNPL/26-27/REQ-0004/02'));
+
+  // Simulate refresh 2
+  const contracts2 = getMyFinalizedItemsForPortal(state, userA);
+  assert.ok(contracts2.find(c => c.item.sub_indent_no === 'SNPL/26-27/REQ-0004/02'));
+});
+
+// TEST F: Partial dispatch from finalized /02 correctly updates remaining balance
+it('TEST F: Partial dispatch from finalized /02 correctly updates remaining balance', () => {
+  const state = createTestState();
+  const userA = { id: 'trans_A', transporter_id: 'trans_A', role: 'transporter' };
+  const userB = { id: 'trans_B', transporter_id: 'trans_B', role: 'transporter' };
+  const admin = { id: 'usr_admin', username: 'admin', role: 'admin' };
+
+  // Dispatch /01 (5 MT of 10 MT, remaining 5 MT)
+  const dispRes1 = executeDispatchTransaction(state, { user: userA, reqId: 'req_004', itemId: 'item_004_01', loadedQty: 5 });
+  const item02Id = dispRes1.reopened_item_id;
+
+  // Finalize /02 with Transporter B for remaining 5 MT
+  submitQuote(state, { user: userB, reqId: 'req_004', itemId: item02Id, rate: 19 });
+  finalizeCycleWinner(state, { user: admin, reqId: 'req_004', itemId: item02Id, transporterId: 'trans_B', finalRate: 19 });
+  acceptFinalRate(state, { user: userB, reqId: 'req_004', itemId: item02Id });
+
+  // Transporter B dispatches 3 MT of 5 MT from /02
+  const dispRes2 = executeDispatchTransaction(state, { user: userB, reqId: 'req_004', itemId: item02Id, loadedQty: 3 });
+  assert.strictEqual(dispRes2.success, true);
+  assert.strictEqual(dispRes2.remaining_quantity_mt, 2);
+  assert.strictEqual(dispRes2.reopened_sub_indent_no, 'SNPL/26-27/REQ-0004/03');
+});
+
+// TEST G: If partial dispatch creates /03 for re-quote:
+// - /02 remains in dispatch history
+// - /03 appears in Open Requirements
+// - all eligible transporters including original winner can quote independently
+it('TEST G: /02 remains in dispatch history, /03 appears in Open Requirements, open to all', () => {
+  const state = createTestState();
+  const userA = { id: 'trans_A', transporter_id: 'trans_A', role: 'transporter' };
+  const userB = { id: 'trans_B', transporter_id: 'trans_B', role: 'transporter' };
+  const userC = { id: 'trans_C', transporter_id: 'trans_C', role: 'transporter' };
+  const admin = { id: 'usr_admin', username: 'admin', role: 'admin' };
+
+  // Cycle 1: /01 dispatched 5 MT -> creates /02 (5 MT)
+  const dispRes1 = executeDispatchTransaction(state, { user: userA, reqId: 'req_004', itemId: 'item_004_01', loadedQty: 5 });
+  const item02Id = dispRes1.reopened_item_id;
+
+  // Cycle 2: /02 won by B at 19, B dispatches 3 MT -> creates /03 (2 MT)
+  submitQuote(state, { user: userB, reqId: 'req_004', itemId: item02Id, rate: 19 });
+  finalizeCycleWinner(state, { user: admin, reqId: 'req_004', itemId: item02Id, transporterId: 'trans_B', finalRate: 19 });
+  acceptFinalRate(state, { user: userB, reqId: 'req_004', itemId: item02Id });
+  const dispRes2 = executeDispatchTransaction(state, { user: userB, reqId: 'req_004', itemId: item02Id, loadedQty: 3 });
+  const item03Id = dispRes2.reopened_item_id;
+
+  // Verify dispatch history
+  assert.strictEqual(state.truck_dispatches.length, 2);
+  assert.strictEqual(state.truck_dispatches[0].requirement_item_id, 'item_004_01');
+  assert.strictEqual(state.truck_dispatches[1].requirement_item_id, item02Id);
+
+  // /03 appears in Open Requirements
+  const openReqs = getOpenRequirementsForPortal(state);
+  assert.strictEqual(openReqs.length, 1);
+  assert.strictEqual(openReqs[0].sub_indent_no, 'SNPL/26-27/REQ-0004/03');
+  assert.strictEqual(openReqs[0].quantity_mt, 2);
+
+  // All 3 transporters can quote on /03
+  assert.strictEqual(submitQuote(state, { user: userA, reqId: 'req_004', itemId: item03Id, rate: 25 }).success, true);
+  assert.strictEqual(submitQuote(state, { user: userB, reqId: 'req_004', itemId: item03Id, rate: 20 }).success, true);
+  assert.strictEqual(submitQuote(state, { user: userC, reqId: 'req_004', itemId: item03Id, rate: 18 }).success, true);
+
+  const subs03 = state.rate_submissions.filter(s => s.item_id === item03Id);
+  assert.strictEqual(subs03.length, 3);
+});
+
 console.log('================================================================');
 console.log(`📊 TEST RESULTS: ${passedTests} Passed | ${failedTests} Failed`);
 console.log('================================================================');
