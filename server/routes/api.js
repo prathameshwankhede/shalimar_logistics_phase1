@@ -118,7 +118,10 @@ export async function ensureRequirementsTableExists() {
     const childCols = [
       { name: 'sub_indent_no', def: 'VARCHAR(100) DEFAULT NULL' },
       { name: 'target_date', def: 'DATE DEFAULT NULL' },
+      { name: 'dispatch_status', def: "VARCHAR(50) NOT NULL DEFAULT 'PENDING'" },
       { name: 'allocation_status', def: "VARCHAR(50) DEFAULT 'ACTIVE'" },
+      { name: 'dispatched_quantity_mt', def: 'DECIMAL(12,3) NOT NULL DEFAULT 0.000' },
+      { name: 'remaining_quantity_mt', def: 'DECIMAL(12,3) DEFAULT NULL' },
       { name: 'remaining_action', def: 'VARCHAR(50) DEFAULT NULL' },
       { name: 'released_for_requote_at', def: 'DATETIME DEFAULT NULL' },
       { name: 'released_for_requote_by', def: 'VARCHAR(100) DEFAULT NULL' },
@@ -129,6 +132,30 @@ export async function ensureRequirementsTableExists() {
     for (const { name, def } of childCols) {
       await ensureColumnExists('transport_requirement_items', name, def);
     }
+
+    // Safe Backfill for transport_requirement_items (Idempotent & Preserves Existing Dispatches)
+    try {
+      await pool.query(`
+        UPDATE transport_requirement_items tri
+        LEFT JOIN (
+          SELECT requirement_item_id, COALESCE(SUM(loaded_quantity_mt), 0) AS total_dispatched
+          FROM truck_dispatches
+          GROUP BY requirement_item_id
+        ) td ON (td.requirement_item_id = tri.id OR td.requirement_item_id = tri.sub_indent_no)
+        SET 
+          tri.dispatched_quantity_mt = COALESCE(td.total_dispatched, tri.dispatched_quantity_mt, 0.000),
+          tri.remaining_quantity_mt = GREATEST(0.000, tri.quantity_mt - COALESCE(td.total_dispatched, tri.dispatched_quantity_mt, 0.000)),
+          tri.dispatch_status = CASE 
+            WHEN (tri.quantity_mt - COALESCE(td.total_dispatched, tri.dispatched_quantity_mt, 0.000)) <= 0.001 AND tri.quantity_mt > 0 THEN 'FULLY_DISPATCHED'
+            WHEN COALESCE(td.total_dispatched, tri.dispatched_quantity_mt, 0) > 0 THEN 'PARTIALLY_DISPATCHED'
+            ELSE COALESCE(tri.dispatch_status, 'PENDING')
+          END
+        WHERE tri.remaining_quantity_mt IS NULL OR tri.dispatched_quantity_mt IS NULL
+      `);
+    } catch (backfillErr) {
+      console.warn('⚠️ [SCHEMA MIGRATION] transport_requirement_items backfill notice:', backfillErr.message);
+    }
+
     await pool.query('ALTER TABLE transport_requirements ADD INDEX idx_req_status_created (status, created_at)').catch(() => {});
     await pool.query('ALTER TABLE transport_requirement_items ADD INDEX idx_sub_indent_no (sub_indent_no)').catch(() => {});
     await pool.query('ALTER TABLE transport_requirement_items ADD INDEX idx_req_item_lookup (requirement_id, id)').catch(() => {});
