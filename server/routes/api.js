@@ -3398,7 +3398,13 @@ router.delete('/requirements/:id', authenticateToken, requireRole('admin'), asyn
     await conn.rollback();
     conn.release();
     console.error('❌ DELETE /api/requirements/:id Error:', err.message);
-    return res.status(500).json({ success: false, error: { code: 'DATABASE_ERROR', message: err.message } });
+    return res.status(500).json({
+      success: false,
+      error: {
+        code: 'DATABASE_ERROR',
+        message: 'Unable to delete requirement. Please try again or contact administrator.'
+      }
+    });
   }
 });
 
