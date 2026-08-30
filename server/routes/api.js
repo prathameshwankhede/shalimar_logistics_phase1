@@ -1713,21 +1713,68 @@ async function handleAcceptFinalRate(req, res) {
     }
 
     const { requirementId, itemId, id } = req.params;
+    const submissionId = id || req.body?.submission_id || req.body?.id;
+
+    // Smart ID Resolution across UUIDs, formatted req_no, and sub_indent_no
+    let resolvedReqIds = [requirementId].filter(Boolean);
+    let resolvedItemIds = [itemId].filter(Boolean);
+
+    if (requirementId) {
+      try {
+        const [reqRows] = await pool.query(
+          'SELECT id, req_no FROM transport_requirements WHERE id = ? OR req_no = ? LIMIT 1',
+          [requirementId, requirementId]
+        );
+        if (reqRows.length > 0) {
+          resolvedReqIds.push(reqRows[0].id, reqRows[0].req_no);
+        }
+      } catch (e) {}
+    }
+
+    if (itemId && itemId !== 'MAIN') {
+      try {
+        const [itemRows] = await pool.query(
+          'SELECT id, requirement_id, sub_indent_no FROM transport_requirement_items WHERE (requirement_id IN (?) OR id = ?) AND (id = ? OR sub_indent_no = ? OR sub_indent_no LIKE ?) LIMIT 1',
+          [resolvedReqIds.length > 0 ? resolvedReqIds : [requirementId], itemId, itemId, itemId, `%${itemId}%`]
+        );
+        if (itemRows.length > 0) {
+          resolvedItemIds.push(itemRows[0].id, itemRows[0].sub_indent_no);
+          if (itemRows[0].requirement_id) {
+            resolvedReqIds.push(itemRows[0].requirement_id);
+          }
+        }
+      } catch (e) {}
+    }
 
     let sub = null;
-    if (id) {
-      const [rows] = await pool.query('SELECT * FROM rate_submissions WHERE id = ? LIMIT 1', [id]);
+    if (submissionId) {
+      const [rows] = await pool.query('SELECT * FROM rate_submissions WHERE id = ? LIMIT 1', [submissionId]);
       if (rows.length > 0) sub = rows[0];
-    } else if (requirementId && itemId) {
+    }
+
+    if (!sub && resolvedReqIds.length > 0) {
+      const transMatchIds = [authTransporter.id, authTransporter.code, authTransporter.username].filter(Boolean);
+
       const [rows] = await pool.query(
-        'SELECT * FROM rate_submissions WHERE requirement_id = ? AND item_id = ? AND (is_finalized = 1 OR UPPER(COALESCE(bid_status, "")) IN ("FINALIZED", "COUNTER_ACCEPTED") OR final_rate > 0) ORDER BY finalized_at DESC LIMIT 1',
-        [requirementId, itemId]
+        `SELECT * FROM rate_submissions 
+         WHERE requirement_id IN (?) 
+           AND (item_id IN (?) OR item_id = 'MAIN' OR item_id IS NULL)
+           AND transporter_id IN (?)
+           AND (is_finalized = 1 OR UPPER(COALESCE(bid_status, '')) IN ('FINALIZED', 'COUNTER_ACCEPTED') OR final_rate > 0)
+         ORDER BY is_finalized DESC, finalized_at DESC, updated_at DESC LIMIT 1`,
+        [resolvedReqIds, resolvedItemIds, transMatchIds]
       );
-      if (rows.length > 0) sub = rows[0];
-      else {
+      if (rows.length > 0) {
+        sub = rows[0];
+      } else {
+        // Fallback: any finalized quote for this transporter on the requirement
         const [fallbackRows] = await pool.query(
-          'SELECT * FROM rate_submissions WHERE requirement_id = ? AND item_id = ? AND transporter_id = ? LIMIT 1',
-          [requirementId, itemId, authTransporter.id]
+          `SELECT * FROM rate_submissions 
+           WHERE requirement_id IN (?) 
+             AND transporter_id IN (?)
+             AND (is_finalized = 1 OR UPPER(COALESCE(bid_status, '')) IN ('FINALIZED', 'COUNTER_ACCEPTED') OR final_rate > 0)
+           ORDER BY is_finalized DESC, finalized_at DESC, updated_at DESC LIMIT 1`,
+          [resolvedReqIds, transMatchIds]
         );
         if (fallbackRows.length > 0) sub = fallbackRows[0];
       }
@@ -1880,15 +1927,66 @@ async function handleCreateTruckDispatch(req, res) {
 
     await conn.beginTransaction();
 
+    // Smart ID Resolution across UUIDs, formatted req_no, and sub_indent_no
+    let resolvedReqIds = [requirementId].filter(Boolean);
+    let resolvedItemIds = [itemId].filter(Boolean);
+
+    if (requirementId) {
+      try {
+        const [reqRows] = await conn.query(
+          'SELECT id, req_no FROM transport_requirements WHERE id = ? OR req_no = ? LIMIT 1',
+          [requirementId, requirementId]
+        );
+        if (reqRows.length > 0) {
+          resolvedReqIds.push(reqRows[0].id, reqRows[0].req_no);
+        }
+      } catch (e) {}
+    }
+
+    if (itemId && itemId !== 'MAIN') {
+      try {
+        const [itemRows] = await conn.query(
+          'SELECT id, requirement_id, sub_indent_no FROM transport_requirement_items WHERE (requirement_id IN (?) OR id = ?) AND (id = ? OR sub_indent_no = ? OR sub_indent_no LIKE ?) LIMIT 1',
+          [resolvedReqIds.length > 0 ? resolvedReqIds : [requirementId], itemId, itemId, itemId, `%${itemId}%`]
+        );
+        if (itemRows.length > 0) {
+          resolvedItemIds.push(itemRows[0].id, itemRows[0].sub_indent_no);
+          if (itemRows[0].requirement_id) {
+            resolvedReqIds.push(itemRows[0].requirement_id);
+          }
+        }
+      } catch (e) {}
+    }
+
+    const transMatchIds = [authTransporter.id, authTransporter.code, authTransporter.username].filter(Boolean);
+
     // 1. Find & Lock the Winning Rate Submission for this requirement item
-    const [subRows] = await conn.query(
+    let subRows = [];
+    const [matchedRows] = await conn.query(
       `SELECT * FROM rate_submissions 
-       WHERE requirement_id = ? AND item_id = ? 
-       AND (is_finalized = 1 OR UPPER(COALESCE(bid_status, '')) IN ('FINALIZED', 'COUNTER_ACCEPTED') OR final_rate > 0)
-       ORDER BY finalized_at DESC LIMIT 1
+       WHERE requirement_id IN (?) 
+         AND (item_id IN (?) OR item_id = 'MAIN' OR item_id IS NULL)
+         AND transporter_id IN (?)
+         AND (is_finalized = 1 OR UPPER(COALESCE(bid_status, '')) IN ('FINALIZED', 'COUNTER_ACCEPTED') OR final_rate > 0)
+       ORDER BY is_finalized DESC, finalized_at DESC, updated_at DESC LIMIT 1
        FOR UPDATE`,
-      [requirementId, itemId]
+      [resolvedReqIds, resolvedItemIds, transMatchIds]
     );
+
+    if (matchedRows.length > 0) {
+      subRows = matchedRows;
+    } else {
+      const [fallbackRows] = await conn.query(
+        `SELECT * FROM rate_submissions 
+         WHERE requirement_id IN (?) 
+           AND transporter_id IN (?)
+           AND (is_finalized = 1 OR UPPER(COALESCE(bid_status, '')) IN ('FINALIZED', 'COUNTER_ACCEPTED') OR final_rate > 0)
+         ORDER BY is_finalized DESC, finalized_at DESC, updated_at DESC LIMIT 1
+         FOR UPDATE`,
+        [resolvedReqIds, transMatchIds]
+      );
+      subRows = fallbackRows;
+    }
 
     if (subRows.length === 0) {
       await conn.rollback();

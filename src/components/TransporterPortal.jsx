@@ -590,22 +590,26 @@ export const TransporterPortal = () => {
     });
   };
 
-  const handleAcceptFinalRateClick = async (req, myBid) => {
+  const handleAcceptFinalRateClick = async (req, myBid, parentReq) => {
     try {
-      const subId = myBid.id;
-      setSubmittingItems(prev => ({ ...prev, [`accept_${subId}`]: true }));
-      const reqId = req.requirement_id || req.id;
-      const itemId = req.item_id || req.sub_indent_id || 'MAIN';
-      const res = await acceptFinalRate(reqId, itemId);
+      const subId = myBid?.id;
+      if (subId) {
+        setSubmittingItems(prev => ({ ...prev, [`accept_${subId}`]: true }));
+      }
+      const reqId = parentReq?.id || parentReq?.req_no || parentReq?.request_no || req?.requirement_id || req?.id;
+      const itemId = req?.id || req?.item_id || req?.sub_indent_id || req?.sub_indent_no || 'MAIN';
+      const res = await acceptFinalRate(reqId, itemId, subId);
       if (res && res.success) {
-        setSuccessNotice(`🤝 Successfully accepted finalized rate of ₹${myBid.final_rate || myBid.rate_per_mt}/MT for ${req.sub_indent_no || req.request_no || req.id}. You can now dispatch trucks!`);
+        setSuccessNotice(`🤝 Successfully accepted finalized rate of ₹${myBid?.final_rate || myBid?.rate_per_mt}/MT for ${req?.sub_indent_no || req?.request_no || req?.id || 'requirement'}. You can now dispatch trucks!`);
         setTimeout(() => setSuccessNotice(''), 6000);
         await safeRefreshRequirements();
       }
     } catch (err) {
       alert(err.message || 'Failed to accept final rate.');
     } finally {
-      setSubmittingItems(prev => ({ ...prev, [`accept_${myBid.id}`]: false }));
+      if (myBid?.id) {
+        setSubmittingItems(prev => ({ ...prev, [`accept_${myBid.id}`]: false }));
+      }
     }
   };
 
@@ -2441,7 +2445,7 @@ export const TransporterPortal = () => {
                       <button
                         type="button"
                         disabled={submittingItems[`accept_${myBid.id}`]}
-                        onClick={() => handleAcceptFinalRateClick(item, myBid)}
+                        onClick={() => handleAcceptFinalRateClick(item, myBid, parentReq)}
                         className="btn btn-success"
                         style={{ padding: '8px 20px', fontWeight: '800', fontSize: '0.88rem', display: 'flex', alignItems: 'center', gap: '6px' }}
                       >
@@ -3038,7 +3042,7 @@ export const TransporterPortal = () => {
                             <button
                               type="button"
                               disabled={submittingItems[`accept_${sub.id}`]}
-                              onClick={() => handleAcceptFinalRateClick(targetItem, sub)}
+                              onClick={() => handleAcceptFinalRateClick(targetItem, sub, req)}
                               className="btn btn-success"
                               style={{ padding: '5px 10px', fontSize: '0.75rem', fontWeight: '800' }}
                               title="Accept finalized freight rate"

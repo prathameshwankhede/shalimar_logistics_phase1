@@ -61,7 +61,12 @@ export async function restoreRequirement(id) {
   });
 }
 
-export async function acceptFinalRate(requirementId, itemId) {
+export async function acceptFinalRate(requirementId, itemId, submissionId) {
+  if (submissionId) {
+    return apiClient(`/api/rate-submissions/${submissionId}/accept-final-rate`, {
+      method: 'POST'
+    });
+  }
   return apiClient(`/api/requirements/${requirementId}/items/${itemId}/accept-final-rate`, {
     method: 'POST'
   });

@@ -69,13 +69,30 @@ function finalizeRate(state, subId, agreedRate, adminUser) {
 }
 
 // Emulate Server-Side Accept Final Rate
-function acceptFinalRate(state, requirementId, itemId, authUser) {
+function acceptFinalRate(state, requirementId, itemId, authUser, submissionId = null) {
   if (!authUser) return { status: 401, error: 'Authentication required' };
   const userRole = String(authUser.role || '').trim().toLowerCase();
   if (userRole !== 'transporter') return { status: 403, error: 'Only transporters can accept finalized rates.' };
 
-  const sub = state.rate_submissions.find(s => s.requirement_id === requirementId && s.item_id === itemId && (s.is_finalized || s.bid_status === 'FINALIZED'));
-  if (!sub) return { status: 404, error: 'Finalized quote not found' };
+  let sub = null;
+  if (submissionId) {
+    sub = state.rate_submissions.find(s => s.id === submissionId);
+  }
+
+  if (!sub && requirementId) {
+    const parentReq = state.requirements.find(r => r.id === requirementId || r.req_no === requirementId);
+    const resolvedReqId = parentReq ? parentReq.id : requirementId;
+    const item = state.requirement_items.find(i => (i.requirement_id === resolvedReqId || i.requirement_id === requirementId) && (i.id === itemId || i.sub_indent_no === itemId || i.sub_indent_no?.includes(itemId)));
+    const resolvedItemId = item ? item.id : itemId;
+
+    sub = state.rate_submissions.find(s => 
+      (s.requirement_id === resolvedReqId || s.requirement_id === requirementId) && 
+      (s.item_id === resolvedItemId || s.item_id === itemId || s.item_id === 'MAIN') && 
+      (s.is_finalized || s.bid_status === 'FINALIZED' || Number(s.final_rate) > 0)
+    );
+  }
+
+  if (!sub) return { status: 404, error: 'Finalized quote not found for this requirement item.' };
 
   // Strict server-side winning transporter check
   const isWinningTransporter = (sub.transporter_id === authUser.transporter_id || sub.transporter_id === authUser.id);
@@ -92,7 +109,7 @@ function acceptFinalRate(state, requirementId, itemId, authUser) {
   sub.transporter_accepted_at = new Date().toISOString();
   sub.transporter_accepted_by = authUser.username;
 
-  const item = state.requirement_items.find(i => i.id === itemId && i.requirement_id === requirementId);
+  const item = state.requirement_items.find(i => i.id === sub.item_id && i.requirement_id === sub.requirement_id);
   if (item) item.dispatch_status = 'ACCEPTED';
 
   return { status: 200, success: true, submission: sub };
@@ -340,6 +357,42 @@ it('TEST 2H: Synthetic / unverified transporter_id without matching transporter 
   const res = acceptFinalRate(state, 'req_001', 'item_001', spoofedUser);
   assert.strictEqual(res.status, 403);
   assert.strictEqual(res.code, 'FORBIDDEN_NOT_WINNING_TRANSPORTER');
+});
+
+// TEST 2I: Exact Production Scenario (SNPL/26-27/REQ-0001 item /01 finalized at Rs 11)
+it('TEST 2I: Exact Production Scenario (Req formatted no SNPL/26-27/REQ-0001, sub-indent /01, Rate Rs 11) accepts successfully', () => {
+  const state = {
+    requirements: [
+      { id: 'req_prod_001', req_no: 'SNPL/26-27/REQ-0001', status: 'ACTIVE' }
+    ],
+    requirement_items: [
+      { id: 'item_prod_01', requirement_id: 'req_prod_001', sub_indent_no: 'SNPL/26-27/REQ-0001/01', quantity_mt: 55.0, dispatched_quantity_mt: 0, remaining_quantity_mt: 55.0, dispatch_status: 'AWAITING_ACCEPTANCE' }
+    ],
+    transporters: [
+      { id: 'trans_ram', code: 'RAM01', username: 'ram', company_name: 'Ram Logistics' }
+    ],
+    rate_submissions: [
+      { id: 'sub_ram_01', requirement_id: 'req_prod_001', item_id: 'item_prod_01', transporter_id: 'trans_ram', rate_per_mt: 11, final_rate: 11, is_finalized: 1, bid_status: 'FINALIZED', acceptance_status: 'PENDING' }
+    ],
+    truck_dispatches: []
+  };
+
+  const authUserRam = { id: 'trans_ram', transporter_id: 'trans_ram', username: 'ram', role: 'transporter' };
+
+  // Call with formatted req_no and sub_indent_no (e.g. from UI)
+  const res = acceptFinalRate(state, 'SNPL/26-27/REQ-0001', '/01', authUserRam, 'sub_ram_01');
+  assert.strictEqual(res.status, 200);
+  assert.strictEqual(res.success, true);
+  assert.strictEqual(res.submission.acceptance_status, 'ACCEPTED');
+  assert.strictEqual(state.requirement_items[0].dispatch_status, 'ACCEPTED');
+});
+
+// TEST 2J: Wrong item ID or unfinalized item returns 404
+it('TEST 2J: Non-existent item ID returns 404', () => {
+  const state = createMockWorkflowState();
+  const authUser = { id: 'trans_win', transporter_id: 'trans_win', username: 'win_transporter', role: 'transporter' };
+  const res = acceptFinalRate(state, 'req_001', 'item_non_existent', authUser);
+  assert.strictEqual(res.status, 404);
 });
 
 // TEST 3: Non-winning transporter receives 403 when trying to accept
