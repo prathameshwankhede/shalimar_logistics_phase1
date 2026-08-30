@@ -1,0 +1,22 @@
+# Hostinger Apache & LiteSpeed Configuration
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteBase /
+
+  # 1. Serve existing files directly
+  RewriteCond %{REQUEST_FILENAME} -f [OR]
+  RewriteCond %{REQUEST_FILENAME} -d
+  RewriteRule ^ - [L]
+
+  # 2. Allow API requests to pass to Node.js / Passenger
+  RewriteCond %{REQUEST_URI} ^/api [NC]
+  RewriteRule ^ - [L]
+
+  # 3. Route SPA frontend routes to dist/index.html if available
+  RewriteCond %{DOCUMENT_ROOT}/dist/index.html -f
+  RewriteRule ^.*$ /dist/index.html [L]
+</IfModule>
+
+# Prevent 403 Forbidden directory listing error
+Options -Indexes
+DirectoryIndex dist/index.html index.html

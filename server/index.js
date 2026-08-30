@@ -47,15 +47,22 @@ app.use((req, res, next) => {
   next();
 });
 
-// Health check endpoint with deployment version marker
+// Health check endpoint with deployment version and frontend dist status
 app.get('/api/health', (req, res) => {
+  const distCandidate1 = path.resolve(__dirname, '../dist');
+  const distCandidate2 = path.resolve(process.cwd(), 'dist');
+  const distExists = fs.existsSync(distCandidate1) || fs.existsSync(distCandidate2);
+  const indexExists = fs.existsSync(path.resolve(distCandidate1, 'index.html')) || fs.existsSync(path.resolve(distCandidate2, 'index.html'));
+
   res.json({
     status: 'ok',
     version: '1.9.0-phase1',
-    commit: 'cfeb02b+',
+    commit: '7dd7237+',
     deploy_timestamp: new Date().toISOString(),
     env: process.env.NODE_ENV || 'development',
     port: PORT,
+    frontend_dist_exists: distExists,
+    frontend_index_exists: indexExists,
     db_host: process.env.DB_HOST || process.env.DATABASE_HOST || '127.0.0.1',
     db_user: process.env.DB_USER || process.env.DATABASE_USER || 'root',
     db_name: process.env.DB_NAME || process.env.DATABASE_NAME || 'transflow_db'
@@ -176,19 +183,43 @@ app.use('/api', apiRoutes);
 
 
 // Static File Serving for Hostinger Production Build (dist folder)
-const distPath = path.resolve(__dirname, '../dist');
-if (fs.existsSync(distPath)) {
-  console.log(`📂 Serving static production files from: ${distPath}`);
-  app.use(express.static(distPath));
+const distPath1 = path.resolve(__dirname, '../dist');
+const distPath2 = path.resolve(process.cwd(), 'dist');
+const resolvedDistPath = fs.existsSync(distPath1) ? distPath1 : (fs.existsSync(distPath2) ? distPath2 : distPath1);
 
-  // SPA fallback route for React Router / client routes
-  app.use((req, res, next) => {
-    if (!req.path.startsWith('/api') && req.method === 'GET') {
-      return res.sendFile(path.resolve(distPath, 'index.html'));
-    }
-    next();
-  });
-}
+console.log(`📂 Static asset directory configured: ${resolvedDistPath}`);
+app.use(express.static(resolvedDistPath, { index: false }));
+
+// Fallback for root "/" and client-side SPA routes
+app.get('*', (req, res, next) => {
+  if (req.path.startsWith('/api')) {
+    return next();
+  }
+  const indexPath = path.resolve(resolvedDistPath, 'index.html');
+  if (fs.existsSync(indexPath)) {
+    return res.sendFile(indexPath);
+  }
+  const rootIndexPath = path.resolve(process.cwd(), 'index.html');
+  if (fs.existsSync(rootIndexPath)) {
+    return res.sendFile(rootIndexPath);
+  }
+  return res.status(200).send(`
+    <!DOCTYPE html>
+    <html lang="en">
+      <head>
+        <meta charset="UTF-8" />
+        <title>Shalimar Logistics</title>
+      </head>
+      <body>
+        <div style="font-family: sans-serif; text-align: center; padding: 50px;">
+          <h2>TransFlow Logistics Portal is Initializing...</h2>
+          <p>Please refresh the page in a few seconds.</p>
+          <script>setTimeout(() => window.location.reload(), 3000);</script>
+        </div>
+      </body>
+    </html>
+  `);
+});
 
 // Hostinger Production Express Listener
 console.log(`==================================================`);
