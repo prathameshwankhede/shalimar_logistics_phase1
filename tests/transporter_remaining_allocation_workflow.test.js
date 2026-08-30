@@ -280,13 +280,10 @@ function getTransporterView(reqId, itemId, transporterId) {
     allocationRole = 'ELIGIBLE_PREVIOUS_BIDDER';
     allocationStatus = 'ACCEPTED_SHARED_TRANSPORTER';
     canDispatch = true;
-  } else if (Boolean(myBid) || Boolean(myAlloc)) {
-    allocationRole = 'ELIGIBLE_PREVIOUS_BIDDER';
-    allocationStatus = 'PREVIOUS_BIDDER_PENDING_ACCEPTANCE';
-    canDispatch = false;
   }
 
-  const isVisible = !(fixedRate !== null && allocationRole === 'UNRELATED_TRANSPORTER' && !isWinningTransporter);
+  // STRICT ISOLATION: Finalized items must NOT go to other transporters
+  const isVisible = fixedRate !== null ? (isWinningTransporter || isCurrentTransporterAssigned) : true;
 
   return {
     isVisible,
@@ -295,7 +292,7 @@ function getTransporterView(reqId, itemId, transporterId) {
     canDispatch,
     fixedRate,
     remainingQty: remaining,
-    showAcceptButton: allocationStatus === 'PREVIOUS_BIDDER_PENDING_ACCEPTANCE'
+    showAcceptButton: isVisible && allocationStatus === 'PREVIOUS_BIDDER_PENDING_ACCEPTANCE'
   };
 }
 
@@ -322,20 +319,26 @@ runTest('4. Transporter C bids ₹65', () => {
   submitBid('bid_C', req.id, item.id, 'trans_C', 65);
 });
 
-runTest('5. Admin finalizes Transporter A at ₹55', () => {
+runTest('5. Admin finalizes Transporter A at ₹55 (Only A is winner)', () => {
   finalizeBid('bid_A');
   const winnerAlloc = db.allocations.find(a => a.transporter_id === 'trans_A');
   assert.strictEqual(winnerAlloc.allocation_role, 'WINNER');
   assert.strictEqual(winnerAlloc.acceptance_status, 'ACTIVE');
 });
 
-runTest('6. Only Transporter A initially can dispatch', () => {
+runTest('6. Finalized requirement is visible ONLY to Transporter A; hidden from B and C', () => {
   const viewA = getTransporterView(req.id, item.id, 'trans_A');
   const viewB = getTransporterView(req.id, item.id, 'trans_B');
   const viewC = getTransporterView(req.id, item.id, 'trans_C');
 
+  assert.strictEqual(viewA.isVisible, true);
   assert.strictEqual(viewA.canDispatch, true);
+  // Transporters B and C do NOT receive finalized requirement
+  assert.strictEqual(viewB.isVisible, false);
+  assert.strictEqual(viewB.showAcceptButton, false);
   assert.strictEqual(viewB.canDispatch, false);
+  assert.strictEqual(viewC.isVisible, false);
+  assert.strictEqual(viewC.showAcceptButton, false);
   assert.strictEqual(viewC.canDispatch, false);
 });
 
@@ -345,14 +348,18 @@ runTest('7. Transporter A dispatches 50 MT, remaining becomes 50 MT', () => {
   assert.strictEqual(getGlobalRemainingQty(req.id, item.id), 50);
 });
 
-runTest('8. Transporter B and C can initially see Accept Remaining Allocation', () => {
+runTest('8. After partial dispatch, remaining 50 MT remains ONLY with Transporter A; still hidden from B and C', () => {
+  const viewA = getTransporterView(req.id, item.id, 'trans_A');
   const viewB = getTransporterView(req.id, item.id, 'trans_B');
   const viewC = getTransporterView(req.id, item.id, 'trans_C');
 
-  assert.strictEqual(viewB.isVisible, true);
-  assert.strictEqual(viewB.showAcceptButton, true);
-  assert.strictEqual(viewC.isVisible, true);
-  assert.strictEqual(viewC.showAcceptButton, true);
+  assert.strictEqual(viewA.isVisible, true);
+  assert.strictEqual(viewA.canDispatch, true);
+  assert.strictEqual(viewA.remainingQty, 50);
+  assert.strictEqual(viewB.isVisible, false);
+  assert.strictEqual(viewB.showAcceptButton, false);
+  assert.strictEqual(viewC.isVisible, false);
+  assert.strictEqual(viewC.showAcceptButton, false);
 });
 
 runTest('9. Transporter B clicks Accept Remaining Allocation and succeeds', () => {

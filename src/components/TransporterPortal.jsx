@@ -675,8 +675,8 @@ export const TransporterPortal = () => {
           canDispatch = false;
         }
 
-        // Unrelated transporters who did NOT participate in bidding for this item cannot see finalized allocation
-        if (fixedRate !== null && allocationRole === 'UNRELATED_TRANSPORTER' && !isWinningTransporter) {
+        // STRICT ISOLATION: Finalized items must ONLY be visible to the winning transporter or explicitly assigned transporter
+        if (fixedRate !== null && !isWinningTransporter && !isCurrentTransporterAssigned) {
           return;
         }
 
@@ -832,7 +832,8 @@ export const TransporterPortal = () => {
         canDispatch = false;
       }
 
-      if (fixedRate !== null && allocationRole === 'UNRELATED_TRANSPORTER' && !isWinningTransporter) {
+      // STRICT ISOLATION: Finalized items must ONLY be visible to the winning transporter or explicitly assigned transporter
+      if (fixedRate !== null && !isWinningTransporter && !isCurrentTransporterAssigned) {
         return;
       }
 

@@ -306,6 +306,13 @@ export async function ensureRequirementsTableExists() {
         AND rs.transporter_id IS NOT NULL;
     `).catch(() => {});
 
+    // Clean up any legacy dummy pending acceptance allocations so they never leak to other transporters
+    await pool.query(`
+      DELETE FROM transporter_item_allocations 
+      WHERE allocation_role = 'ELIGIBLE_PREVIOUS_BIDDER' 
+        AND acceptance_status = 'PENDING_ACCEPTANCE'
+    `).catch(() => {});
+
     console.log('[SCHEMA MIGRATION] COMPLETED');
 
     // Run safe reconciliation on startup to synchronize actual dispatch totals
@@ -1947,28 +1954,6 @@ async function handleFinalizeBid(req, res) {
       [allocId, sub.requirement_id, sub.item_id || 'MAIN', null, sub.transporter_id, agreedRate]
     ).catch(e => console.warn('Allocation insert notice:', e.message));
 
-    // Also populate eligible previous bidders for this item as PENDING_ACCEPTANCE
-    await pool.query(
-      `INSERT IGNORE INTO transporter_item_allocations (
-         id, requirement_id, requirement_item_id, sub_indent_no, transporter_id, finalized_rate, allocation_role, acceptance_status, created_at
-       )
-       SELECT 
-         CONCAT('alloc_prev_', rs.id),
-         rs.requirement_id,
-         COALESCE(rs.item_id, 'MAIN'),
-         NULL,
-         rs.transporter_id,
-         ?,
-         'ELIGIBLE_PREVIOUS_BIDDER',
-         'PENDING_ACCEPTANCE',
-         NOW()
-       FROM rate_submissions rs
-       WHERE rs.requirement_id = ? 
-         AND (rs.item_id = ? OR rs.item_id = 'MAIN')
-         AND rs.transporter_id != ?`,
-      [agreedRate, sub.requirement_id, sub.item_id || 'MAIN', sub.transporter_id]
-    ).catch(() => {});
-
     const [updatedRows] = await pool.query('SELECT * FROM rate_submissions WHERE id = ? LIMIT 1', [id]);
     return res.json({
       success: true,
@@ -3010,6 +2995,17 @@ async function handleGetOpenRequirements(req, res) {
     await ensureBidNegotiationHistoryTableExists();
     await ensureRateNegotiationsTableExists();
 
+    const authUser = req.user;
+    const isTransporter = authUser && authUser.role === 'transporter';
+    const callingTransporterMatches = isTransporter
+      ? [
+          authUser.transporter_id,
+          authUser.id,
+          authUser.username,
+          authUser.code
+        ].filter(Boolean).map(s => String(s).toLowerCase())
+      : [];
+
     const reqQuery = "SELECT * FROM transport_requirements WHERE UPPER(COALESCE(status, 'ACTIVE')) NOT IN ('ARCHIVED', 'DELETED', 'CANCELLED') ORDER BY created_at DESC LIMIT 300";
     const [parents] = await pool.query(reqQuery);
 
@@ -3023,13 +3019,77 @@ async function handleGetOpenRequirements(req, res) {
       [parentIds]
     );
 
+    // Fetch all finalized submissions for these requirements to determine winning transporter per item
+    const [finSubRows] = await pool.query(
+      `SELECT requirement_id, item_id, transporter_id, final_rate, rate_per_mt, is_finalized, bid_status
+       FROM rate_submissions
+       WHERE requirement_id IN (?)
+         AND (is_finalized = 1 OR UPPER(COALESCE(bid_status, '')) = 'FINALIZED' OR final_rate > 0)
+       ORDER BY is_finalized DESC, finalized_at DESC`,
+      [parentIds]
+    );
+
+    // Map: reqId_itemId -> winningTransporterId
+    const winningTransporterMap = {};
+    finSubRows.forEach(s => {
+      const k1 = `${s.requirement_id}_${s.item_id}`;
+      if (!winningTransporterMap[k1]) winningTransporterMap[k1] = String(s.transporter_id || '');
+      if (s.requirement_id && !winningTransporterMap[s.requirement_id]) {
+        winningTransporterMap[s.requirement_id] = String(s.transporter_id || '');
+      }
+    });
+
     const itemsMap = {};
     items.forEach(i => {
+      // If user is a transporter, check if this item is finalized to someone else
+      if (isTransporter) {
+        const itemKey = `${i.requirement_id}_${i.id}`;
+        const subKey = i.sub_indent_no ? `${i.requirement_id}_${i.sub_indent_no}` : null;
+        const mainKey = `${i.requirement_id}_MAIN`;
+        const reqKey = i.requirement_id;
+
+        const winnerId = winningTransporterMap[itemKey] || (subKey ? winningTransporterMap[subKey] : null) || winningTransporterMap[mainKey] || winningTransporterMap[reqKey];
+        const remainingAllocTo = i.remaining_allocated_to ? String(i.remaining_allocated_to).toLowerCase() : null;
+
+        if (winnerId) {
+          const isWinner = callingTransporterMatches.includes(String(winnerId).toLowerCase());
+          const isAssigned = remainingAllocTo && callingTransporterMatches.includes(remainingAllocTo);
+
+          // If item is finalized to another transporter and caller is not the winner or assigned, DO NOT SEND TO THIS TRANSPORTER!
+          if (!isWinner && !isAssigned) {
+            return;
+          }
+        }
+      }
+
       if (!itemsMap[i.requirement_id]) itemsMap[i.requirement_id] = [];
       itemsMap[i.requirement_id].push(i);
     });
 
-    const dtos = parents.map(p => formatParentRequirementDto(p, itemsMap[p.id] || []));
+    // Filter parents:
+    // If transporter: only include parents that have at least one visible item OR are unfinalized
+    let visibleParents = parents;
+    if (isTransporter) {
+      visibleParents = parents.filter(p => {
+        const pItems = itemsMap[p.id] || [];
+        const hasChildItemsInDb = items.some(i => i.requirement_id === p.id);
+        if (hasChildItemsInDb) {
+          return pItems.length > 0;
+        } else {
+          // single item requirement
+          const parentWinnerId = winningTransporterMap[p.id];
+          const remainingAllocTo = p.remaining_allocated_to ? String(p.remaining_allocated_to).toLowerCase() : null;
+          if (parentWinnerId) {
+            const isWinner = callingTransporterMatches.includes(String(parentWinnerId).toLowerCase());
+            const isAssigned = remainingAllocTo && callingTransporterMatches.includes(remainingAllocTo);
+            return isWinner || isAssigned;
+          }
+          return true; // unfinalized, open to all
+        }
+      });
+    }
+
+    const dtos = visibleParents.map(p => formatParentRequirementDto(p, itemsMap[p.id] || []));
     return res.json({ success: true, count: dtos.length, requirements: dtos, data: dtos });
   } catch (err) {
     console.error('❌ Get Open Requirements Error:', err.message);
