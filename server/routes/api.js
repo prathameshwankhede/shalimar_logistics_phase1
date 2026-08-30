@@ -3918,11 +3918,12 @@ async function handleCreateRequirements(req, res) {
       const subIndentNo = child.sub_indent_no || `${nextReqNo}/${subIdxStr}`;
       const childTargetDate = child.target_date || targetDate;
 
+      const itemQtyVal = parseFloat(child.quantity_mt || child.required_qty || 0);
       await conn.query(
         `INSERT INTO transport_requirement_items
-         (id, requirement_id, sub_indent_no, product_name, quantity_mt, unit, pickup_origin, drop_location, hsn_code, target_date)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [itemId, parentId, subIndentNo, child.product_name, child.quantity_mt, child.unit, child.pickup_origin, child.drop_location, child.hsn_code || '', childTargetDate]
+         (id, requirement_id, sub_indent_no, product_name, quantity_mt, unit, pickup_origin, drop_location, hsn_code, target_date, dispatched_quantity_mt, remaining_quantity_mt, dispatch_status, allocation_status)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, 'PENDING', 'ACTIVE')`,
+        [itemId, parentId, subIndentNo, child.product_name, itemQtyVal, child.unit || 'MT', child.pickup_origin, child.drop_location, child.hsn_code || '', childTargetDate, itemQtyVal]
       );
     }
 
@@ -3986,12 +3987,12 @@ router.put('/requirements/:id', authenticateToken, requireRole('admin'), async (
         const child = items[idx];
         const itemId = child.id || `req_item_${Date.now()}_${idx}`;
         const prod = child.product_name || child.material_type || '';
-        const qty = Number(child.quantity_mt || child.required_qty || 0);
+        const qtyVal = parseFloat(child.quantity_mt || child.required_qty || 0);
         await conn.query(
           `INSERT INTO transport_requirement_items
-           (id, requirement_id, product_name, quantity_mt, unit, pickup_origin, drop_location, hsn_code)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-          [itemId, id, prod, qty, child.unit || 'MT', child.pickup_origin || pickup, child.drop_location || drop, child.hsn_code || '']
+           (id, requirement_id, product_name, quantity_mt, unit, pickup_origin, drop_location, hsn_code, dispatched_quantity_mt, remaining_quantity_mt, dispatch_status, allocation_status)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, 'PENDING', 'ACTIVE')`,
+          [itemId, id, prod, qtyVal, child.unit || 'MT', child.pickup_origin || pickup, child.drop_location || drop, child.hsn_code || '', qtyVal]
         );
       }
     }
