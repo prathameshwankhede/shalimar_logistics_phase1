@@ -90,7 +90,7 @@ export const AdminDashboard = () => {
   const [dispatchAccessNotice, setDispatchAccessNotice] = useState(null);
 
   // 🚚 LIVE DISPATCHES & FOLDER DIRECTORY STATE
-  const [allLiveDispatches, setAllLiveDispatches] = useState([]);
+  const [allLiveDispatches, setAllLiveDispatches] = useState(() => db?.truck_dispatches || []);
   const [dispatchesLoading, setDispatchesLoading] = useState(false);
   const [dispatchViewMode, setDispatchViewMode] = useState('folders'); // 'folders' | 'table' | 'requests'
   const [selectedTransporterFolder, setSelectedTransporterFolder] = useState('ALL');
@@ -103,9 +103,14 @@ export const AdminDashboard = () => {
       const res = await getAllDispatches();
       if (res && res.success) {
         setAllLiveDispatches(res.dispatches || res.truck_dispatches || []);
+      } else if (db?.truck_dispatches?.length) {
+        setAllLiveDispatches(db.truck_dispatches);
       }
     } catch (e) {
       console.warn('Could not load dispatches:', e.message);
+      if (db?.truck_dispatches?.length) {
+        setAllLiveDispatches(db.truck_dispatches);
+      }
     } finally {
       setDispatchesLoading(false);
     }

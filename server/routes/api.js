@@ -2699,12 +2699,12 @@ async function handleGetDispatches(req, res) {
     if (req.user.role === 'admin') {
       const [rows] = await pool.query(
         `SELECT td.*, 
-                COALESCE(t.company_name, td.transporter_name, td.transporter_id) AS transporter_name, 
-                COALESCE(t.code, td.transporter_code, td.transporter_id) AS transporter_code,
+                COALESCE(t.company_name, t.name, td.transporter_id) AS transporter_name, 
+                COALESCE(t.code, td.transporter_id) AS transporter_code,
                 COALESCE(tr.req_no, td.requirement_id) AS req_no, 
-                COALESCE(tri.pickup_origin, tr.pickup_origin, td.pickup_origin) AS pickup_origin, 
-                COALESCE(tri.drop_location, tr.drop_location, td.drop_location) AS drop_location, 
-                COALESCE(tri.product_name, tr.product_name, td.product_name) AS product_name, 
+                COALESCE(tri.pickup_origin, tr.pickup_origin) AS pickup_origin, 
+                COALESCE(tri.drop_location, tr.drop_location) AS drop_location, 
+                COALESCE(tri.product_name, tr.product_name) AS product_name, 
                 COALESCE(tri.sub_indent_no, td.requirement_item_id) AS sub_indent_no
          FROM truck_dispatches td
          LEFT JOIN transporters t ON (t.id = td.transporter_id OR t.code = td.transporter_id)
@@ -2724,12 +2724,12 @@ async function handleGetDispatches(req, res) {
       const transMatchIds = [authTransporter.id, authTransporter.code, authTransporter.username].filter(Boolean);
       const [rows] = await pool.query(
         `SELECT td.*, 
-                COALESCE(t.company_name, td.transporter_name, td.transporter_id) AS transporter_name, 
-                COALESCE(t.code, td.transporter_code, td.transporter_id) AS transporter_code,
+                COALESCE(t.company_name, t.name, td.transporter_id) AS transporter_name, 
+                COALESCE(t.code, td.transporter_id) AS transporter_code,
                 COALESCE(tr.req_no, td.requirement_id) AS req_no, 
-                COALESCE(tri.pickup_origin, tr.pickup_origin, td.pickup_origin) AS pickup_origin, 
-                COALESCE(tri.drop_location, tr.drop_location, td.drop_location) AS drop_location, 
-                COALESCE(tri.product_name, tr.product_name, td.product_name) AS product_name, 
+                COALESCE(tri.pickup_origin, tr.pickup_origin) AS pickup_origin, 
+                COALESCE(tri.drop_location, tr.drop_location) AS drop_location, 
+                COALESCE(tri.product_name, tr.product_name) AS product_name, 
                 COALESCE(tri.sub_indent_no, td.requirement_item_id) AS sub_indent_no
          FROM truck_dispatches td
          LEFT JOIN transporters t ON (t.id = td.transporter_id OR t.code = td.transporter_id)
