@@ -607,17 +607,26 @@ export const TransporterPortal = () => {
   const [isSubmittingDispatch, setIsSubmittingDispatch] = useState(false);
 
   const handleOpenDispatchModal = (req, myBid) => {
-    const totalQty = Number(req.quantity_mt || req.required_qty || 0);
-    const dispatchedQty = Number(req.dispatched_quantity_mt || 0);
-    const remainingQty = req.remaining_quantity_mt !== undefined && req.remaining_quantity_mt !== null
-      ? Number(req.remaining_quantity_mt)
-      : Math.max(0, totalQty - dispatchedQty);
+    const dispatches = (db.truck_dispatches || []).filter((d) => {
+      if (req && (req.id || req.item_id || req.sub_indent_no)) {
+        return (
+          d.requirement_item_id === req.id ||
+          d.requirement_item_id === req.item_id ||
+          d.requirement_item_id === req.sub_indent_no
+        );
+      }
+      return d.requirement_id === (req.requirement_id || req.id);
+    });
+
+    const alreadyDispatched = dispatches.reduce((acc, curr) => acc + (parseFloat(curr.loaded_quantity_mt || curr.dispatched_qty) || 0), 0);
+    const totalQty = parseFloat(req.quantity_mt || req.required_qty || 0);
+    const remainingQty = Math.max(0, totalQty - alreadyDispatched);
 
     setDispatchingReqItem({
       req,
       myBid,
       totalQty,
-      dispatchedQty,
+      dispatchedQty: alreadyDispatched,
       remainingQty
     });
     setDispatchFormData({

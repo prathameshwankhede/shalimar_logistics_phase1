@@ -2002,23 +2002,29 @@ async function handleCreateTruckDispatch(req, res) {
     }
 
     // 0.1. Explicitly Resolve and Lock Child Requirement Item
-    const bodyItemId = req.body?.item_id || req.body?.requirement_item_id || req.body?.sub_indent_no;
-    let resolvedItemIds = [itemId, bodyItemId].filter(Boolean);
-    let originalItemRec = null;
-    let actualItemId = (itemId && itemId !== 'MAIN') ? itemId : (bodyItemId && bodyItemId !== 'MAIN' ? bodyItemId : itemId);
+    const candidateItemIds = [
+      req.body?.requirement_item_id,
+      req.body?.item_id,
+      itemId,
+      req.body?.sub_indent_no
+    ].filter(Boolean).filter(v => v !== 'MAIN');
 
-    if (actualItemId && actualItemId !== 'MAIN') {
+    let originalItemRec = null;
+    let actualItemId = null;
+    let resolvedItemIds = [];
+
+    if (candidateItemIds.length > 0) {
       const [iRows] = await conn.query(
         `SELECT * FROM transport_requirement_items 
          WHERE (requirement_id = ? OR requirement_id IN (?)) 
-           AND (id = ? OR sub_indent_no = ? OR sub_indent_no LIKE ?) 
+           AND (id IN (?) OR sub_indent_no IN (?) OR sub_indent_no LIKE ?) 
          LIMIT 1 FOR UPDATE`,
-        [actualReqId, resolvedReqIds, actualItemId, actualItemId, `%/${actualItemId}`]
+        [actualReqId, resolvedReqIds, candidateItemIds, candidateItemIds, `%/${candidateItemIds[0]}`]
       );
       if (iRows.length > 0) {
         originalItemRec = iRows[0];
         actualItemId = originalItemRec.id;
-        resolvedItemIds.push(originalItemRec.id, originalItemRec.sub_indent_no);
+        resolvedItemIds = [originalItemRec.id, originalItemRec.sub_indent_no].filter(Boolean);
         if (originalItemRec.requirement_id && !parentReq) {
           const [pRows] = await conn.query(
             'SELECT * FROM transport_requirements WHERE id = ? LIMIT 1 FOR UPDATE',
@@ -2033,19 +2039,6 @@ async function handleCreateTruckDispatch(req, res) {
       }
     }
 
-    if (!originalItemRec && actualReqId) {
-      // Fallback: If only 1 child item exists for this parent requirement, bind to that item
-      const [singleItemRows] = await conn.query(
-        `SELECT * FROM transport_requirement_items WHERE requirement_id = ? OR requirement_id IN (?) ORDER BY id ASC LIMIT 2 FOR UPDATE`,
-        [actualReqId, resolvedReqIds]
-      );
-      if (singleItemRows.length === 1) {
-        originalItemRec = singleItemRows[0];
-        actualItemId = originalItemRec.id;
-        resolvedItemIds.push(originalItemRec.id, originalItemRec.sub_indent_no);
-      }
-    }
-
     if (!parentReq) {
       await conn.rollback();
       conn.release();
@@ -2053,6 +2046,23 @@ async function handleCreateTruckDispatch(req, res) {
         success: false,
         code: 'REQUIREMENT_NOT_FOUND',
         error: 'Parent requirement not found.'
+      });
+    }
+
+    // Check if parent genuinely has child items
+    const [allChildItems] = await conn.query(
+      `SELECT id FROM transport_requirement_items WHERE requirement_id = ? OR requirement_id IN (?) LIMIT 1 FOR UPDATE`,
+      [actualReqId, resolvedReqIds]
+    );
+
+    if (!originalItemRec && allChildItems.length > 0) {
+      // Parent has child items, but the requested item could not be resolved!
+      await conn.rollback();
+      conn.release();
+      return res.status(400).json({
+        success: false,
+        code: 'ITEM_RESOLUTION_FAILED',
+        error: 'Unable to resolve exact requirement item for dispatch. Please specify a valid sub-indent.'
       });
     }
 
@@ -2068,7 +2078,7 @@ async function handleCreateTruckDispatch(req, res) {
          AND (is_finalized = 1 OR UPPER(COALESCE(bid_status, '')) IN ('FINALIZED', 'COUNTER_ACCEPTED') OR final_rate > 0)
        ORDER BY is_finalized DESC, finalized_at DESC, updated_at DESC LIMIT 1
        FOR UPDATE`,
-      [resolvedReqIds, resolvedItemIds, transMatchIds]
+      [resolvedReqIds, resolvedItemIds.length > 0 ? resolvedItemIds : ['MAIN'], transMatchIds]
     );
 
     if (matchedRows.length > 0) {
@@ -2122,7 +2132,7 @@ async function handleCreateTruckDispatch(req, res) {
       });
     }
 
-    // 4. Compute Item Required Quantity and check allocation status
+    // 4. Compute Canonical Item Required Quantity
     let totalItemQty = 0;
     if (originalItemRec) {
       if (
@@ -2138,26 +2148,24 @@ async function handleCreateTruckDispatch(req, res) {
         });
       }
       totalItemQty = parseFloat(originalItemRec.quantity_mt || originalItemRec.required_qty || 0);
-    }
-    
-    if (totalItemQty <= 0 && parentReq) {
-      totalItemQty = parseFloat(parentReq.total_quantity_mt || parentReq.quantity_mt || parentReq.required_qty || 0);
+    } else {
+      totalItemQty = parseFloat(parentReq.quantity_mt || parentReq.total_quantity_mt || 0);
     }
 
     if (totalItemQty <= 0 && winningSub) {
       totalItemQty = parseFloat(winningSub.quoted_quantity_mt || 0);
     }
 
-    // 5. Lock and calculate total already dispatched quantity for this requirement item
+    // 5. Lock and calculate total already dispatched quantity for this requirement item ONLY
     let alreadyDispatched = 0;
     if (originalItemRec) {
       const [dispatchedSumRows] = await conn.query(
         `SELECT COALESCE(SUM(loaded_quantity_mt), 0) AS total_dispatched 
          FROM truck_dispatches 
          WHERE (requirement_id IN (?)) 
-           AND (requirement_item_id = ? OR requirement_item_id = ? OR requirement_item_id IN (?)) 
+           AND (requirement_item_id = ? OR requirement_item_id = ?) 
          FOR UPDATE`,
-        [resolvedReqIds, originalItemRec.id, originalItemRec.sub_indent_no, resolvedItemIds]
+        [resolvedReqIds, originalItemRec.id, originalItemRec.sub_indent_no]
       );
       alreadyDispatched = parseFloat(dispatchedSumRows[0]?.total_dispatched || 0);
     } else {
@@ -2171,19 +2179,19 @@ async function handleCreateTruckDispatch(req, res) {
       alreadyDispatched = parseFloat(dispatchedSumRows[0]?.total_dispatched || 0);
     }
 
-    const remainingQty = parseFloat(Math.max(0, totalItemQty - alreadyDispatched).toFixed(3));
+    const remainingBalance = parseFloat(Math.max(0, totalItemQty - alreadyDispatched).toFixed(3));
 
     // 6. Enforce Tonnage Capacity Gate
-    if (loadedQty > remainingQty) {
+    if (loadedQty > remainingBalance) {
       await conn.rollback();
       conn.release();
       return res.status(400).json({
         success: false,
         code: 'EXCEEDS_REMAINING_QUANTITY',
-        error: `Loaded quantity (${loadedQty} MT) cannot exceed remaining balance (${remainingQty} MT).`,
+        error: `Loaded quantity (${loadedQty} MT) cannot exceed remaining balance (${remainingBalance} MT).`,
         required_quantity_mt: totalItemQty,
         already_dispatched_mt: alreadyDispatched,
-        remaining_quantity_mt: remainingQty
+        remaining_quantity_mt: remainingBalance
       });
     }
 
@@ -2191,13 +2199,13 @@ async function handleCreateTruckDispatch(req, res) {
     const [totalParentDispatchedRows] = await conn.query(
       `SELECT COALESCE(SUM(loaded_quantity_mt), 0) AS total_parent_dispatched 
        FROM truck_dispatches 
-       WHERE requirement_id = ? OR requirement_id = ? 
+       WHERE requirement_id IN (?) 
        FOR UPDATE`,
-      [actualReqId, requirementId]
+      [resolvedReqIds]
     );
     const totalParentDispatched = parseFloat(totalParentDispatchedRows[0]?.total_parent_dispatched || 0);
     const parentCap = parseFloat(parentReq.total_quantity_mt || parentReq.quantity_mt || 0);
-    if (parentCap > 0 && (totalParentDispatched + loadedQty) > parentCap) {
+    if (parentCap > 0 && (totalParentDispatched + loadedQty) > (parentCap + 0.001)) {
       await conn.rollback();
       conn.release();
       return res.status(400).json({
@@ -2223,7 +2231,7 @@ async function handleCreateTruckDispatch(req, res) {
       [
         dispatchId,
         actualReqId,
-        actualItemId,
+        actualItemId || 'MAIN',
         authTransporter.id,
         finalRateVal,
         cleanTruckNo,
@@ -2343,8 +2351,8 @@ async function handleCreateTruckDispatch(req, res) {
                dispatch_status = 'FULLY_DISPATCHED',
                allocation_status = 'COMPLETED',
                updated_at = NOW()
-           WHERE requirement_id = ? AND id = ?`,
-          [newTotalDispatched, actualReqId, actualItemId]
+           WHERE requirement_id = ? AND (id = ? OR sub_indent_no = ?)`,
+          [newTotalDispatched, actualReqId, actualItemId, actualItemId]
         );
       }
 
@@ -2353,7 +2361,7 @@ async function handleCreateTruckDispatch(req, res) {
         `SELECT id, dispatch_status FROM transport_requirement_items WHERE requirement_id = ?`,
         [actualReqId]
       );
-      const allFullyDispatched = allChildItems.length > 0 && allChildItems.every(i => i.id === actualItemId ? true : (i.dispatch_status === 'FULLY_DISPATCHED' || i.dispatch_status === 'RELEASED_FOR_REQUOTE'));
+      const allFullyDispatched = allChildItems.length > 0 && allChildItems.every(i => (i.id === actualItemId || i.sub_indent_no === actualItemId) ? true : (i.dispatch_status === 'FULLY_DISPATCHED' || i.dispatch_status === 'RELEASED_FOR_REQUOTE'));
       const parentStatus = allFullyDispatched ? 'COMPLETED' : 'PARTIALLY_DISPATCHED';
       await conn.query(
         `UPDATE transport_requirements SET status = ?, updated_at = NOW() WHERE id = ?`,
@@ -2393,7 +2401,15 @@ async function handleCreateTruckDispatch(req, res) {
       dispatch_status: newRemaining > 0 ? 'RELEASED_FOR_REQUOTE' : 'FULLY_DISPATCHED',
       is_partial: newRemaining > 0,
       reopened_sub_indent_no: newSubIndentNo,
-      reopened_item_id: replacementItemId
+      reopened_item_id: replacementItemId,
+      item: originalItemRec ? {
+        id: originalItemRec.id,
+        sub_indent_no: originalItemRec.sub_indent_no,
+        total_quantity_mt: totalItemQty,
+        dispatched_quantity_mt: newTotalDispatched,
+        remaining_quantity_mt: newRemaining,
+        dispatch_status: newRemaining > 0 ? 'RELEASED_FOR_REQUOTE' : 'FULLY_DISPATCHED'
+      } : null
     });
   } catch (err) {
     if (conn) {

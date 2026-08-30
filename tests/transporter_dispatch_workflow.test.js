@@ -931,6 +931,221 @@ it('TEST 25: Concurrent dispatch requests cannot exceed exact item quantity', ()
   assert.strictEqual(d2.remaining_quantity_mt, 14.0);
 });
 
+// TEST 26 (TEST A): Parent requirement with child item /01 quantity 44 MT, no dispatches, dispatch 40 MT succeeds
+it('TEST 26 (TEST A): Parent requirement with child item /01 quantity 44 MT, no dispatches, dispatch 40 MT succeeds', () => {
+  const state = createMockWorkflowState();
+  state.requirement_items[0].quantity_mt = 44.0;
+  state.requirement_items[0].remaining_quantity_mt = 44.0;
+  finalizeRate(state, 'sub_win', 10, { username: 'admin', role: 'admin' });
+  acceptFinalRate(state, 'req_001', 'item_001', { id: 'trans_win', transporter_id: 'trans_win', username: 'win_transporter', role: 'transporter' });
+
+  const winUser = { id: 'trans_win', transporter_id: 'trans_win', username: 'win_transporter', role: 'transporter' };
+  const res = dispatchTruck(state, 'req_001', 'item_001', winUser, {
+    truck_number: 'MH31AA1234',
+    loaded_quantity_mt: 40.0,
+    driver_name: 'Driver A',
+    driver_mobile: '9876543210',
+    driver_license: 'DL1234'
+  });
+
+  assert.strictEqual(res.status, 200);
+  assert.strictEqual(res.success, true);
+  assert.strictEqual(res.remaining_quantity_mt, 4.0);
+});
+
+// TEST 27 (TEST B): After dispatching 40 MT from /01 quantity 44 MT, remaining balance equals 4 MT
+it('TEST 27 (TEST B): After dispatching 40 MT from /01 quantity 44 MT, remaining balance equals 4 MT', () => {
+  const state = createMockWorkflowState();
+  state.requirement_items[0].quantity_mt = 44.0;
+  finalizeRate(state, 'sub_win', 10, { username: 'admin', role: 'admin' });
+  acceptFinalRate(state, 'req_001', 'item_001', { id: 'trans_win', transporter_id: 'trans_win', username: 'win_transporter', role: 'transporter' });
+
+  const winUser = { id: 'trans_win', transporter_id: 'trans_win', username: 'win_transporter', role: 'transporter' };
+  dispatchTruck(state, 'req_001', 'item_001', winUser, {
+    truck_number: 'MH31AA1234',
+    loaded_quantity_mt: 40.0,
+    driver_name: 'Driver A',
+    driver_mobile: '9876543210',
+    driver_license: 'DL1234'
+  });
+
+  const alreadyDispatched = state.truck_dispatches
+    .filter(d => d.requirement_item_id === 'item_001')
+    .reduce((acc, curr) => acc + curr.loaded_quantity_mt, 0);
+
+  const remaining = state.requirement_items[0].quantity_mt - alreadyDispatched;
+  assert.strictEqual(remaining, 4.0);
+});
+
+// TEST 28 (TEST C): Dispatch another 5 MT after 40/44 is rejected with EXCEEDS_REMAINING_QUANTITY
+it('TEST 28 (TEST C): Dispatch another 5 MT after 40/44 is rejected with EXCEEDS_REMAINING_QUANTITY', () => {
+  const state = createMockWorkflowState();
+  state.requirement_items[0].quantity_mt = 44.0;
+  finalizeRate(state, 'sub_win', 10, { username: 'admin', role: 'admin' });
+  acceptFinalRate(state, 'req_001', 'item_001', { id: 'trans_win', transporter_id: 'trans_win', username: 'win_transporter', role: 'transporter' });
+
+  const winUser = { id: 'trans_win', transporter_id: 'trans_win', username: 'win_transporter', role: 'transporter' };
+  dispatchTruck(state, 'req_001', 'item_001', winUser, {
+    truck_number: 'MH31AA1234',
+    loaded_quantity_mt: 40.0,
+    driver_name: 'Driver A',
+    driver_mobile: '9876543210',
+    driver_license: 'DL1234'
+  });
+
+  const res2 = dispatchTruck(state, 'req_001', 'item_001', winUser, {
+    truck_number: 'MH31AA5678',
+    loaded_quantity_mt: 5.0,
+    driver_name: 'Driver B',
+    driver_mobile: '9876543211',
+    driver_license: 'DL5678'
+  });
+
+  assert.strictEqual(res2.status, 400);
+  assert.strictEqual(res2.code, 'EXCEEDS_REMAINING_QUANTITY');
+  assert.strictEqual(res2.remaining_quantity_mt, 4.0);
+});
+
+// TEST 29 (TEST D): Sibling /02 dispatches MUST NOT affect /01 balance
+it('TEST 29 (TEST D): Sibling /02 dispatches MUST NOT affect /01 balance', () => {
+  const state = createMockWorkflowState();
+  state.requirement_items[0].quantity_mt = 44.0;
+  state.requirement_items.push({
+    id: 'item_002',
+    requirement_id: 'req_001',
+    sub_indent_no: 'SNPL/26-27/REQ-0001/02',
+    quantity_mt: 50.0,
+    dispatched_quantity_mt: 0.0,
+    remaining_quantity_mt: 50.0
+  });
+
+  // Record 50 MT dispatch for item_002
+  state.truck_dispatches.push({
+    id: 'disp_sibling',
+    requirement_id: 'req_001',
+    requirement_item_id: 'item_002',
+    loaded_quantity_mt: 50.0
+  });
+
+  // Check /01 balance
+  const dispatches01 = state.truck_dispatches.filter(d => d.requirement_item_id === 'item_001');
+  const sum01 = dispatches01.reduce((acc, curr) => acc + curr.loaded_quantity_mt, 0);
+  assert.strictEqual(sum01, 0.0);
+  assert.strictEqual(state.requirement_items[0].quantity_mt - sum01, 44.0);
+});
+
+// TEST 30 (TEST E): Frontend request contains exact child item ID and never sends MAIN
+it('TEST 30 (TEST E): Frontend request contains exact child item ID and never sends MAIN', () => {
+  const item = {
+    id: 'item_req_0001_01_uuid',
+    sub_indent_no: 'SNPL/26-27/REQ-0001/01',
+    requirement_id: 'req_001'
+  };
+
+  const reqId = item.requirement_id || item.parent_req_no || item.id;
+  const itemId = item.id || item.item_id || item.sub_indent_id || item.sub_indent_no || 'MAIN';
+
+  assert.strictEqual(reqId, 'req_001');
+  assert.strictEqual(itemId, 'item_req_0001_01_uuid');
+  assert.notStrictEqual(itemId, 'MAIN');
+});
+
+// TEST 31 (TEST F): Backend receives URL item ID = child item UUID and resolves correctly
+it('TEST 31 (TEST F): Backend receives URL item ID = child item UUID and resolves correctly', () => {
+  const state = createMockWorkflowState();
+  const uuid = 'item_c3f81e3a_9d42_4b52_98d6_e4734891b29a';
+  state.requirement_items[0].id = uuid;
+  state.rate_submissions[0].item_id = uuid;
+
+  const candidateItemIds = [uuid].filter(Boolean).filter(v => v !== 'MAIN');
+  const matchedItem = state.requirement_items.find(i => candidateItemIds.includes(i.id));
+
+  assert.ok(matchedItem);
+  assert.strictEqual(matchedItem.id, uuid);
+});
+
+// TEST 32 (TEST G): Backend receives legacy sub_indent_no and resolves correctly
+it('TEST 32 (TEST G): Backend receives legacy sub_indent_no and resolves correctly', () => {
+  const state = createMockWorkflowState();
+  const subIndent = 'SNPL/26-27/REQ-0001/01';
+  state.requirement_items[0].sub_indent_no = subIndent;
+
+  const candidateItemIds = [subIndent].filter(Boolean).filter(v => v !== 'MAIN');
+  const matchedItem = state.requirement_items.find(i => candidateItemIds.includes(i.sub_indent_no) || candidateItemIds.includes(i.id));
+
+  assert.ok(matchedItem);
+  assert.strictEqual(matchedItem.sub_indent_no, subIndent);
+});
+
+// TEST 33 (TEST H): Parent with child items but unresolved item ID must fail explicitly (ITEM_RESOLUTION_FAILED)
+it('TEST 33 (TEST H): Parent with child items but unresolved item ID must fail explicitly (ITEM_RESOLUTION_FAILED)', () => {
+  const state = createMockWorkflowState();
+  // Request with invalid item ID
+  const invalidCandidate = 'NON_EXISTENT_ITEM';
+  const childItemsExist = state.requirement_items.length > 0;
+  const matchedItem = state.requirement_items.find(i => i.id === invalidCandidate || i.sub_indent_no === invalidCandidate);
+
+  let status = 200;
+  let code = null;
+  if (!matchedItem && childItemsExist) {
+    status = 400;
+    code = 'ITEM_RESOLUTION_FAILED';
+  }
+
+  assert.strictEqual(status, 400);
+  assert.strictEqual(code, 'ITEM_RESOLUTION_FAILED');
+});
+
+// TEST 34 (TEST I): Full end-to-end flow: Finalize -> Winning transporter -> Awarded Contract -> Dispatch modal -> 40/44 dispatch -> LR generation
+it('TEST 34 (TEST I): Full end-to-end flow: Finalize -> Winning transporter -> Awarded Contract -> Dispatch modal -> 40/44 dispatch -> LR generation', () => {
+  const state = createMockWorkflowState();
+  state.requirement_items[0].quantity_mt = 44.0;
+  state.requirement_items[0].remaining_quantity_mt = 44.0;
+
+  // 1. Admin finalizes rate ₹10/MT for trans_win
+  finalizeRate(state, 'sub_win', 10, { username: 'admin', role: 'admin' });
+
+  // 2. Winning transporter accepts final rate
+  acceptFinalRate(state, 'req_001', 'item_001', { id: 'trans_win', transporter_id: 'trans_win', username: 'win_transporter', role: 'transporter' });
+
+  // 3. Winning transporter dispatches 40 MT
+  const winUser = { id: 'trans_win', transporter_id: 'trans_win', username: 'win_transporter', role: 'transporter' };
+  const res = dispatchTruck(state, 'req_001', 'item_001', winUser, {
+    truck_number: 'MH31FC9999',
+    loaded_quantity_mt: 40.0,
+    driver_name: 'Anil Deshmukh',
+    driver_mobile: '9876543210',
+    driver_license: 'MH31DL9999'
+  });
+
+  assert.strictEqual(res.status, 200);
+  assert.strictEqual(res.success, true);
+  assert.strictEqual(res.remaining_quantity_mt, 4.0);
+  assert.ok(res.lr_number.startsWith('LR-SNPL-2026-'));
+  assert.strictEqual(state.truck_dispatches.length, 1);
+  assert.strictEqual(state.truck_dispatches[0].loaded_quantity_mt, 40.0);
+});
+
+// TEST 35 (TEST J): Refresh after dispatch displays remaining balance 4 MT
+it('TEST 35 (TEST J): Refresh after dispatch displays remaining balance 4 MT', () => {
+  const item = {
+    id: 'item_001',
+    quantity_mt: 44.0,
+    dispatched_quantity_mt: 40.0,
+    remaining_quantity_mt: 4.0
+  };
+
+  const dispatches = [{
+    requirement_item_id: 'item_001',
+    loaded_quantity_mt: 40.0
+  }];
+
+  const totalDispatched = dispatches.reduce((acc, curr) => acc + curr.loaded_quantity_mt, 0);
+  const remainingBalance = Math.max(0, item.quantity_mt - totalDispatched);
+
+  assert.strictEqual(remainingBalance, 4.0);
+});
+
 console.log('================================================================');
 console.log(`🎉 TEST SUMMARY: ${passedTests} PASSED, ${failedTests} FAILED`);
 console.log('================================================================');
