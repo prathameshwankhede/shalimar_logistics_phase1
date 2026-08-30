@@ -28,17 +28,19 @@ export const ROLE_PERMISSIONS = {
 };
 
 export function generateToken(user) {
-  const rawRole = user.role || user.user_type || user.account_type || 'transporter';
-  const userRole = String(rawRole).trim().toLowerCase();
-  const permissions = ROLE_PERMISSIONS[userRole] || ROLE_PERMISSIONS.transporter;
+  const rawRole = String(user.role || user.user_type || user.account_type || '').trim().toLowerCase();
+  // Controlled canonicalization: map legacy vendor or transporter to canonical 'transporter'
+  const isTransporter = rawRole === 'transporter' || rawRole === 'vendor' || Boolean(user.transporter_id);
+  const canonicalRole = rawRole === 'admin' ? 'admin' : (isTransporter ? 'transporter' : (rawRole || 'transporter'));
+  const permissions = ROLE_PERMISSIONS[canonicalRole] || ROLE_PERMISSIONS.transporter;
 
   return jwt.sign(
     {
       id: user.id,
       username: user.username,
       name: user.name,
-      role: userRole,
-      transporter_id: user.transporter_id || (userRole === 'transporter' ? user.id : null),
+      role: canonicalRole,
+      transporter_id: user.transporter_id || (canonicalRole === 'transporter' ? user.id : null),
       permissions
     },
     JWT_SECRET,
@@ -59,8 +61,10 @@ export function authenticateToken(req, res, next) {
       return res.status(403).json({ error: 'Invalid or expired authentication token' });
     }
     if (decoded) {
-      const rawRole = decoded.role || decoded.user_type || decoded.account_type || '';
-      decoded.role = String(rawRole).trim().toLowerCase();
+      const rawRole = String(decoded.role || decoded.user_type || decoded.account_type || '').trim().toLowerCase();
+      // Controlled canonicalization: handle stale tokens with legacy 'vendor' role
+      const isTransporter = rawRole === 'transporter' || (rawRole === 'vendor' && (decoded.transporter_id || decoded.id));
+      decoded.role = rawRole === 'admin' ? 'admin' : (isTransporter ? 'transporter' : rawRole);
     }
     req.user = decoded;
     next();

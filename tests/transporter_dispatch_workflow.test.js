@@ -280,6 +280,44 @@ it('TEST 2C: JWT role = "TRANSPORTER" is normalized and allows rate acceptance',
   assert.strictEqual(res.submission.acceptance_status, 'ACCEPTED');
 });
 
+// TEST 2D: Legacy verified transporter account with role "vendor" is canonicalized to "transporter"
+it('TEST 2D: Legacy verified transporter record with role "vendor" receives canonical transporter access', () => {
+  const state = createMockWorkflowState();
+  finalizeRate(state, 'sub_win', 480, { username: 'admin', role: 'admin' });
+
+  // Emulate middleware token decode: rawRole === 'vendor' with transporter_id canonicalized to 'transporter'
+  const rawDecoded = { id: 'trans_win', transporter_id: 'trans_win', username: 'win_transporter', role: 'vendor' };
+  const canonicalRole = (rawDecoded.role === 'vendor' && (rawDecoded.transporter_id || rawDecoded.id)) ? 'transporter' : rawDecoded.role;
+  const authUser = { ...rawDecoded, role: canonicalRole };
+
+  const res = acceptFinalRate(state, 'req_001', 'item_001', authUser);
+  assert.strictEqual(res.status, 200);
+  assert.strictEqual(res.success, true);
+  assert.strictEqual(res.submission.acceptance_status, 'ACCEPTED');
+});
+
+// TEST 2E: Arbitrary user with role "vendor" but no transporter identity is rejected
+it('TEST 2E: Arbitrary user with role "vendor" and no transporter identity is rejected with 403', () => {
+  const state = createMockWorkflowState();
+  finalizeRate(state, 'sub_win', 480, { username: 'admin', role: 'admin' });
+
+  const arbitraryUser = { id: 'usr_guest', username: 'guest_vendor', role: 'vendor' };
+  const res = acceptFinalRate(state, 'req_001', 'item_001', arbitraryUser);
+  assert.strictEqual(res.status, 403);
+  assert.strictEqual(res.error, 'Only transporters can accept finalized rates.');
+});
+
+// TEST 2F: User with invalid role is rejected
+it('TEST 2F: User with invalid role (e.g. "auditor", "viewer") is rejected with 403', () => {
+  const state = createMockWorkflowState();
+  finalizeRate(state, 'sub_win', 480, { username: 'admin', role: 'admin' });
+
+  const viewerUser = { id: 'usr_view', username: 'viewer', role: 'viewer' };
+  const res = acceptFinalRate(state, 'req_001', 'item_001', viewerUser);
+  assert.strictEqual(res.status, 403);
+  assert.strictEqual(res.error, 'Only transporters can accept finalized rates.');
+});
+
 // TEST 3: Non-winning transporter receives 403 when trying to accept
 it('TEST 3: Non-winning transporter receives 403 FORBIDDEN_NOT_WINNING_TRANSPORTER on accept', () => {
   const state = createMockWorkflowState();

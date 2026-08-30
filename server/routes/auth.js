@@ -100,22 +100,36 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ error: 'Invalid Username or Password' });
     }
 
-    const rawRole = foundUser.role || foundUser.user_type || foundUser.account_type || 'transporter';
-    const userRole = String(rawRole).trim().toLowerCase();
-    foundUser.role = userRole;
-    if (userRole === 'transporter') {
+    const rawRole = String(foundUser.role || foundUser.user_type || foundUser.account_type || '').trim().toLowerCase();
+    
+    // Controlled canonicalization: map verified transporter records or legacy vendor roles to canonical 'transporter'
+    const isTransporterRecord = Boolean(
+      foundUser.transporter_id || 
+      rawRole === 'transporter' || 
+      rawRole === 'vendor' ||
+      foundUser.code
+    );
+
+    let canonicalRole = rawRole;
+    if (rawRole === 'admin') {
+      canonicalRole = 'admin';
+    } else if (isTransporterRecord) {
+      canonicalRole = 'transporter';
       foundUser.transporter_id = foundUser.transporter_id || foundUser.id;
+    } else {
+      canonicalRole = rawRole || 'transporter';
     }
 
+    foundUser.role = canonicalRole;
     const token = generateToken(foundUser);
-    const permissions = ROLE_PERMISSIONS[userRole] || ROLE_PERMISSIONS.transporter;
+    const permissions = ROLE_PERMISSIONS[canonicalRole] || ROLE_PERMISSIONS.transporter;
 
     // Minimal Safe User DTO (No passwords, hashes, or unrelated organization tables)
     const userDto = {
       id: foundUser.id,
       username: foundUser.username,
       name: foundUser.name,
-      role: userRole,
+      role: canonicalRole,
       transporter_id: foundUser.transporter_id || null,
       permissions
     };

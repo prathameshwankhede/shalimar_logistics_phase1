@@ -1706,6 +1706,13 @@ async function handleAcceptFinalRate(req, res) {
       return res.status(401).json({ success: false, error: 'Authentication required' });
     }
 
+    console.log('[AUTH DEBUG]', {
+      userId: req.user?.id,
+      transporterId: req.user?.transporter_id,
+      role: req.user?.role,
+      normalizedRole: String(req.user?.role || '').trim().toLowerCase()
+    });
+
     const userRole = String(req.user.role || '').trim().toLowerCase();
     if (userRole !== 'transporter') {
       return res.status(403).json({ success: false, error: 'Only transporters can accept finalized rates.' });
@@ -1822,6 +1829,13 @@ async function handleCreateTruckDispatch(req, res) {
       conn.release();
       return res.status(401).json({ success: false, error: 'Authentication required' });
     }
+
+    console.log('[AUTH DEBUG DISPATCH]', {
+      userId: req.user?.id,
+      transporterId: req.user?.transporter_id,
+      role: req.user?.role,
+      normalizedRole: String(req.user?.role || '').trim().toLowerCase()
+    });
 
     const userRole = String(req.user.role || '').trim().toLowerCase();
     if (userRole !== 'transporter') {
