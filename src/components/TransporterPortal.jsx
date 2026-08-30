@@ -600,6 +600,13 @@ export const TransporterPortal = () => {
       const itemId = req?.id || req?.item_id || req?.sub_indent_id || req?.sub_indent_no || 'MAIN';
       const res = await acceptFinalRate(reqId, itemId, subId);
       if (res && res.success) {
+        if (typeof updateLocalRateSubmission === 'function' && myBid) {
+          updateLocalRateSubmission({
+            ...myBid,
+            acceptance_status: 'ACCEPTED',
+            transporter_accepted_at: new Date().toISOString()
+          });
+        }
         setSuccessNotice(`🤝 Successfully accepted finalized rate of ₹${myBid?.final_rate || myBid?.rate_per_mt}/MT for ${req?.sub_indent_no || req?.request_no || req?.id || 'requirement'}. You can now dispatch trucks!`);
         setTimeout(() => setSuccessNotice(''), 6000);
         await safeRefreshRequirements();
