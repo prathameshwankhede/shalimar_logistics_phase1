@@ -97,3 +97,11 @@ export async function getDispatchById(id) {
   });
 }
 
+export async function releaseRemainingForRequote(requirementId, itemId, reason = '') {
+  return apiClient(`/api/requirements/${requirementId}/items/${itemId}/release-remaining-for-requote`, {
+    method: 'POST',
+    body: JSON.stringify({ reason })
+  });
+}
+
+

@@ -76,31 +76,57 @@ CREATE TABLE IF NOT EXISTS `master_records` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- 5. INDENTS / RATE REQUESTS TABLE
-CREATE TABLE IF NOT EXISTS `rate_requests` (
-  `id` VARCHAR(64) NOT NULL,
-  `request_no` VARCHAR(100) NOT NULL,
-  `title` VARCHAR(255) NOT NULL,
-  `batch_no` VARCHAR(50) DEFAULT NULL,
-  `sub_no` VARCHAR(20) DEFAULT NULL,
-  `origin_city` VARCHAR(150) NOT NULL,
-  `origin_pin` VARCHAR(20) DEFAULT NULL,
-  `dest_city` VARCHAR(150) NOT NULL,
-  `dest_pin` VARCHAR(20) DEFAULT NULL,
-  `company_unit` VARCHAR(255) DEFAULT NULL,
-  `material_type` VARCHAR(150) DEFAULT NULL,
-  `hsn_code` VARCHAR(30) DEFAULT NULL,
-  `required_qty` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
-  `unit` VARCHAR(20) DEFAULT 'MT',
+CREATE TABLE IF NOT EXISTS `transport_requirements` (
+  `id` VARCHAR(100) NOT NULL,
+  `req_no` VARCHAR(100) NOT NULL,
+  `title` VARCHAR(255) DEFAULT NULL,
+  `pickup_origin` VARCHAR(255) DEFAULT NULL,
+  `drop_location` VARCHAR(255) DEFAULT NULL,
+  `product_name` VARCHAR(255) DEFAULT NULL,
+  `quantity_mt` DECIMAL(12,3) NOT NULL DEFAULT 0.000,
+  `total_quantity_mt` DECIMAL(12,3) NOT NULL DEFAULT 0.000,
+  `unit` VARCHAR(50) DEFAULT 'MT',
   `target_date` DATE DEFAULT NULL,
-  `target_rate` DECIMAL(12,2) DEFAULT NULL,
-  `vehicle_type` VARCHAR(100) DEFAULT NULL,
-  `status` ENUM('Open', 'Allocated', 'Closed', 'Cancelled') NOT NULL DEFAULT 'Open',
-  `notes` TEXT DEFAULT NULL,
-  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
-  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `status` VARCHAR(50) NOT NULL DEFAULT 'Active',
+  `submitted_bids_count` INT DEFAULT 0,
+  `approval_status` VARCHAR(50) DEFAULT 'DRAFT',
+  `created_by` VARCHAR(100) DEFAULT NULL,
+  `created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `idx_requests_no` (`request_no`),
-  KEY `idx_requests_status` (`status`)
+  UNIQUE KEY `idx_req_no` (`req_no`),
+  KEY `idx_req_status_created` (`status`, `created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 5.1. REQUIREMENT CHILD/SUB-INDENT ITEMS TABLE
+CREATE TABLE IF NOT EXISTS `transport_requirement_items` (
+  `id` VARCHAR(100) NOT NULL,
+  `requirement_id` VARCHAR(100) NOT NULL,
+  `sub_indent_no` VARCHAR(100) DEFAULT NULL,
+  `product_name` VARCHAR(255) NOT NULL,
+  `quantity_mt` DECIMAL(12,3) NOT NULL,
+  `unit` VARCHAR(50) DEFAULT 'MT',
+  `pickup_origin` VARCHAR(255) DEFAULT NULL,
+  `drop_location` VARCHAR(255) DEFAULT NULL,
+  `hsn_code` VARCHAR(50) DEFAULT NULL,
+  `target_date` DATE DEFAULT NULL,
+  `dispatch_status` VARCHAR(50) DEFAULT 'PENDING',
+  `allocation_status` VARCHAR(50) DEFAULT 'ACTIVE',
+  `remaining_action` VARCHAR(50) DEFAULT NULL,
+  `dispatched_quantity_mt` DECIMAL(12,3) DEFAULT 0.000,
+  `remaining_quantity_mt` DECIMAL(12,3) DEFAULT NULL,
+  `released_for_requote_at` DATETIME DEFAULT NULL,
+  `released_for_requote_by` VARCHAR(100) DEFAULT NULL,
+  `released_for_requote_reason` TEXT DEFAULT NULL,
+  `replacement_item_id` VARCHAR(100) DEFAULT NULL,
+  `source_item_id` VARCHAR(100) DEFAULT NULL,
+  `created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_req_id` (`requirement_id`),
+  KEY `idx_sub_indent_no` (`sub_indent_no`),
+  KEY `idx_req_item_lookup` (`requirement_id`, `id`),
+  CONSTRAINT `fk_tri_req` FOREIGN KEY (`requirement_id`) REFERENCES `transport_requirements` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- 6. BIDS / RATE SUBMISSIONS TABLE (Canonical Production Schema)

@@ -2388,14 +2388,23 @@ export const TransporterPortal = () => {
               );
               const totalDispatched = dispatches.reduce((acc, curr) => acc + (parseFloat(curr.loaded_quantity_mt || curr.dispatched_qty) || 0), 0);
               const remainingBalance = Math.max(0, totalQty - totalDispatched);
-              const isCompleted = remainingBalance <= 0 || item.dispatch_status === 'FULLY_DISPATCHED';
+              const isReleasedForRequote = item.dispatch_status === 'RELEASED_FOR_REQUOTE' || item.allocation_status === 'RELEASED_FOR_REQUOTE';
+              const isCompleted = (!isReleasedForRequote && remainingBalance <= 0) || item.dispatch_status === 'FULLY_DISPATCHED';
 
               return (
                 <div
                   key={uniqueKey}
                   style={{
-                    background: isCompleted ? 'rgba(16, 185, 129, 0.04)' : 'rgba(255,255,255,0.03)',
-                    border: isCompleted ? '1px solid #10b981' : '1px solid var(--border-color)',
+                    background: isReleasedForRequote
+                      ? 'rgba(245, 158, 11, 0.04)'
+                      : isCompleted
+                      ? 'rgba(16, 185, 129, 0.04)'
+                      : 'rgba(255,255,255,0.03)',
+                    border: isReleasedForRequote
+                      ? '1px solid #f59e0b'
+                      : isCompleted
+                      ? '1px solid #10b981'
+                      : '1px solid var(--border-color)',
                     borderRadius: '16px',
                     padding: '20px',
                     marginBottom: '24px'
@@ -2404,8 +2413,14 @@ export const TransporterPortal = () => {
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '16px', marginBottom: '16px', paddingBottom: '14px', borderBottom: '1px solid var(--border-color)' }}>
                     <div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px', flexWrap: 'wrap' }}>
-                        <span className={isCompleted ? "badge badge-awarded" : isAccepted ? "badge badge-open" : "badge badge-warning"}>
-                          {isCompleted ? '✓ CONTRACT COMPLETED' : isAccepted ? '✅ ACTIVE CONTRACT' : '🏆 AWAITING ACCEPTANCE'}
+                        <span className={isReleasedForRequote ? "badge badge-warning" : isCompleted ? "badge badge-awarded" : isAccepted ? "badge badge-open" : "badge badge-warning"}>
+                          {isReleasedForRequote
+                            ? '🔄 REMAINING QUANTITY RELEASED FOR RE-QUOTE'
+                            : isCompleted
+                            ? '✓ CONTRACT COMPLETED'
+                            : isAccepted
+                            ? '✅ ACTIVE CONTRACT'
+                            : '🏆 AWAITING ACCEPTANCE'}
                         </span>
                         <span style={{ fontSize: '0.85rem', color: '#38bdf8', fontFamily: 'monospace', fontWeight: '800' }}>
                           {subCode}
@@ -2424,12 +2439,32 @@ export const TransporterPortal = () => {
                       <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Agreed Freight Rate</div>
                       <div style={{ fontSize: '1.3rem', fontWeight: '800', color: '#34d399' }}>₹{finalRate}/MT</div>
                       <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '2px' }}>
-                        Allocated: <strong>{totalQty} MT</strong> | Dispatched: <strong style={{ color: '#38bdf8' }}>{totalDispatched} MT</strong> | Balance: <strong style={{ color: isCompleted ? '#34d399' : '#fbbf24' }}>{remainingBalance} MT</strong>
+                        Allocated: <strong>{totalQty} MT</strong> | Dispatched: <strong style={{ color: '#38bdf8' }}>{totalDispatched} MT</strong> | {isReleasedForRequote ? <span>Released: <strong style={{ color: '#fbbf24' }}>{remainingBalance} MT</strong></span> : <span>Balance: <strong style={{ color: isCompleted ? '#34d399' : '#fbbf24' }}>{remainingBalance} MT</strong></span>}
                       </div>
                     </div>
                   </div>
 
-                  {!isAccepted ? (
+                  {isReleasedForRequote ? (
+                    <div style={{
+                      background: 'rgba(245, 158, 11, 0.08)',
+                      border: '1px solid rgba(245, 158, 11, 0.3)',
+                      borderRadius: '12px',
+                      padding: '14px 18px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '12px'
+                    }}>
+                      <div style={{ fontSize: '1.4rem' }}>🔄</div>
+                      <div>
+                        <div style={{ color: '#fbbf24', fontWeight: '800', fontSize: '0.9rem' }}>
+                          Remaining Quantity ({remainingBalance} MT) Released for Fresh Re-Quote
+                        </div>
+                        <div style={{ color: 'var(--text-sub)', fontSize: '0.8rem', marginTop: '2px' }}>
+                          Dispatched {totalDispatched} MT under this contract. Further truck dispatch for the released balance is closed. Existing dispatch history and LR records remain fully preserved.
+                        </div>
+                      </div>
+                    </div>
+                  ) : !isAccepted ? (
                     <div style={{
                       background: 'rgba(245, 158, 11, 0.12)',
                       border: '1px solid #f59e0b',
@@ -3029,6 +3064,10 @@ export const TransporterPortal = () => {
                           <span className="badge badge-danger" style={{ background: 'rgba(239, 68, 68, 0.2)', color: '#fca5a5', border: '1px solid #ef4444' }}>
                             🗑️ Cancelled
                           </span>
+                        ) : (targetItem?.dispatch_status === 'RELEASED_FOR_REQUOTE' || targetItem?.allocation_status === 'RELEASED_FOR_REQUOTE') ? (
+                          <span className="badge badge-warning" style={{ background: 'rgba(245, 158, 11, 0.25)', border: '1px solid #f59e0b', color: '#fbbf24', fontWeight: '800', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                            🔄 Released for Re-Quote
+                          </span>
                         ) : isFinalized ? (
                           <span className="badge badge-awarded" style={{ background: '#dcfce7', color: '#047857', border: '1px solid #86efac', fontWeight: '800', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
                             {isAccepted ? '✅ Rate Accepted' : `🏆 Rate Finalized (₹${finalRate}/MT)`}
@@ -3050,7 +3089,7 @@ export const TransporterPortal = () => {
 
                       <td style={{ textAlign: 'right' }}>
                         <div style={{ display: 'inline-flex', gap: '6px', alignItems: 'center' }}>
-                          {isFinalized && !isAccepted && targetItem && (
+                          {isFinalized && !isAccepted && targetItem && (targetItem?.dispatch_status !== 'RELEASED_FOR_REQUOTE' && targetItem?.allocation_status !== 'RELEASED_FOR_REQUOTE') && (
                             <button
                               type="button"
                               disabled={submittingItems[`accept_${sub.id}`]}
@@ -3063,7 +3102,7 @@ export const TransporterPortal = () => {
                             </button>
                           )}
 
-                          {isFinalized && isAccepted && targetItem && (
+                          {isFinalized && isAccepted && targetItem && (targetItem?.dispatch_status !== 'RELEASED_FOR_REQUOTE' && targetItem?.allocation_status !== 'RELEASED_FOR_REQUOTE') && (
                             <button
                               type="button"
                               onClick={() => handleOpenDispatchModal(targetItem, sub)}

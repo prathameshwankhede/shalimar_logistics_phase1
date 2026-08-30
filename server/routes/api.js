@@ -117,7 +117,14 @@ async function ensureRequirementsTableExists() {
 
     const childCols = [
       { name: 'sub_indent_no', def: 'VARCHAR(100) DEFAULT NULL' },
-      { name: 'target_date', def: 'DATE DEFAULT NULL' }
+      { name: 'target_date', def: 'DATE DEFAULT NULL' },
+      { name: 'allocation_status', def: "VARCHAR(50) DEFAULT 'ACTIVE'" },
+      { name: 'remaining_action', def: 'VARCHAR(50) DEFAULT NULL' },
+      { name: 'released_for_requote_at', def: 'DATETIME DEFAULT NULL' },
+      { name: 'released_for_requote_by', def: 'VARCHAR(100) DEFAULT NULL' },
+      { name: 'released_for_requote_reason', def: 'TEXT DEFAULT NULL' },
+      { name: 'replacement_item_id', def: 'VARCHAR(100) DEFAULT NULL' },
+      { name: 'source_item_id', def: 'VARCHAR(100) DEFAULT NULL' }
     ];
     for (const { name, def } of childCols) {
       await ensureColumnExists('transport_requirement_items', name, def);
@@ -182,6 +189,13 @@ function formatParentRequirementDto(parentRow, childItems = [], bidsCount = 0, i
       dispatched_quantity_mt: itemDispatchedQty,
       remaining_quantity_mt: itemRemainingQty,
       dispatch_status: item.dispatch_status || (itemRemainingQty <= 0 && itemDispatchedQty > 0 ? 'FULLY_DISPATCHED' : (itemDispatchedQty > 0 ? 'PARTIALLY_DISPATCHED' : 'PENDING')),
+      allocation_status: item.allocation_status || (item.dispatch_status === 'RELEASED_FOR_REQUOTE' ? 'RELEASED_FOR_REQUOTE' : 'ACTIVE'),
+      remaining_action: item.remaining_action || null,
+      released_for_requote_at: item.released_for_requote_at || null,
+      released_for_requote_by: item.released_for_requote_by || null,
+      released_for_requote_reason: item.released_for_requote_reason || null,
+      replacement_item_id: item.replacement_item_id || null,
+      source_item_id: item.source_item_id || null,
       unit: item.unit || 'MT',
       pickup_origin: item.pickup_origin || parentRow.pickup_origin || '',
       drop_location: item.drop_location || parentRow.drop_location || '',
@@ -2073,7 +2087,20 @@ async function handleCreateTruckDispatch(req, res) {
     );
 
     if (itemRows.length > 0) {
-      totalItemQty = parseFloat(itemRows[0].quantity_mt || itemRows[0].required_qty || 0);
+      const itemRec = itemRows[0];
+      if (
+        String(itemRec.dispatch_status || '').toUpperCase() === 'RELEASED_FOR_REQUOTE' ||
+        String(itemRec.allocation_status || '').toUpperCase() === 'RELEASED_FOR_REQUOTE'
+      ) {
+        await conn.rollback();
+        conn.release();
+        return res.status(409).json({
+          success: false,
+          code: 'ALLOCATION_RELEASED_FOR_REQUOTE',
+          message: 'Remaining quantity has been released for fresh quotation and cannot be dispatched under the previous contract.'
+        });
+      }
+      totalItemQty = parseFloat(itemRec.quantity_mt || itemRec.required_qty || 0);
     } else {
       const [parentRows] = await conn.query(
         `SELECT * FROM transport_requirements WHERE id = ? FOR UPDATE`,
@@ -2365,6 +2392,215 @@ async function handleGetDispatchById(req, res) {
 }
 
 // -------------------------------------------------------------
+// RELEASE REMAINING QUANTITY FOR RE-QUOTE 🔄 (ADMIN-ONLY)
+// -------------------------------------------------------------
+async function handleReleaseRemainingForRequote(req, res) {
+  let conn;
+  try {
+    await ensureRequirementsTableExists();
+    await ensureTruckDispatchesTableExists();
+    await ensureSecurityAuditLogsTableExists();
+
+    // 1. RBAC Check - Strictly Admin Only
+    if (!req.user || req.user.role !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        code: 'FORBIDDEN_ADMIN_ONLY',
+        error: 'Only administrative users are authorized to release remaining quantities for re-quote.'
+      });
+    }
+
+    const { requirementId, itemId } = req.params;
+    const { reason = '' } = req.body || {};
+
+    conn = await pool.getConnection();
+    await conn.beginTransaction();
+
+    // 2. Resolve and Lock Parent Requirement
+    const [reqRows] = await conn.query(
+      `SELECT * FROM transport_requirements WHERE id = ? OR req_no = ? LIMIT 1 FOR UPDATE`,
+      [requirementId, requirementId]
+    );
+
+    if (reqRows.length === 0) {
+      await conn.rollback();
+      conn.release();
+      return res.status(404).json({ success: false, error: 'Parent requirement record not found.' });
+    }
+
+    const parentReq = reqRows[0];
+    const actualReqId = parentReq.id;
+
+    // 3. Resolve and Lock Original Requirement Item
+    const [itemRows] = await conn.query(
+      `SELECT * FROM transport_requirement_items 
+       WHERE requirement_id = ? AND (id = ? OR sub_indent_no = ? OR sub_indent_no LIKE ?)
+       LIMIT 1 FOR UPDATE`,
+      [actualReqId, itemId, itemId, `%/${itemId}`]
+    );
+
+    if (itemRows.length === 0) {
+      await conn.rollback();
+      conn.release();
+      return res.status(404).json({ success: false, error: 'Requirement item record not found.' });
+    }
+
+    const originalItem = itemRows[0];
+    const actualItemId = originalItem.id;
+
+    // 4. Duplicate Release Guard
+    if (
+      String(originalItem.dispatch_status || '').toUpperCase() === 'RELEASED_FOR_REQUOTE' ||
+      String(originalItem.allocation_status || '').toUpperCase() === 'RELEASED_FOR_REQUOTE'
+    ) {
+      await conn.rollback();
+      conn.release();
+      return res.status(409).json({
+        success: false,
+        code: 'ALREADY_RELEASED_FOR_REQUOTE',
+        error: 'This requirement item has already been released for fresh quotation.'
+      });
+    }
+
+    // 5. Calculate Dispatched and Remaining Quantities from actual truck dispatches
+    const [dispatchedRows] = await conn.query(
+      `SELECT COALESCE(SUM(loaded_quantity_mt), 0) AS total_dispatched 
+       FROM truck_dispatches 
+       WHERE requirement_id = ? AND requirement_item_id = ? 
+       FOR UPDATE`,
+      [actualReqId, actualItemId]
+    );
+
+    const totalItemQty = parseFloat(originalItem.quantity_mt || 0);
+    const totalDispatched = parseFloat(dispatchedRows[0]?.total_dispatched || 0);
+    const remainingQty = parseFloat(Math.max(0, totalItemQty - totalDispatched).toFixed(3));
+
+    // 6. Enforce Remaining Quantity > 0
+    if (remainingQty <= 0) {
+      await conn.rollback();
+      conn.release();
+      return res.status(400).json({
+        success: false,
+        code: 'NO_REMAINING_QUANTITY',
+        error: `Cannot release for re-quote: remaining quantity is 0 MT (Total: ${totalItemQty} MT, Dispatched: ${totalDispatched} MT).`
+      });
+    }
+
+    // 7. Concurrency-Safe Next Sub-Indent Number Generation
+    const [allItems] = await conn.query(
+      `SELECT id, sub_indent_no FROM transport_requirement_items WHERE requirement_id = ? FOR UPDATE`,
+      [actualReqId]
+    );
+
+    let maxSeq = 0;
+    allItems.forEach((i) => {
+      const match = String(i.sub_indent_no || '').match(/\/(\d+)$/);
+      if (match) {
+        const num = parseInt(match[1], 10);
+        if (!isNaN(num) && num > maxSeq) maxSeq = num;
+      }
+    });
+    if (maxSeq === 0) maxSeq = allItems.length;
+    const nextSeq = maxSeq + 1;
+    const nextSeqStr = String(nextSeq).padStart(2, '0');
+    const parentReqNo = parentReq.req_no || actualReqId;
+    const newSubIndentNo = `${parentReqNo}/${nextSeqStr}`;
+    const replacementItemId = `item_${actualReqId.replace(/[^a-zA-Z0-9_]/g, '')}_${nextSeqStr}_${Math.random().toString(36).substring(2, 6)}`;
+
+    // 8. Update Original Item: Mark RELEASED_FOR_REQUOTE and close remaining allocation
+    await conn.query(
+      `UPDATE transport_requirement_items
+       SET dispatch_status = 'RELEASED_FOR_REQUOTE',
+           allocation_status = 'RELEASED_FOR_REQUOTE',
+           remaining_action = 'REQUOTE',
+           dispatched_quantity_mt = ?,
+           remaining_quantity_mt = 0,
+           released_for_requote_at = NOW(),
+           released_for_requote_by = ?,
+           released_for_requote_reason = ?,
+           replacement_item_id = ?,
+           updated_at = NOW()
+       WHERE id = ?`,
+      [totalDispatched, req.user.username || 'admin', reason, replacementItemId, actualItemId]
+    );
+
+    // 9. Insert Replacement Requirement Item for the exact remaining quantity
+    const targetDateVal = originalItem.target_date || parentReq.target_date || new Date();
+    await conn.query(
+      `INSERT INTO transport_requirement_items (
+         id, requirement_id, sub_indent_no, product_name, quantity_mt, unit,
+         pickup_origin, drop_location, hsn_code, target_date,
+         dispatch_status, allocation_status, remaining_quantity_mt, dispatched_quantity_mt,
+         source_item_id, created_at, updated_at
+       ) VALUES (
+         ?, ?, ?, ?, ?, ?,
+         ?, ?, ?, ?,
+         'PENDING', 'ACTIVE', ?, 0,
+         ?, NOW(), NOW()
+       )`,
+      [
+        replacementItemId,
+        actualReqId,
+        newSubIndentNo,
+        originalItem.product_name,
+        remainingQty,
+        originalItem.unit || 'MT',
+        originalItem.pickup_origin || parentReq.pickup_origin,
+        originalItem.drop_location || parentReq.drop_location,
+        originalItem.hsn_code || '',
+        targetDateVal,
+        remainingQty,
+        actualItemId
+      ]
+    );
+
+    // 10. Keep Parent Requirement in active in-progress state (NEVER mark COMPLETED)
+    await conn.query(
+      `UPDATE transport_requirements
+       SET status = 'PARTIALLY_DISPATCHED',
+           updated_at = NOW()
+       WHERE id = ?`,
+      [actualReqId]
+    );
+
+    // 11. Security Audit Log
+    const auditId = `audit_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const clientIp = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '127.0.0.1';
+    await conn.query(
+      `INSERT INTO security_audit_logs (id, action, username, role, ip, status, timestamp)
+       VALUES (?, ?, ?, 'admin', ?, 'REQUOTE_RELEASED 🔄', NOW())`,
+      [
+        auditId,
+        `REMAINING_QUANTITY_RELEASED_FOR_REQUOTE (Orig: ${originalItem.sub_indent_no || actualItemId}, Released: ${remainingQty} MT -> New: ${newSubIndentNo})`,
+        req.user.username || 'admin',
+        clientIp
+      ]
+    );
+
+    await conn.commit();
+    conn.release();
+
+    return res.json({
+      success: true,
+      message: `Successfully released ${remainingQty} MT for fresh quotation. New Sub-Indent ${newSubIndentNo} created.`,
+      original_item_id: actualItemId,
+      original_sub_indent_no: originalItem.sub_indent_no,
+      dispatched_quantity_mt: totalDispatched,
+      released_quantity_mt: remainingQty,
+      replacement_item_id: replacementItemId,
+      replacement_sub_indent_no: newSubIndentNo
+    });
+  } catch (err) {
+    if (conn) {
+      try { await conn.rollback(); } catch (e) {}
+      conn.release();
+    }
+    console.error('❌ Release Remaining for Requote Error:', err.message);
+    return res.status(500).json({ success: false, error: { code: 'DATABASE_ERROR', message: err.message } });
+  }
+}
+
+// -------------------------------------------------------------
 // GET NEGOTIATION HISTORY TIMELINE 📜
 // -------------------------------------------------------------
 async function handleGetNegotiationHistory(req, res) {
@@ -2479,6 +2715,8 @@ router.post('/rate-submissions/:id/finalize', authenticateToken, handleFinalizeB
 router.post('/requirements/:requirementId/items/:itemId/accept-final-rate', authenticateToken, handleAcceptFinalRate);
 router.post('/rate-submissions/:id/accept-final-rate', authenticateToken, handleAcceptFinalRate);
 router.post('/requirements/:requirementId/items/:itemId/dispatch', authenticateToken, handleCreateTruckDispatch);
+router.post('/requirements/:requirementId/items/:itemId/release-remaining-for-requote', authenticateToken, requireRole('admin'), handleReleaseRemainingForRequote);
+router.post('/requirements/:requirementId/items/:itemId/release-for-requote', authenticateToken, requireRole('admin'), handleReleaseRemainingForRequote);
 router.get('/requirements/:requirementId/items/:itemId/dispatches', authenticateToken, handleGetRequirementItemDispatches);
 router.get('/dispatches', authenticateToken, handleGetDispatches);
 router.get('/dispatches/:id', authenticateToken, handleGetDispatchById);

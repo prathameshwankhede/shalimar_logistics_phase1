@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { createRateRequest, createRequirement, updateRequirement, deleteRequirement, deleteRequirementItem, archiveRequirement, cancelRequirement, restoreRequirement } from '../api/rateRequestApi';
+import { createRateRequest, createRequirement, updateRequirement, deleteRequirement, deleteRequirementItem, archiveRequirement, cancelRequirement, restoreRequirement, releaseRemainingForRequote } from '../api/rateRequestApi';
 import { sendAdminCounterAll, finalizeBid } from '../api/rateSubmissionApi';
 import { createTransporter, updateTransporterStatus, resetTransporterPassword, deleteTransporter } from '../api/transporterApi';
 import { createProduct, updateProduct, deleteProduct, createCompanyUnit, updateCompanyUnit, deleteCompanyUnit } from '../api/masterDataApi';
@@ -144,6 +144,61 @@ export const AdminDashboard = () => {
     counterRate: '',
     remarks: ''
   });
+
+  // 🔄 Release Remaining Quantity for Re-Quote Modal State
+  const [releaseRequoteModal, setReleaseRequoteModal] = useState({
+    isOpen: false,
+    req: null,
+    item: null,
+    totalQty: 0,
+    dispatchedQty: 0,
+    remainingQty: 0,
+    reason: '',
+    isSubmitting: false
+  });
+
+  const handleOpenReleaseRequoteModal = (req, item, totalQty, dispatchedQty, remainingQty) => {
+    setReleaseRequoteModal({
+      isOpen: true,
+      req,
+      item,
+      totalQty,
+      dispatchedQty,
+      remainingQty,
+      reason: '',
+      isSubmitting: false
+    });
+  };
+
+  const handleConfirmReleaseRequote = async () => {
+    const { req, item, remainingQty, reason } = releaseRequoteModal;
+    if (!req || !item) return;
+    try {
+      setReleaseRequoteModal(prev => ({ ...prev, isSubmitting: true }));
+      const reqId = req.id || req.req_no;
+      const itemId = item.id || item.sub_indent_no;
+      const res = await releaseRemainingForRequote(reqId, itemId, reason);
+      if (res && res.success) {
+        alert(`✅ Successfully released ${remainingQty} MT for fresh quotation. New Sub-Indent ${res.replacement_sub_indent_no} created.`);
+        setReleaseRequoteModal({ isOpen: false, req: null, item: null, totalQty: 0, dispatchedQty: 0, remainingQty: 0, reason: '', isSubmitting: false });
+        if (typeof safeRefreshRequirements === 'function') {
+          await safeRefreshRequirements();
+        } else if (typeof refreshRequirements === 'function') {
+          await refreshRequirements();
+        }
+      } else {
+        alert(`Failed to release for re-quote: ${res?.error?.message || res?.error || 'Unknown error'}`);
+        setReleaseRequoteModal(prev => ({ ...prev, isSubmitting: false }));
+      }
+    } catch (err) {
+      alert(`Error releasing remaining quantity: ${err.message}`);
+      setReleaseRequoteModal(prev => ({ ...prev, isSubmitting: false }));
+    }
+  };
+
+  const handleContinueWithTransporter = (subCode) => {
+    alert(`ℹ️ Active dispatch status preserved for ${subCode}. Winning transporter can continue dispatching subsequent trucks.`);
+  };
 
   const handleOpenCounterModal = (reqId, itemId, reqCode, bids, lowestRate, existingCounter) => {
     const validBids = bids || [];
@@ -2573,6 +2628,21 @@ export const AdminDashboard = () => {
                                 const alloc = (db.allocations || []).find((a) => String(a.requirement_id) === String(openedReq.id) || String(a.req_no) === String(reqNoStr));
                                 const awardedTransporter = alloc ? (alloc.transporter_name || alloc.transporter_id) : openedReq.awarded_transporter;
 
+                                const totalItemQty = Number(item.quantity_mt || item.required_qty || 0);
+                                const dispatches = (db.truck_dispatches || []).filter(d =>
+                                  d.requirement_item_id === item.id ||
+                                  d.requirement_item_id === subCode ||
+                                  (String(d.requirement_id) === String(openedReq.id) && String(d.requirement_item_id) === String(item.id))
+                                );
+                                const itemDispatchedQty = Number(item.dispatched_quantity_mt || 0) || dispatches.reduce((acc, curr) => acc + (parseFloat(curr.loaded_quantity_mt || curr.dispatched_qty) || 0), 0);
+                                const itemRemainingQty = item.remaining_quantity_mt !== null && item.remaining_quantity_mt !== undefined
+                                  ? Number(item.remaining_quantity_mt)
+                                  : Math.max(0, totalItemQty - itemDispatchedQty);
+
+                                const isReleasedForRequote = item.dispatch_status === 'RELEASED_FOR_REQUOTE' || item.allocation_status === 'RELEASED_FOR_REQUOTE';
+                                const isPartiallyDispatched = !isReleasedForRequote && (item.dispatch_status === 'PARTIALLY_DISPATCHED' || (itemDispatchedQty > 0 && itemRemainingQty > 0));
+                                const isFullyDispatched = !isReleasedForRequote && (item.dispatch_status === 'FULLY_DISPATCHED' || (itemDispatchedQty > 0 && itemRemainingQty <= 0));
+
                                 return (
                                   <tr key={item.id || subIdx} style={{ background: subIdx % 2 === 0 ? '#0f172a' : '#1e293b', borderBottom: '1px solid rgba(255, 255, 255, 0.05)' }}>
                                     <td style={{ padding: '14px 16px' }}>
@@ -2599,7 +2669,7 @@ export const AdminDashboard = () => {
 
                                     <td style={{ padding: '14px 16px' }}>
                                       <div style={{ fontSize: '0.95rem', fontWeight: '900', color: '#0284c7' }}>
-                                        {Number(item.quantity_mt || item.required_qty || 0).toLocaleString()} {item.unit || 'MT'}
+                                        {Number(totalItemQty).toLocaleString()} {item.unit || 'MT'}
                                       </div>
                                       <div style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: '700', marginTop: '2px' }}>
                                         {item.product_name || item.material_type || 'HI-PRO SOYA'}
@@ -2642,7 +2712,29 @@ export const AdminDashboard = () => {
                                     </td>
 
                                     <td style={{ padding: '14px 16px' }}>
-                                      {awardedTransporter ? (
+                                      {isReleasedForRequote ? (
+                                        <div>
+                                          <span className="badge badge-warning" style={{ fontSize: '0.76rem', background: 'rgba(245, 158, 11, 0.25)', border: '1px solid #f59e0b', color: '#fbbf24', padding: '4px 10px', borderRadius: '20px', fontWeight: '900', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                            🔄 Re-Quote Released
+                                          </span>
+                                          <div style={{ fontSize: '0.72rem', color: '#cbd5e1', marginTop: '3px' }}>
+                                            Dispatched: {itemDispatchedQty} MT | Released: {totalItemQty - itemDispatchedQty} MT
+                                          </div>
+                                        </div>
+                                      ) : isFullyDispatched ? (
+                                        <span className="badge badge-success" style={{ fontSize: '0.78rem', background: '#dcfce7', color: '#166534', border: '1px solid #86efac', padding: '4px 12px', borderRadius: '20px', fontWeight: '900' }}>
+                                          ✓ Fully Dispatched ({totalItemQty} MT)
+                                        </span>
+                                      ) : isPartiallyDispatched ? (
+                                        <div>
+                                          <span className="badge badge-warning" style={{ fontSize: '0.76rem', background: 'rgba(245, 158, 11, 0.25)', border: '1px solid #f59e0b', color: '#fbbf24', padding: '4px 10px', borderRadius: '20px', fontWeight: '900', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                            🚚 Partially Dispatched
+                                          </span>
+                                          <div style={{ fontSize: '0.72rem', color: '#38bdf8', fontWeight: '700', marginTop: '3px' }}>
+                                            {itemDispatchedQty} / {totalItemQty} MT Dispatched
+                                          </div>
+                                        </div>
+                                      ) : awardedTransporter ? (
                                         <span className="badge badge-success" style={{ fontSize: '0.78rem', background: '#dcfce7', color: '#166534', border: '1px solid #86efac', padding: '4px 12px', borderRadius: '20px', fontWeight: '900' }}>
                                           ✓ Awarded
                                         </span>
@@ -2662,7 +2754,7 @@ export const AdminDashboard = () => {
                                           sub_indent_id: item.id,
                                           sub_indent_no: subCode,
                                           selectedItem: item,
-                                          required_qty: Number(item.quantity_mt || item.required_qty || 0),
+                                          required_qty: Number(totalItemQty),
                                           title: `${subCode} (${item.pickup_origin || pickupStr} ➔ ${item.drop_location || dropStr})`
                                         })}
                                         className="btn btn-primary"
@@ -2683,7 +2775,37 @@ export const AdminDashboard = () => {
                                     </td>
 
                                     <td className="finalize-rate-cell" style={{ padding: '14px 16px', textAlign: 'center' }}>
-                                      {bids && bids.some(b => b.bid_status === 'finalized' || b.bid_status === 'FINALIZED' || b.status === 'Rate Frozen') ? (
+                                      {isPartiallyDispatched ? (
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', alignItems: 'center' }}>
+                                          <div style={{ fontSize: '0.74rem', color: '#fbbf24', fontWeight: '800' }}>
+                                            Remaining: {itemRemainingQty} MT
+                                          </div>
+                                          <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', justifyContent: 'center' }}>
+                                            <button
+                                              type="button"
+                                              onClick={() => handleContinueWithTransporter(subCode)}
+                                              className="btn btn-secondary"
+                                              style={{ padding: '4px 8px', fontSize: '0.72rem', fontWeight: '800', borderRadius: '6px', border: '1px solid #38bdf8', color: '#38bdf8' }}
+                                              title="Keep current winning transporter for remaining balance"
+                                            >
+                                              Continue Same
+                                            </button>
+                                            <button
+                                              type="button"
+                                              onClick={() => handleOpenReleaseRequoteModal(openedReq, item, totalItemQty, itemDispatchedQty, itemRemainingQty)}
+                                              className="btn btn-warning"
+                                              style={{ padding: '4px 8px', fontSize: '0.72rem', fontWeight: '900', borderRadius: '6px', background: 'rgba(245, 158, 11, 0.25)', border: '1px solid #f59e0b', color: '#fbbf24' }}
+                                              title="Release remaining capacity for fresh quotations"
+                                            >
+                                              🔄 Release {itemRemainingQty} MT Re-Quote
+                                            </button>
+                                          </div>
+                                        </div>
+                                      ) : isReleasedForRequote ? (
+                                        <span style={{ fontSize: '0.74rem', color: '#94a3b8', fontStyle: 'italic' }}>
+                                          Re-Quote Created
+                                        </span>
+                                      ) : bids && bids.some(b => b.bid_status === 'finalized' || b.bid_status === 'FINALIZED' || b.status === 'Rate Frozen') ? (
                                         <span className="rate-finalized-badge badge badge-success" style={{ background: '#dcfce7', color: '#166534', border: '1px solid #86efac', padding: '6px 12px', borderRadius: '20px', fontWeight: '900', fontSize: '0.8rem' }}>
                                           ✓ Rate Finalized
                                         </span>
@@ -4872,6 +4994,128 @@ export const AdminDashboard = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* 🔄 ADMIN RELEASE REMAINING QUANTITY FOR RE-QUOTE MODAL */}
+      {releaseRequoteModal.isOpen && (
+        <div className="modal-overlay" style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0, 0, 0, 0.75)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 99999,
+          backdropFilter: 'blur(4px)'
+        }}>
+          <div className="modal-content" style={{
+            background: '#0f172a',
+            border: '1.5px solid #f59e0b',
+            borderRadius: '16px',
+            padding: '24px',
+            maxWidth: '520px',
+            width: '90%',
+            boxShadow: '0 20px 40px rgba(0, 0, 0, 0.6)'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div style={{ background: '#d97706', padding: '8px', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <RefreshCw size={20} color="#ffffff" />
+                </div>
+                <div>
+                  <h3 style={{ fontSize: '1.1rem', fontWeight: '900', color: '#ffffff', margin: 0 }}>Release Remaining Quantity?</h3>
+                  <span style={{ fontSize: '0.78rem', color: '#fbbf24', fontFamily: 'monospace', fontWeight: '800' }}>
+                    {releaseRequoteModal.item?.sub_indent_no || releaseRequoteModal.req?.req_no}
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setReleaseRequoteModal(prev => ({ ...prev, isOpen: false }))}
+                style={{ background: 'transparent', border: 'none', color: '#94a3b8', fontSize: '1.4rem', cursor: 'pointer' }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '16px', background: 'rgba(0,0,0,0.3)', padding: '14px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.08)' }}>
+              <div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Already Dispatched</div>
+                <div style={{ fontSize: '1.2rem', fontWeight: '800', color: '#38bdf8' }}>{releaseRequoteModal.dispatchedQty} MT</div>
+              </div>
+              <div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Remaining Quantity</div>
+                <div style={{ fontSize: '1.2rem', fontWeight: '900', color: '#fbbf24' }}>{releaseRequoteModal.remainingQty} MT</div>
+              </div>
+            </div>
+
+            <div style={{ background: 'rgba(245, 158, 11, 0.08)', border: '1px solid rgba(245, 158, 11, 0.25)', borderRadius: '10px', padding: '12px 14px', marginBottom: '16px', fontSize: '0.82rem', color: '#f8fafc', lineHeight: 1.5 }}>
+              <div style={{ fontWeight: '800', color: '#fbbf24', marginBottom: '4px' }}>This will:</div>
+              <div>✓ Close remaining allocation for current transporter</div>
+              <div>✓ Preserve existing truck and LR history</div>
+              <div>✓ Create a new Sub-Indent for {releaseRequoteModal.remainingQty} MT</div>
+              <div>✓ Open fresh bidding for eligible transporters</div>
+              <div style={{ marginTop: '6px', fontSize: '0.75rem', color: '#fca5a5' }}>
+                ⚠️ This action cannot be undone automatically.
+              </div>
+            </div>
+
+            <div style={{ marginBottom: '16px' }}>
+              <label style={{ display: 'block', fontSize: '0.82rem', color: '#cbd5e1', fontWeight: '700', marginBottom: '6px' }}>
+                Reason (Optional):
+              </label>
+              <textarea
+                value={releaseRequoteModal.reason}
+                onChange={(e) => setReleaseRequoteModal(prev => ({ ...prev, reason: e.target.value }))}
+                placeholder="e.g. Transporter unable to fulfill remaining capacity; releasing for open re-quote"
+                style={{
+                  width: '100%',
+                  height: '70px',
+                  background: '#1e293b',
+                  border: '1px solid rgba(255,255,255,0.15)',
+                  color: '#ffffff',
+                  padding: '10px',
+                  borderRadius: '8px',
+                  fontSize: '0.82rem',
+                  resize: 'none'
+                }}
+              />
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+              <button
+                type="button"
+                onClick={() => setReleaseRequoteModal(prev => ({ ...prev, isOpen: false }))}
+                className="btn btn-secondary"
+                style={{ padding: '8px 18px', fontSize: '0.88rem', borderRadius: '8px' }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={releaseRequoteModal.isSubmitting}
+                onClick={handleConfirmReleaseRequote}
+                className="btn btn-warning"
+                style={{
+                  padding: '8px 22px',
+                  fontSize: '0.88rem',
+                  fontWeight: '900',
+                  borderRadius: '8px',
+                  background: 'linear-gradient(135deg, #d97706 0%, #f59e0b 100%)',
+                  border: '1px solid #fbbf24',
+                  boxShadow: '0 4px 12px rgba(245, 158, 11, 0.4)',
+                  color: '#000000',
+                  cursor: 'pointer'
+                }}
+              >
+                {releaseRequoteModal.isSubmitting ? '⏳ Releasing...' : '🔄 Confirm & Release For Re-Quote'}
+              </button>
+            </div>
           </div>
         </div>
       )}
