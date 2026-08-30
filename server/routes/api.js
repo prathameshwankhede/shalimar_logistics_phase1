@@ -2698,13 +2698,19 @@ async function handleGetDispatches(req, res) {
 
     if (req.user.role === 'admin') {
       const [rows] = await pool.query(
-        `SELECT td.*, t.company_name AS transporter_name, t.code AS transporter_code,
-                tr.req_no, tr.pickup_origin, tr.drop_location, tri.product_name, tri.sub_indent_no
+        `SELECT td.*, 
+                COALESCE(t.company_name, td.transporter_name, td.transporter_id) AS transporter_name, 
+                COALESCE(t.code, td.transporter_code, td.transporter_id) AS transporter_code,
+                COALESCE(tr.req_no, td.requirement_id) AS req_no, 
+                COALESCE(tri.pickup_origin, tr.pickup_origin, td.pickup_origin) AS pickup_origin, 
+                COALESCE(tri.drop_location, tr.drop_location, td.drop_location) AS drop_location, 
+                COALESCE(tri.product_name, tr.product_name, td.product_name) AS product_name, 
+                COALESCE(tri.sub_indent_no, td.requirement_item_id) AS sub_indent_no
          FROM truck_dispatches td
-         LEFT JOIN transporters t ON t.id = td.transporter_id
-         LEFT JOIN transport_requirements tr ON tr.id = td.requirement_id
-         LEFT JOIN transport_requirement_items tri ON tri.id = td.requirement_item_id
-         ORDER BY td.dispatched_at DESC LIMIT 200`
+         LEFT JOIN transporters t ON (t.id = td.transporter_id OR t.code = td.transporter_id)
+         LEFT JOIN transport_requirements tr ON (tr.id = td.requirement_id OR tr.req_no = td.requirement_id)
+         LEFT JOIN transport_requirement_items tri ON (tri.id = td.requirement_item_id OR tri.sub_indent_no = td.requirement_item_id)
+         ORDER BY td.dispatched_at DESC, td.created_at DESC LIMIT 500`
       );
       return res.json({ success: true, dispatches: rows, truck_dispatches: rows });
     }
@@ -2715,16 +2721,23 @@ async function handleGetDispatches(req, res) {
         return res.status(403).json({ success: false, error: 'Could not resolve authenticated transporter.' });
       }
 
+      const transMatchIds = [authTransporter.id, authTransporter.code, authTransporter.username].filter(Boolean);
       const [rows] = await pool.query(
-        `SELECT td.*, t.company_name AS transporter_name, t.code AS transporter_code,
-                tr.req_no, tr.pickup_origin, tr.drop_location, tri.product_name, tri.sub_indent_no
+        `SELECT td.*, 
+                COALESCE(t.company_name, td.transporter_name, td.transporter_id) AS transporter_name, 
+                COALESCE(t.code, td.transporter_code, td.transporter_id) AS transporter_code,
+                COALESCE(tr.req_no, td.requirement_id) AS req_no, 
+                COALESCE(tri.pickup_origin, tr.pickup_origin, td.pickup_origin) AS pickup_origin, 
+                COALESCE(tri.drop_location, tr.drop_location, td.drop_location) AS drop_location, 
+                COALESCE(tri.product_name, tr.product_name, td.product_name) AS product_name, 
+                COALESCE(tri.sub_indent_no, td.requirement_item_id) AS sub_indent_no
          FROM truck_dispatches td
-         LEFT JOIN transporters t ON t.id = td.transporter_id
-         LEFT JOIN transport_requirements tr ON tr.id = td.requirement_id
-         LEFT JOIN transport_requirement_items tri ON tri.id = td.requirement_item_id
-         WHERE td.transporter_id = ?
-         ORDER BY td.dispatched_at DESC LIMIT 200`,
-        [authTransporter.id]
+         LEFT JOIN transporters t ON (t.id = td.transporter_id OR t.code = td.transporter_id)
+         LEFT JOIN transport_requirements tr ON (tr.id = td.requirement_id OR tr.req_no = td.requirement_id)
+         LEFT JOIN transport_requirement_items tri ON (tri.id = td.requirement_item_id OR tri.sub_indent_no = td.requirement_item_id)
+         WHERE td.transporter_id IN (?)
+         ORDER BY td.dispatched_at DESC, td.created_at DESC LIMIT 500`,
+        [transMatchIds]
       );
       return res.json({ success: true, dispatches: rows, truck_dispatches: rows });
     }

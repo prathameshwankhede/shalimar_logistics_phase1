@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { createRateRequest, createRequirement, updateRequirement, deleteRequirement, deleteRequirementItem, archiveRequirement, cancelRequirement, restoreRequirement, releaseRemainingForRequote, getDispatchAccessRequests, approveDispatchAccessRequest, rejectDispatchAccessRequest } from '../api/rateRequestApi';
+import { createRateRequest, createRequirement, updateRequirement, deleteRequirement, deleteRequirementItem, archiveRequirement, cancelRequirement, restoreRequirement, releaseRemainingForRequote, getDispatchAccessRequests, approveDispatchAccessRequest, rejectDispatchAccessRequest, getAllDispatches } from '../api/rateRequestApi';
 import { sendAdminCounterAll, finalizeBid } from '../api/rateSubmissionApi';
 import { createTransporter, updateTransporterStatus, resetTransporterPassword, deleteTransporter } from '../api/transporterApi';
 import { createProduct, updateProduct, deleteProduct, createCompanyUnit, updateCompanyUnit, deleteCompanyUnit } from '../api/masterDataApi';
@@ -15,6 +15,7 @@ import { ContractModal } from './ContractModal';
 import { ERPPaymentModal } from './ERPPaymentModal';
 import { ParticularBidReportModal } from './ParticularBidReportModal';
 import { WhatsAppBroadcastModal } from './WhatsAppBroadcastModal';
+import { TransporterDispatchesFolderDirectory } from './TransporterDispatchesFolderDirectory';
 import { sendWhatsAppAlert } from '../utils/whatsappEngine';
 import { validateMobile, validatePincode, validateGSTIN, validatePAN, validateName, validateEmail } from '../utils/validationRules';
 import {
@@ -46,6 +47,12 @@ import {
   RefreshCw,
   Edit,
   FolderOpen,
+  Folder,
+  Calendar,
+  Clock,
+  ChevronDown,
+  ChevronRight,
+  Search,
   MessageSquare,
   Send,
   Database,
@@ -82,6 +89,28 @@ export const AdminDashboard = () => {
   const [dispatchAccessLoading, setDispatchAccessLoading] = useState(false);
   const [dispatchAccessNotice, setDispatchAccessNotice] = useState(null);
 
+  // 🚚 LIVE DISPATCHES & FOLDER DIRECTORY STATE
+  const [allLiveDispatches, setAllLiveDispatches] = useState([]);
+  const [dispatchesLoading, setDispatchesLoading] = useState(false);
+  const [dispatchViewMode, setDispatchViewMode] = useState('folders'); // 'folders' | 'table' | 'requests'
+  const [selectedTransporterFolder, setSelectedTransporterFolder] = useState('ALL');
+  const [expandedFolders, setExpandedFolders] = useState({}); // { [transporterId]: boolean }
+  const [dispatchSearchQuery, setDispatchSearchQuery] = useState('');
+
+  const refreshAllDispatches = async () => {
+    try {
+      setDispatchesLoading(true);
+      const res = await getAllDispatches();
+      if (res && res.success) {
+        setAllLiveDispatches(res.dispatches || res.truck_dispatches || []);
+      }
+    } catch (e) {
+      console.warn('Could not load dispatches:', e.message);
+    } finally {
+      setDispatchesLoading(false);
+    }
+  };
+
   const refreshDispatchAccessRequests = async () => {
     try {
       setDispatchAccessLoading(true);
@@ -97,8 +126,121 @@ export const AdminDashboard = () => {
   };
 
   useEffect(() => {
-    refreshDispatchAccessRequests();
+    if (activeTab === 'dispatch_requests') {
+      refreshAllDispatches();
+      refreshDispatchAccessRequests();
+      const pollTimer = setInterval(() => {
+        refreshAllDispatches();
+        refreshDispatchAccessRequests();
+      }, 8000);
+      return () => clearInterval(pollTimer);
+    }
   }, [activeTab]);
+
+  const formatDispatchDateTime = (dtStr) => {
+    if (!dtStr) return '—';
+    try {
+      const d = new Date(dtStr);
+      if (isNaN(d.getTime())) return String(dtStr);
+      return d.toLocaleString('en-IN', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true
+      });
+    } catch {
+      return String(dtStr);
+    }
+  };
+
+  const transporterFolders = useMemo(() => {
+    const map = {};
+
+    // 1. Initialize registered transporters from db
+    (db?.transporters || []).forEach(t => {
+      const key = String(t.id || t.code || t.name);
+      map[key] = {
+        transporter_id: t.id || key,
+        transporter_name: t.company_name || t.name || t.code || 'Transporter',
+        transporter_code: t.code || t.username || '',
+        contact_person: t.contact_person || '',
+        phone: t.mobile || t.phone || '',
+        dispatches: [],
+        totalQuantityMt: 0,
+        totalFreightValue: 0,
+        lastDispatchedAt: null
+      };
+    });
+
+    // 2. Map every live dispatch
+    (allLiveDispatches || []).forEach(d => {
+      let key = String(d.transporter_id || d.transporter_code || 'OTHER');
+      if (!map[key]) {
+        const matchT = (db?.transporters || []).find(t => 
+          String(t.id) === String(d.transporter_id) || 
+          String(t.code).toLowerCase() === String(d.transporter_code || d.transporter_id).toLowerCase() ||
+          String(t.company_name || t.name).toLowerCase() === String(d.transporter_name || '').toLowerCase()
+        );
+        if (matchT) {
+          key = String(matchT.id || matchT.code);
+        }
+      }
+
+      if (!map[key]) {
+        map[key] = {
+          transporter_id: d.transporter_id || key,
+          transporter_name: d.transporter_name || d.transporter_id || 'Transporter',
+          transporter_code: d.transporter_code || '',
+          contact_person: d.driver_name || '',
+          phone: d.driver_mobile || '',
+          dispatches: [],
+          totalQuantityMt: 0,
+          totalFreightValue: 0,
+          lastDispatchedAt: null
+        };
+      }
+
+      map[key].dispatches.push(d);
+      const qty = parseFloat(d.loaded_quantity_mt || d.dispatched_qty || 0);
+      const rate = parseFloat(d.finalized_rate || 0);
+      map[key].totalQuantityMt += qty;
+      map[key].totalFreightValue += (qty * rate);
+
+      const dTime = d.dispatched_at || d.created_at;
+      if (dTime) {
+        if (!map[key].lastDispatchedAt || new Date(dTime) > new Date(map[key].lastDispatchedAt)) {
+          map[key].lastDispatchedAt = dTime;
+        }
+      }
+    });
+
+    // Sort dispatches inside each folder Date & Time wise (Newest First)
+    Object.values(map).forEach(folder => {
+      folder.dispatches.sort((a, b) => {
+        const timeA = new Date(a.dispatched_at || a.created_at || 0).getTime();
+        const timeB = new Date(b.dispatched_at || b.created_at || 0).getTime();
+        return timeB - timeA;
+      });
+    });
+
+    // Return list with active folders first, sorted by most recent dispatch activity
+    return Object.values(map).sort((a, b) => {
+      if (a.dispatches.length > 0 && b.dispatches.length === 0) return -1;
+      if (b.dispatches.length > 0 && a.dispatches.length === 0) return 1;
+      const timeA = a.lastDispatchedAt ? new Date(a.lastDispatchedAt).getTime() : 0;
+      const timeB = b.lastDispatchedAt ? new Date(b.lastDispatchedAt).getTime() : 0;
+      return timeB - timeA;
+    });
+  }, [allLiveDispatches, db?.transporters]);
+
+  const toggleFolder = (folderId) => {
+    setExpandedFolders(prev => ({
+      ...prev,
+      [folderId]: !prev[folderId]
+    }));
+  };
 
   const handleApproveDispatchAccess = async (reqId) => {
     try {
@@ -2334,7 +2476,12 @@ export const AdminDashboard = () => {
               gap: '6px'
             }}
           >
-            <Truck size={17} /> 🚚 Dispatch Access Requests
+            <Truck size={17} /> 🚚 Transporter Dispatches & Folders
+            {allLiveDispatches.length > 0 && (
+              <span style={{ background: '#0284c7', color: '#ffffff', borderRadius: '12px', padding: '2px 8px', fontSize: '0.74rem', fontWeight: '900', marginLeft: '4px' }}>
+                {allLiveDispatches.length}
+              </span>
+            )}
             {dispatchAccessRequests.filter(r => r.authorization_status === 'PENDING').length > 0 && (
               <span style={{ background: '#ef4444', color: '#ffffff', borderRadius: '50%', padding: '2px 7px', fontSize: '0.74rem', fontWeight: '900', marginLeft: '4px' }}>
                 {dispatchAccessRequests.filter(r => r.authorization_status === 'PENDING').length}
@@ -4042,226 +4189,21 @@ export const AdminDashboard = () => {
             </div>
           )}
 
-          {/* 🚚 TAB: DISPATCH ACCESS REQUESTS & APPROVAL QUEUE */}
+          {/* 🚚 TAB: TRANSPORTER DISPATCHES & FOLDER DIRECTORY (DATE & TIME WISE) */}
           {activeTab === 'dispatch_requests' && (
-            <div className="card glass-panel" style={{ padding: '24px', borderRadius: '16px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '14px' }}>
-                <div>
-                  <h3 style={{ fontSize: '1.25rem', fontWeight: '900', color: '#ffffff', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <Truck size={24} color="#38bdf8" /> 🚚 Multi-Transporter Fixed-Rate Dispatch Access Requests
-                  </h3>
-                  <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginTop: '4px' }}>
-                    Review, approve, or reject access requests from eligible transporters wishing to dispatch remaining quantities at the locked finalized rate.
-                  </p>
-                </div>
-
-                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-                  <button
-                    onClick={() => setDispatchAccessFilter('pending')}
-                    className={`btn ${dispatchAccessFilter === 'pending' ? 'btn-primary' : 'btn-secondary'}`}
-                    style={{ padding: '6px 14px', fontSize: '0.8rem', fontWeight: '800', borderRadius: '20px' }}
-                  >
-                    Pending ({dispatchAccessRequests.filter(r => r.authorization_status === 'PENDING').length})
-                  </button>
-                  <button
-                    onClick={() => setDispatchAccessFilter('approved')}
-                    className={`btn ${dispatchAccessFilter === 'approved' ? 'btn-primary' : 'btn-secondary'}`}
-                    style={{ padding: '6px 14px', fontSize: '0.8rem', fontWeight: '800', borderRadius: '20px' }}
-                  >
-                    Approved ({dispatchAccessRequests.filter(r => r.authorization_status === 'APPROVED' || r.authorization_status === 'WINNER').length})
-                  </button>
-                  <button
-                    onClick={() => setDispatchAccessFilter('rejected')}
-                    className={`btn ${dispatchAccessFilter === 'rejected' ? 'btn-primary' : 'btn-secondary'}`}
-                    style={{ padding: '6px 14px', fontSize: '0.8rem', fontWeight: '800', borderRadius: '20px' }}
-                  >
-                    Rejected ({dispatchAccessRequests.filter(r => r.authorization_status === 'REJECTED').length})
-                  </button>
-                  <button
-                    onClick={() => setDispatchAccessFilter('all')}
-                    className={`btn ${dispatchAccessFilter === 'all' ? 'btn-primary' : 'btn-secondary'}`}
-                    style={{ padding: '6px 14px', fontSize: '0.8rem', fontWeight: '800', borderRadius: '20px' }}
-                  >
-                    All ({dispatchAccessRequests.length})
-                  </button>
-                  <button
-                    onClick={refreshDispatchAccessRequests}
-                    className="btn btn-secondary"
-                    style={{ padding: '6px 12px', fontSize: '0.8rem', borderRadius: '20px' }}
-                    title="Refresh requests"
-                  >
-                    <RefreshCw size={14} className={dispatchAccessLoading ? 'animate-spin' : ''} />
-                  </button>
-                </div>
-              </div>
-
-              {dispatchAccessNotice && (
-                <div style={{ background: '#064e3b', border: '1px solid #10b981', color: '#a7f3d0', padding: '10px 16px', borderRadius: '10px', marginBottom: '16px', fontWeight: '800', fontSize: '0.88rem' }}>
-                  {dispatchAccessNotice}
-                </div>
-              )}
-
-              <div className="custom-table-container">
-                <table className="custom-table">
-                  <thead>
-                    <tr>
-                      <th>Req No / Sub-indent</th>
-                      <th>Cargo & Route</th>
-                      <th>Qty (Total / Disp / Rem)</th>
-                      <th>Fixed Rate</th>
-                      <th>Original Winner</th>
-                      <th>Requesting Transporter</th>
-                      <th>Request Date</th>
-                      <th>Status</th>
-                      <th style={{ textAlign: 'right' }}>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {dispatchAccessRequests
-                      .filter(r => {
-                        if (dispatchAccessFilter === 'pending') return r.authorization_status === 'PENDING';
-                        if (dispatchAccessFilter === 'approved') return r.authorization_status === 'APPROVED' || r.authorization_status === 'WINNER';
-                        if (dispatchAccessFilter === 'rejected') return r.authorization_status === 'REJECTED';
-                        return true;
-                      })
-                      .map((req) => (
-                        <tr key={req.id}>
-                          <td>
-                            <div style={{ fontWeight: '900', color: '#38bdf8', fontSize: '0.88rem' }}>
-                              {req.req_no || 'REQ'}
-                            </div>
-                            <div style={{ fontSize: '0.76rem', color: '#94a3b8', fontFamily: 'monospace' }}>
-                              {req.item_sub_indent_no || req.sub_indent_no || req.requirement_item_id}
-                            </div>
-                          </td>
-
-                          <td>
-                            <div style={{ fontWeight: '800', color: '#0f172a', fontSize: '0.86rem' }}>
-                              {req.product_name || req.req_title || 'Cargo'}
-                            </div>
-                            <div style={{ fontSize: '0.76rem', color: '#475569' }}>
-                              📍 {req.item_pickup || req.parent_pickup || 'Origin'} ➔ 🎯 {req.item_drop || req.parent_drop || 'Destination'}
-                            </div>
-                          </td>
-
-                          <td>
-                            <div style={{ fontSize: '0.82rem', fontWeight: '800', color: '#0f172a' }}>
-                              {Number(req.item_quantity_mt || 0).toLocaleString()} MT Total
-                            </div>
-                            <div style={{ fontSize: '0.74rem', color: '#059669', fontWeight: '700' }}>
-                              ✅ {Number(req.dispatched_quantity_mt || 0).toLocaleString()} MT Dispatched
-                            </div>
-                            <div style={{ fontSize: '0.74rem', color: '#d97706', fontWeight: '800' }}>
-                              ⏳ {Number(req.remaining_quantity_mt || 0).toLocaleString()} MT Remaining
-                            </div>
-                          </td>
-
-                          <td>
-                            <span style={{ fontSize: '0.92rem', fontWeight: '900', color: '#059669', background: '#dcfce7', border: '1.5px solid #86efac', padding: '3px 8px', borderRadius: '6px' }}>
-                              ₹{req.fixed_rate}/MT
-                            </span>
-                          </td>
-
-                          <td>
-                            {req.original_winner ? (
-                              <div>
-                                <div style={{ fontWeight: '800', color: '#0f172a', fontSize: '0.84rem' }}>
-                                  🏆 {req.original_winner.company_name}
-                                </div>
-                                <div style={{ fontSize: '0.72rem', color: '#64748b' }}>
-                                  Code: {req.original_winner.code}
-                                </div>
-                              </div>
-                            ) : (
-                              <span style={{ color: '#94a3b8', fontSize: '0.78rem' }}>N/A</span>
-                            )}
-                          </td>
-
-                          <td>
-                            <div style={{ fontWeight: '800', color: '#0284c7', fontSize: '0.86rem' }}>
-                              {req.transporter_name || req.transporter_id}
-                            </div>
-                            <div style={{ fontSize: '0.74rem', color: '#475569' }}>
-                              Code: {req.transporter_code || '-'} | 📞 {req.transporter_mobile || '-'}
-                            </div>
-                          </td>
-
-                          <td>
-                            <div style={{ fontSize: '0.78rem', color: '#475569', fontWeight: '600' }}>
-                              {req.requested_at ? new Date(req.requested_at).toLocaleString() : (req.created_at ? new Date(req.created_at).toLocaleString() : '-')}
-                            </div>
-                          </td>
-
-                          <td>
-                            <span
-                              className={`badge ${
-                                req.authorization_status === 'WINNER'
-                                  ? 'badge-awarded'
-                                  : req.authorization_status === 'APPROVED'
-                                  ? 'badge-open'
-                                  : req.authorization_status === 'REJECTED'
-                                  ? 'badge-cancelled'
-                                  : 'badge-pending'
-                              }`}
-                              style={{ fontWeight: '800', fontSize: '0.76rem', padding: '4px 8px' }}
-                            >
-                              {req.authorization_status === 'WINNER'
-                                ? '🏆 WINNER'
-                                : req.authorization_status === 'APPROVED'
-                                ? '✅ APPROVED'
-                                : req.authorization_status === 'REJECTED'
-                                ? '❌ REJECTED'
-                                : '⏳ PENDING'}
-                            </span>
-                          </td>
-
-                          <td style={{ textAlign: 'right' }}>
-                            {req.authorization_status === 'PENDING' ? (
-                              <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end' }}>
-                                <button
-                                  type="button"
-                                  onClick={() => handleApproveDispatchAccess(req.id)}
-                                  className="btn btn-success"
-                                  style={{ padding: '4px 10px', fontSize: '0.78rem', fontWeight: '800', borderRadius: '6px' }}
-                                >
-                                  ✅ Approve
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => handleRejectDispatchAccess(req.id)}
-                                  className="btn btn-secondary"
-                                  style={{ padding: '4px 8px', fontSize: '0.78rem', fontWeight: '800', borderRadius: '6px', color: '#ef4444', borderColor: '#f87171' }}
-                                >
-                                  ❌ Reject
-                                </button>
-                              </div>
-                            ) : req.authorization_status === 'APPROVED' ? (
-                              <span style={{ fontSize: '0.76rem', color: '#059669', fontWeight: '800' }}>
-                                Approved by {req.approved_by || 'Admin'}
-                              </span>
-                            ) : req.authorization_status === 'REJECTED' ? (
-                              <div style={{ fontSize: '0.74rem', color: '#ef4444', textAlign: 'right' }}>
-                                <div>Rejected</div>
-                                {req.remarks && <div style={{ fontSize: '0.7rem', color: '#64748b' }}>{req.remarks}</div>}
-                              </div>
-                            ) : (
-                              <span style={{ fontSize: '0.76rem', color: '#64748b' }}>Locked</span>
-                            )}
-                          </td>
-                        </tr>
-                      ))}
-
-                    {dispatchAccessRequests.length === 0 && (
-                      <tr>
-                        <td colSpan="9" style={{ textAlign: 'center', padding: '36px', color: 'var(--text-muted)' }}>
-                          No dispatch access requests found.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+            <TransporterDispatchesFolderDirectory
+              allDispatches={allLiveDispatches}
+              transporterFolders={transporterFolders}
+              loading={dispatchesLoading}
+              onRefresh={() => {
+                refreshAllDispatches();
+                refreshDispatchAccessRequests();
+              }}
+              dispatchAccessRequests={dispatchAccessRequests}
+              onApproveRequest={handleApproveDispatchAccess}
+              onRejectRequest={handleRejectDispatchAccess}
+              formatDispatchDateTime={formatDispatchDateTime}
+            />
           )}
         </>
       )}
