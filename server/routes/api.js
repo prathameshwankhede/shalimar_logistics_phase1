@@ -3344,19 +3344,20 @@ router.post('/requirements/:id/restore', authenticateToken, requireRole('admin')
   }
 });
 
-// DELETE /api/requirements/:id — Delete Requirement and Cascade Child Items, Bids, Negotiations (Admin Only)
+// DELETE /api/requirements/:id — Delete Requirement and Cascade Child Items, Bids, Negotiations, Dispatches (Admin Only)
 router.delete('/requirements/:id', authenticateToken, requireRole('admin'), async (req, res) => {
   const { id } = req.params;
   await ensureRequirementsTableExists();
   await ensureRateSubmissionsTableExists();
   await ensureBidNegotiationHistoryTableExists();
   await ensureRateNegotiationsTableExists();
+  await ensureTruckDispatchesTableExists();
 
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
 
-    // 1. Check requirement existence
+    // 1. Check requirement existence (resolves both UUID and human-readable req_no)
     const [existing] = await conn.query(
       'SELECT id, req_no, status FROM transport_requirements WHERE id = ? OR req_no = ?',
       [id, id]
@@ -3369,30 +3370,29 @@ router.delete('/requirements/:id', authenticateToken, requireRole('admin'), asyn
 
     const actualReqId = existing[0].id;
 
-    // 2. Cascade cleanup related dispatches, negotiation history, and negotiations
+    // 2. Transactional cascade cleanup in child-to-parent order (Zero silent error swallowing)
+    // Ensures clean removal even in environments with dynamic migration states
     await conn.query('DELETE FROM truck_dispatches WHERE requirement_id = ?', [actualReqId]);
     await conn.query('DELETE FROM bid_negotiation_history WHERE requirement_id = ?', [actualReqId]);
     await conn.query('DELETE FROM rate_negotiations WHERE requirement_id = ?', [actualReqId]);
+    await conn.query('DELETE FROM rate_submissions WHERE requirement_id = ?', [actualReqId]);
+    await conn.query('DELETE FROM transport_requirement_items WHERE requirement_id = ?', [actualReqId]);
 
-    // 3. Cascade cleanup rate submissions
-    await conn.query('DELETE FROM rate_submissions WHERE requirement_id = ?', [actualReqId]).catch(() => {});
-
-    // 4. Cascade cleanup child requirement items
-    await conn.query('DELETE FROM transport_requirement_items WHERE requirement_id = ?', [actualReqId]).catch(() => {});
-
-    // 5. Delete parent requirement record
+    // 3. Delete parent requirement record
     const [result] = await conn.query('DELETE FROM transport_requirements WHERE id = ?', [actualReqId]);
+
+    if (result.affectedRows === 0) {
+      await conn.rollback();
+      conn.release();
+      return res.status(404).json({ success: false, error: 'Requirement record not found' });
+    }
 
     await conn.commit();
     conn.release();
 
-    if (result.affectedRows === 0) {
-      return res.status(404).json({ success: false, error: 'Requirement record not found' });
-    }
-
     return res.json({
       success: true,
-      message: 'Requirement and all its related items, bids, and negotiation data permanently deleted from MySQL'
+      message: 'Requirement and all its related items, bids, negotiation data, and truck dispatches permanently deleted from MySQL'
     });
   } catch (err) {
     await conn.rollback();
