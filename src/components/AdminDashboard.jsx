@@ -1181,14 +1181,6 @@ export const AdminDashboard = () => {
     setBulkReqRows((prev) => [...prev, newRow]);
   };
 
-  const handleFillSample5Rows = (count = 10) => {
-    const sampleRows = [];
-    for (let i = 0; i < count; i++) {
-      sampleRows.push(createSingleReqRow(i));
-    }
-    setBulkReqRows(sampleRows);
-  };
-
   const handleRemoveBulkRow = (rowId) => {
     if (bulkReqRows.length <= 1) {
       alert('At least 1 Rate Request row is required.');
@@ -2136,26 +2128,6 @@ export const AdminDashboard = () => {
                     title="Duplicate parameters from last row"
                   >
                     📋 Duplicate Row
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => handleFillSample5Rows(10)}
-                    className="btn"
-                    style={{ background: 'rgba(245, 158, 11, 0.15)', color: '#d97706', border: '1px solid #d97706', padding: '8px 16px', fontSize: '0.82rem', fontWeight: '800', borderRadius: '10px' }}
-                    title="Fill 10 Sample Rate Request rows instantly"
-                  >
-                    ⚡ 10 Sample Rows
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => handleFillSample5Rows(50)}
-                    className="btn"
-                    style={{ background: 'rgba(16, 185, 129, 0.15)', color: '#059669', border: '1px solid #059669', padding: '8px 18px', fontSize: '0.85rem', fontWeight: '900', borderRadius: '10px' }}
-                    title="1-Click Fill 50 Rate Request Rows (Max Batch)"
-                  >
-                    🚀 ⚡ 50 Max Rows (1-Click)
                   </button>
                 </div>
 
