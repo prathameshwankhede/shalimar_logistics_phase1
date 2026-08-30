@@ -645,32 +645,52 @@ export const TransporterPortal = () => {
 
   const handleOpenDispatchModal = (req, myBid, parentReq = null) => {
     const parent = parentReq || (db.rate_requests || []).find(r => r.id === (req.requirement_id || req.id)) || req;
+    const parentReqId = parent?.id || req.requirement_id || req.id;
+    const parentReqNo = parent?.req_no || parent?.request_no || req.parent_req_no || null;
+    const targetItemId = req.item_id || req.sub_indent_id || (req.id !== parentReqId ? req.id : null);
+    const targetSubIndentNo = req.sub_indent_no || req.request_no;
+
     const resolvedReq = {
       ...req,
-      requirement_id: req.requirement_id || parent?.id || req.id,
-      parent_req_no: parent?.req_no || parent?.request_no || req.parent_req_no || null
+      id: targetItemId || req.id,
+      item_id: targetItemId || req.item_id,
+      sub_indent_id: targetItemId || req.sub_indent_id,
+      sub_indent_no: targetSubIndentNo,
+      requirement_id: parentReqId,
+      parent_req_no: parentReqNo
     };
 
     const dispatches = (db.truck_dispatches || []).filter((d) => {
-      if (resolvedReq && (resolvedReq.id || resolvedReq.item_id || resolvedReq.sub_indent_no)) {
+      if (!d) return false;
+      const matchReq = String(d.requirement_id) === String(parentReqId) || 
+                       (parentReqNo && String(d.requirement_id) === String(parentReqNo));
+      if (!matchReq) return false;
+
+      if (targetItemId || targetSubIndentNo) {
         return (
-          d.requirement_item_id === resolvedReq.id ||
-          d.requirement_item_id === resolvedReq.item_id ||
-          d.requirement_item_id === resolvedReq.sub_indent_no
+          (targetItemId && String(d.requirement_item_id) === String(targetItemId)) ||
+          (targetSubIndentNo && String(d.requirement_item_id) === String(targetSubIndentNo))
         );
       }
-      return d.requirement_id === resolvedReq.requirement_id;
+      return true;
     });
 
     const alreadyDispatched = dispatches.reduce((acc, curr) => acc + (parseFloat(curr.loaded_quantity_mt || curr.dispatched_qty) || 0), 0);
-    const totalQty = parseFloat(resolvedReq.quantity_mt || resolvedReq.required_qty || 0);
-    const remainingQty = Math.max(0, totalQty - alreadyDispatched);
+    const totalQty = parseFloat(resolvedReq.allocated_quantity_mt || resolvedReq.quantity_mt || resolvedReq.required_qty || 0);
+    
+    let remainingQty = Math.max(0, parseFloat((totalQty - alreadyDispatched).toFixed(3)));
+    if (resolvedReq.remaining_quantity_mt !== undefined && resolvedReq.remaining_quantity_mt !== null && !isNaN(Number(resolvedReq.remaining_quantity_mt))) {
+      const passedRem = Number(resolvedReq.remaining_quantity_mt);
+      if (passedRem > 0 && alreadyDispatched === 0) {
+        remainingQty = passedRem;
+      }
+    }
 
     setDispatchingReqItem({
       req: resolvedReq,
       parentReq: parent,
       myBid,
-      totalQty,
+      totalQty: totalQty > 0 ? totalQty : remainingQty,
       dispatchedQty: alreadyDispatched,
       remainingQty
     });
@@ -690,7 +710,7 @@ export const TransporterPortal = () => {
         setSubmittingItems(prev => ({ ...prev, [`accept_${subId}`]: true }));
       }
       const reqId = parentReq?.id || parentReq?.req_no || parentReq?.request_no || req?.requirement_id || req?.id;
-      const itemId = req?.id || req?.item_id || req?.sub_indent_id || req?.sub_indent_no || 'MAIN';
+      const itemId = req?.item_id || req?.sub_indent_id || req?.id || req?.sub_indent_no || 'MAIN';
       const res = await acceptFinalRate(reqId, itemId, subId);
       if (res && res.success) {
         if (typeof updateLocalRateSubmission === 'function' && myBid) {
@@ -753,7 +773,7 @@ export const TransporterPortal = () => {
     try {
       setIsSubmittingDispatch(true);
       const reqId = req.requirement_id || req.parent_req_no || req.id;
-      const itemId = req.id || req.item_id || req.sub_indent_id || req.sub_indent_no || 'MAIN';
+      const itemId = req.item_id || req.sub_indent_id || req.id || req.sub_indent_no || 'MAIN';
 
       const payload = {
         requirement_id: reqId,
