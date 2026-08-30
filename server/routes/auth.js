@@ -103,7 +103,7 @@ router.post('/login', async (req, res) => {
     const rawRole = foundUser.role || foundUser.user_type || foundUser.account_type || 'transporter';
     const userRole = String(rawRole).trim().toLowerCase();
     foundUser.role = userRole;
-    if (userRole === 'transporter' || userRole === 'vendor') {
+    if (userRole === 'transporter') {
       foundUser.transporter_id = foundUser.transporter_id || foundUser.id;
     }
 

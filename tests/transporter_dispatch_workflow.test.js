@@ -72,7 +72,7 @@ function finalizeRate(state, subId, agreedRate, adminUser) {
 function acceptFinalRate(state, requirementId, itemId, authUser) {
   if (!authUser) return { status: 401, error: 'Authentication required' };
   const userRole = String(authUser.role || '').trim().toLowerCase();
-  if (userRole !== 'transporter' && userRole !== 'vendor') return { status: 403, error: 'Only transporters can accept finalized rates.' };
+  if (userRole !== 'transporter') return { status: 403, error: 'Only transporters can accept finalized rates.' };
 
   const sub = state.rate_submissions.find(s => s.requirement_id === requirementId && s.item_id === itemId && (s.is_finalized || s.bid_status === 'FINALIZED'));
   if (!sub) return { status: 404, error: 'Finalized quote not found' };

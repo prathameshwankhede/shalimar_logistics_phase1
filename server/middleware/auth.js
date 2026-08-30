@@ -38,7 +38,7 @@ export function generateToken(user) {
       username: user.username,
       name: user.name,
       role: userRole,
-      transporter_id: user.transporter_id || (userRole === 'transporter' || userRole === 'vendor' ? user.id : null),
+      transporter_id: user.transporter_id || (userRole === 'transporter' ? user.id : null),
       permissions
     },
     JWT_SECRET,

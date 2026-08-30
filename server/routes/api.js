@@ -661,7 +661,7 @@ async function generateUniqueLrNumber(clientOrPool, customYear) {
 async function resolveAuthenticatedTransporter(req) {
   if (!req.user) return null;
   const userRole = String(req.user.role || '').trim().toLowerCase();
-  if (userRole !== 'transporter' && userRole !== 'vendor') return null;
+  if (userRole !== 'transporter') return null;
 
   if (req.user.transporter_id) {
     const [rows] = await pool.query('SELECT * FROM transporters WHERE id = ? LIMIT 1', [req.user.transporter_id]);
@@ -1707,7 +1707,7 @@ async function handleAcceptFinalRate(req, res) {
     }
 
     const userRole = String(req.user.role || '').trim().toLowerCase();
-    if (userRole !== 'transporter' && userRole !== 'vendor') {
+    if (userRole !== 'transporter') {
       return res.status(403).json({ success: false, error: 'Only transporters can accept finalized rates.' });
     }
 
@@ -1824,7 +1824,7 @@ async function handleCreateTruckDispatch(req, res) {
     }
 
     const userRole = String(req.user.role || '').trim().toLowerCase();
-    if (userRole !== 'transporter' && userRole !== 'vendor') {
+    if (userRole !== 'transporter') {
       conn.release();
       return res.status(403).json({ success: false, error: 'Only transporters can dispatch trucks.' });
     }
