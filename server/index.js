@@ -57,7 +57,7 @@ app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
     version: '1.9.0-phase1',
-    commit: 'c981086+',
+    commit: '96af717',
     deploy_timestamp: new Date().toISOString(),
     env: process.env.NODE_ENV || 'development',
     port: PORT,
@@ -202,22 +202,13 @@ app.use((req, res, next) => {
     if (fs.existsSync(rootIndexPath)) {
       return res.sendFile(rootIndexPath);
     }
-    return res.status(200).send(`
-      <!DOCTYPE html>
-      <html lang="en">
-        <head>
-          <meta charset="UTF-8" />
-          <title>Shalimar Logistics</title>
-        </head>
-        <body>
-          <div style="font-family: sans-serif; text-align: center; padding: 50px;">
-            <h2>TransFlow Logistics Portal is Initializing...</h2>
-            <p>Please refresh the page in a few seconds.</p>
-            <script>setTimeout(() => window.location.reload(), 3000);</script>
-          </div>
-        </body>
-      </html>
-    `);
+    return res.status(503).json({
+      success: false,
+      error: {
+        code: 'FRONTEND_NOT_BUILT',
+        message: 'Frontend build assets not found. Please run npm run build.'
+      }
+    });
   }
   next();
 });
