@@ -34,10 +34,7 @@ export const TransporterPortal = () => {
   const { currentUser, currentTransporter, db, updateDB, updateLocalRateSubmission, quickSwitchUser, addSecurityLog, refreshRequirements, refreshDB } = useAuth();
 
   // 📊 MYSQL-BACKED DASHBOARD SUMMARY COUNTERS
-  const [dashboardSummary, setDashboardSummary] = useState({
-    submittedBids: 0,
-    contracts: 0
-  });
+  const [dashboardSummary, setDashboardSummary] = useState(null);
 
   const refreshDashboardSummary = async () => {
     try {
@@ -55,7 +52,7 @@ export const TransporterPortal = () => {
 
   useEffect(() => {
     refreshDashboardSummary();
-  }, [currentTransporter]);
+  }, [currentTransporter, currentUser, db?.rate_submissions, db?.rate_requests]);
 
   // 🛡️ SAFE DATA REFRESH HELPER: Guarantees no ReferenceError or unhandled rejection during refresh
   const safeRefreshRequirements = async () => {
@@ -1654,7 +1651,9 @@ export const TransporterPortal = () => {
                 <History size={13} /> MY SUBMITTED BIDS ➔
               </div>
               <div style={{ fontSize: '1.2rem', fontWeight: '800', color: '#34d399', marginTop: '2px' }}>
-                {dashboardSummary.submittedBids !== undefined ? dashboardSummary.submittedBids : mySubmissions.length} Bids
+                {dashboardSummary?.submittedBids !== undefined && dashboardSummary?.submittedBids !== null && dashboardSummary.submittedBids > 0
+                  ? dashboardSummary.submittedBids
+                  : mySubmissions.length} Bids
               </div>
             </div>
 
@@ -1679,7 +1678,9 @@ export const TransporterPortal = () => {
                 <Truck size={13} /> MY CONTRACTS ➔
               </div>
               <div style={{ fontSize: '1.2rem', fontWeight: '800', color: '#38bdf8', marginTop: '2px' }}>
-                {dashboardSummary.contracts !== undefined ? dashboardSummary.contracts : totalContractsCount} Total
+                {dashboardSummary?.contracts !== undefined && dashboardSummary?.contracts !== null && dashboardSummary.contracts > 0
+                  ? dashboardSummary.contracts
+                  : totalContractsCount} Total
               </div>
             </div>
           </div>
