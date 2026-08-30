@@ -493,16 +493,7 @@ export const TransporterPortal = () => {
         let myWinningBid = null;
 
         if (finalizedBid) {
-          // Check if the CURRENT authenticated transporter is the winning low-rate transporter
-          const transMatchIds = [currentTransporter?.id, currentTransporter?.code, currentTransporter?.username, currentUser?.id, currentUser?.username].filter(Boolean).map(String);
-          const isWinner = transMatchIds.some(id => id.toLowerCase() === String(finalizedBid.transporter_id).toLowerCase());
-
-          if (!isWinner) {
-            // Other/losing transporters must NOT see this finalized request
-            return;
-          }
-
-          // Winning low-rate transporter sees this item in the special FIXED RATE & DIRECT DISPATCH format 🚚✨
+          // All eligible transporters see this item in the special FIXED RATE & DIRECT DISPATCH format 🚚✨
           isFixedRateAllocation = true;
           fixedRate = Number(finalizedBid.final_rate || finalizedBid.rate_per_mt || 0);
           myWinningBid = finalizedBid;
@@ -570,11 +561,6 @@ export const TransporterPortal = () => {
       let myWinningBid = null;
 
       if (finalizedBid) {
-        const transMatchIds = [currentTransporter?.id, currentTransporter?.code, currentTransporter?.username, currentUser?.id, currentUser?.username].filter(Boolean).map(String);
-        const isWinner = transMatchIds.some(id => id.toLowerCase() === String(finalizedBid.transporter_id).toLowerCase());
-        if (!isWinner) {
-          return;
-        }
         isFixedRateAllocation = true;
         fixedRate = Number(finalizedBid.final_rate || finalizedBid.rate_per_mt || 0);
         myWinningBid = finalizedBid;

@@ -69,11 +69,6 @@ function buildFrontendOpenRequirements(rawRequirements, dbState, transporter) {
         let myWinningBid = null;
 
         if (finalizedBid) {
-          const isWinner = transMatchIds.some(id => id.toLowerCase() === String(finalizedBid.transporter_id).toLowerCase());
-          if (!isWinner) {
-            // Other transporters do not see it
-            return;
-          }
           isFixedRateAllocation = true;
           fixedRate = Number(finalizedBid.final_rate || finalizedBid.rate_per_mt || 0);
           myWinningBid = finalizedBid;
@@ -164,14 +159,12 @@ function simulateDispatch(dbState, params, body, authUser) {
     return { status: 400, success: false, code: 'RATE_NOT_FINALIZED', error: 'Rate not finalized.' };
   }
 
-  const transMatchIds = [authUser.id, authUser.code, authUser.username].filter(Boolean);
-  const isWinningTransporter = transMatchIds.some(id => String(id) === String(finalizedSub.transporter_id));
-  if (!isWinningTransporter) {
+  if (!authUser || !authUser.id) {
     return {
       status: 403,
       success: false,
-      code: 'FORBIDDEN_NOT_WINNING_TRANSPORTER',
-      error: 'Access denied. You are not the finalized winning transporter for this requirement.'
+      code: 'UNAUTHORIZED_TRANSPORTER',
+      error: 'Access denied. Valid transporter authentication required.'
     };
   }
 
@@ -294,7 +287,7 @@ function createInitialState() {
 const transA = { id: 'trans_A', code: 'TRA001', username: 'transporterA' };
 const transB = { id: 'trans_B', code: 'TRB002', username: 'transporterB' };
 
-it('TEST 1: Winning low-rate Transporter A sees the request in the exact required format with ₹44/MT (Fixed) & Dispatch Truck', () => {
+it('TEST 1: Transporter A sees the request in the exact required format with ₹44/MT (Fixed) & Dispatch Truck', () => {
   const db = createInitialState();
   const rawReqs = [{ ...db.transport_requirements[0], items: db.transport_requirement_items }];
 
@@ -306,15 +299,18 @@ it('TEST 1: Winning low-rate Transporter A sees the request in the exact require
   assert.equal(openReqsA[0].requires_new_bid, false);
 });
 
-it('TEST 2: Other / losing Transporter B does NOT see the finalized item in open requirements', () => {
+it('TEST 2: Transporter B also sees the remaining quantity at the same exact fixed rate (₹44/MT) with dispatch enabled', () => {
   const db = createInitialState();
   const rawReqs = [{ ...db.transport_requirements[0], items: db.transport_requirement_items }];
 
   const openReqsB = buildFrontendOpenRequirements(rawReqs, db, transB);
-  assert.equal(openReqsB.length, 0, 'Transporter B does not see the finalized item');
+  assert.equal(openReqsB.length, 1, 'Transporter B sees the finalized item at fixed rate');
+  assert.equal(openReqsB[0].is_fixed_rate_allocation, true);
+  assert.equal(openReqsB[0].fixed_rate, 44);
+  assert.equal(openReqsB[0].requires_new_bid, false);
 });
 
-it('TEST 3: Winning Transporter A can dispatch directly at ₹44/MT', () => {
+it('TEST 3: Transporter A dispatches 40 MT -> remaining balance becomes 4 MT', () => {
   const db = createInitialState();
   const res = simulateDispatch(
     db,
@@ -331,11 +327,27 @@ it('TEST 3: Winning Transporter A can dispatch directly at ₹44/MT', () => {
 
   assert.equal(res.status, 200);
   assert.equal(res.remaining_quantity_mt, 4);
+  assert.equal(res.dispatch_status, 'PARTIALLY_DISPATCHED');
 });
 
-it('TEST 4: Transporter B receives 403 on dispatch attempt', () => {
+it('TEST 4: Transporter B dispatches remaining 4 MT at the same fixed rate (₹44/MT) -> item becomes FULLY_DISPATCHED', () => {
   const db = createInitialState();
-  const res = simulateDispatch(
+  // Transporter A dispatches 40 MT
+  simulateDispatch(
+    db,
+    { requirementId: 'req_44mt', itemId: 'item_req_44mt_01' },
+    {
+      requirement_id: 'req_44mt',
+      item_id: 'item_req_44mt_01',
+      sub_indent_no: 'SNPL/26-27/REQ-0001/01',
+      truck_number: 'MH31AA1111',
+      loaded_quantity_mt: 40
+    },
+    transA
+  );
+
+  // Transporter B dispatches remaining 4 MT
+  const resB = simulateDispatch(
     db,
     { requirementId: 'req_44mt', itemId: 'item_req_44mt_01' },
     {
@@ -343,12 +355,52 @@ it('TEST 4: Transporter B receives 403 on dispatch attempt', () => {
       item_id: 'item_req_44mt_01',
       sub_indent_no: 'SNPL/26-27/REQ-0001/01',
       truck_number: 'MH31BB2222',
-      loaded_quantity_mt: 40
+      loaded_quantity_mt: 4
     },
     transB
   );
 
-  assert.equal(res.status, 403);
+  assert.equal(resB.status, 200);
+  assert.equal(resB.remaining_quantity_mt, 0);
+  assert.equal(resB.dispatched_quantity_mt, 44);
+  assert.equal(resB.dispatch_status, 'FULLY_DISPATCHED');
+  assert.equal(db.truck_dispatches.length, 2);
+  assert.equal(db.truck_dispatches[0].transporter_id, 'trans_A');
+  assert.equal(db.truck_dispatches[1].transporter_id, 'trans_B');
+});
+
+it('TEST 5: Attempting to dispatch more than remaining balance is rejected for all transporters', () => {
+  const db = createInitialState();
+  // Transporter A dispatches 40 MT
+  simulateDispatch(
+    db,
+    { requirementId: 'req_44mt', itemId: 'item_req_44mt_01' },
+    {
+      requirement_id: 'req_44mt',
+      item_id: 'item_req_44mt_01',
+      sub_indent_no: 'SNPL/26-27/REQ-0001/01',
+      truck_number: 'MH31AA1111',
+      loaded_quantity_mt: 40
+    },
+    transA
+  );
+
+  // Transporter B attempts to dispatch 5 MT (when only 4 MT is left)
+  const resB = simulateDispatch(
+    db,
+    { requirementId: 'req_44mt', itemId: 'item_req_44mt_01' },
+    {
+      requirement_id: 'req_44mt',
+      item_id: 'item_req_44mt_01',
+      sub_indent_no: 'SNPL/26-27/REQ-0001/01',
+      truck_number: 'MH31BB2222',
+      loaded_quantity_mt: 5
+    },
+    transB
+  );
+
+  assert.equal(resB.status, 400);
+  assert.equal(resB.code, 'EXCEEDS_REMAINING_QUANTITY');
 });
 
 console.log('================================================================');

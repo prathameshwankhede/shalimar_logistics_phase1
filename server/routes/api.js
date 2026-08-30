@@ -2133,15 +2133,14 @@ async function handleCreateTruckDispatch(req, res) {
 
     const finalRateVal = parseFloat(finalizedSub.final_rate || finalizedSub.rate_per_mt || 0);
 
-    // 2. Strict Transporter Authorization: ONLY the winning transporter who quoted the finalized rate is allowed to dispatch
-    const isWinningTransporter = transMatchIds.some(id => String(id) === String(finalizedSub.transporter_id));
-    if (!isWinningTransporter) {
+    // 2. Transporter Verification: Ensure authenticated transporter exists and rate is active
+    if (!authTransporter || !authTransporter.id) {
       await conn.rollback();
       conn.release();
       return res.status(403).json({
         success: false,
-        code: 'FORBIDDEN_NOT_WINNING_TRANSPORTER',
-        error: 'Access denied. You are not the finalized winning transporter for this requirement.'
+        code: 'UNAUTHORIZED_TRANSPORTER',
+        error: 'Access denied. Valid transporter authentication required.'
       });
     }
 
