@@ -290,9 +290,43 @@ export const AdminDashboard = () => {
     }
   };
 
+  const handleSendInlineCounter = async (reqId, itemId, reqCode, itemBids) => {
+    const targetItemId = itemId || 'MAIN';
+    const cellKey = `${reqId}_${targetItemId}`;
+    const enteredRate = adminCounterInputs[cellKey];
+    const rateVal = parseFloat(String(enteredRate || '').replace(/,/g, '').trim());
+
+    if (!rateVal || isNaN(rateVal) || rateVal <= 0) {
+      alert(`Please enter a valid counter rate (₹ / MT) for ${reqCode || reqId}.`);
+      return;
+    }
+
+    const validBids = (itemBids || []).filter(b => b && b.id);
+    if (validBids.length === 0) {
+      alert(`No transporter quotes received yet for ${reqCode || reqId}. Cannot send counter offer.`);
+      return;
+    }
+
+    setIsSendingCounter(prev => ({ ...prev, [cellKey]: true }));
+
+    try {
+      const res = await sendAdminCounterAll(reqId, targetItemId, { counter_rate: rateVal, remarks: 'Direct Admin Counter Offer' });
+      alert(`✓ Counter offer of ₹${rateVal}/MT successfully sent to ${res?.affected_transporters || validBids.length} transporter(s) for ${reqCode || reqId}!`);
+      if (typeof updateDB === 'function') {
+        await updateDB();
+      }
+    } catch (err) {
+      console.error('Counter offer error:', err);
+      alert(err.message || 'Failed to send counter offer.');
+    } finally {
+      setIsSendingCounter(prev => ({ ...prev, [cellKey]: false }));
+    }
+  };
+
   const renderCounterOfferCell = (reqId, itemId, itemBids, lowestRate, reqCode) => {
     const quoteCount = itemBids ? itemBids.length : 0;
     const targetItemId = itemId || 'MAIN';
+    const cellKey = `${reqId}_${targetItemId}`;
 
     const anyFinalized = itemBids && itemBids.some(b => b.bid_status === 'finalized' || b.bid_status === 'FINALIZED' || b.status === 'Rate Frozen');
     const allResponded = quoteCount > 0 && itemBids.every(b => b.bid_status === 'counter_accepted' || b.bid_status === 'countered_by_transporter' || b.bid_status === 'COUNTER_ACCEPTED' || b.bid_status === 'COUNTER_RESPONDED');
@@ -311,96 +345,81 @@ export const AdminDashboard = () => {
       );
     }
 
-    if (allResponded) {
-      return (
-        <div className="counter-responded" style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'flex-start' }}>
-          <button
-            type="button"
-            onClick={() => handleOpenCounterModal(reqId, targetItemId, reqCode, itemBids, lowestRate, latestCounter)}
-            className="btn btn-primary"
-            style={{ padding: '5px 12px', fontSize: '0.78rem', background: 'linear-gradient(135deg, #059669 0%, #10b981 100%)', color: '#ffffff', borderRadius: '6px', fontWeight: '900', border: 'none', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px', boxShadow: '0 2px 4px rgba(16, 185, 129, 0.3)' }}
-          >
-            ✓ All Responses Received
-          </button>
-          {latestCounter && <span style={{ fontSize: '0.74rem', color: '#34d399', fontWeight: '800' }}>Counter: ₹{latestCounter}/MT</span>}
-        </div>
-      );
-    }
+    const currentValue = adminCounterInputs[cellKey] !== undefined ? adminCounterInputs[cellKey] : '';
 
-    if (someResponded) {
-      return (
-        <div className="counter-responded" style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'flex-start' }}>
-          <button
-            type="button"
-            onClick={() => handleOpenCounterModal(reqId, targetItemId, reqCode, itemBids, lowestRate, latestCounter)}
-            className="btn btn-primary"
-            style={{ padding: '5px 12px', fontSize: '0.78rem', background: 'linear-gradient(135deg, #0284c7 0%, #2563eb 100%)', color: '#ffffff', borderRadius: '6px', fontWeight: '900', border: 'none', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px', boxShadow: '0 2px 4px rgba(2, 132, 199, 0.3)' }}
-          >
-            🔄 Responses ({respondedCount}/{quoteCount})
-          </button>
-          {latestCounter && <span style={{ fontSize: '0.74rem', color: '#38bdf8', fontWeight: '800' }}>Counter: ₹{latestCounter}/MT</span>}
-        </div>
-      );
-    }
-
-    if (isCounterSent) {
-      return (
-        <div className="counter-pending" style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'flex-start' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-            <span style={{ fontSize: '0.74rem', background: 'rgba(245, 158, 11, 0.2)', color: '#fbbf24', border: '1px solid #f59e0b', padding: '2px 6px', borderRadius: '4px', fontWeight: '800' }}>
-              ⏳ Pending: ₹{latestCounter}/MT
-            </span>
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'flex-start', minWidth: '180px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', width: '100%' }}>
+          <div style={{ position: 'relative', flex: 1 }}>
+            <span style={{ position: 'absolute', left: '7px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8', fontWeight: '800', fontSize: '0.78rem', pointerEvents: 'none' }}>₹</span>
+            <input
+              type="number"
+              step="0.01"
+              placeholder={lowestRate ? `${lowestRate}` : "Rate"}
+              value={currentValue}
+              onChange={(e) => {
+                const val = e.target.value;
+                setAdminCounterInputs(prev => ({ ...prev, [cellKey]: val }));
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  handleSendInlineCounter(reqId, targetItemId, reqCode, itemBids);
+                }
+              }}
+              style={{
+                width: '100%',
+                padding: '5px 6px 5px 18px',
+                fontSize: '0.8rem',
+                fontWeight: '800',
+                borderRadius: '6px',
+                border: '1.5px solid #38bdf8',
+                background: '#0f172a',
+                color: '#ffffff',
+                outline: 'none',
+                minWidth: '70px'
+              }}
+              title="Type counter rate (₹ / MT) and press Enter or click Send"
+            />
           </div>
           <button
             type="button"
-            onClick={() => handleOpenCounterModal(reqId, targetItemId, reqCode, itemBids, lowestRate, latestCounter)}
-            className="btn btn-secondary"
-            style={{ padding: '3px 8px', fontSize: '0.72rem', border: '1px solid #38bdf8', color: '#38bdf8', borderRadius: '4px', fontWeight: '800', background: 'transparent', cursor: 'pointer' }}
+            onClick={() => handleSendInlineCounter(reqId, targetItemId, reqCode, itemBids)}
+            disabled={isSendingCounter[cellKey] || quoteCount === 0}
+            className="btn btn-primary"
+            style={{
+              padding: '5px 10px',
+              fontSize: '0.76rem',
+              fontWeight: '900',
+              borderRadius: '6px',
+              background: 'linear-gradient(135deg, #0284c7 0%, #2563eb 100%)',
+              border: '1px solid #38bdf8',
+              color: '#ffffff',
+              cursor: (isSendingCounter[cellKey] || quoteCount === 0) ? 'not-allowed' : 'pointer',
+              opacity: quoteCount === 0 ? 0.6 : 1,
+              whiteSpace: 'nowrap',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '4px'
+            }}
+            title={quoteCount === 0 ? "No quotes submitted yet" : "Send direct counter offer to all bidders"}
           >
-            ✏ Edit Counter ({quoteCount})
+            {isSendingCounter[cellKey] ? '⏳...' : '💬 Send'}
           </button>
         </div>
-      );
-    }
 
-    // Always render the prominent Counter Rate button!
-    return (
-      <button
-        type="button"
-        className="counter-rate-btn btn"
-        onClick={() => handleOpenCounterModal(reqId, targetItemId, reqCode, itemBids, lowestRate, latestCounter)}
-        aria-label={`Send counter rate for ${reqCode || reqId}`}
-        style={{
-          padding: '6px 14px',
-          fontSize: '0.8rem',
-          fontWeight: '900',
-          borderRadius: '6px',
-          border: '1.5px solid #38bdf8',
-          color: '#ffffff',
-          background: 'linear-gradient(135deg, #0284c7 0%, #2563eb 100%)',
-          boxShadow: '0 2px 6px rgba(2, 132, 199, 0.35)',
-          cursor: 'pointer',
-          whiteSpace: 'nowrap',
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: '6px'
-        }}
-      >
-        <span>💬</span>
-        <span>Counter Rate</span>
-        {quoteCount > 0 && (
-          <span style={{
-            background: '#ffffff',
-            color: '#0369a1',
-            fontSize: '0.7rem',
-            padding: '1px 6px',
-            borderRadius: '10px',
-            fontWeight: '900'
-          }}>
-            {quoteCount}
-          </span>
+        {allResponded ? (
+          <div style={{ fontSize: '0.72rem', color: '#34d399', fontWeight: '800' }}>✓ All {quoteCount} Responded (Latest: ₹{latestCounter})</div>
+        ) : someResponded ? (
+          <div style={{ fontSize: '0.72rem', color: '#38bdf8', fontWeight: '800' }}>🔄 {respondedCount}/{quoteCount} Responded</div>
+        ) : isCounterSent ? (
+          <div style={{ fontSize: '0.72rem', color: '#fbbf24', fontWeight: '800' }}>⏳ Sent: ₹{latestCounter}/MT ({quoteCount} Bids)</div>
+        ) : quoteCount > 0 ? (
+          <div style={{ fontSize: '0.7rem', color: '#94a3b8' }}>{quoteCount} Bids ({lowestRate ? `Lowest ₹${lowestRate}` : ''})</div>
+        ) : (
+          <div style={{ fontSize: '0.7rem', color: '#64748b' }}>Awaiting bids</div>
         )}
-      </button>
+      </div>
     );
   };
 
