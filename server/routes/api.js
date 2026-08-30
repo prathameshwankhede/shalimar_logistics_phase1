@@ -62,31 +62,52 @@ async function ensureColumnExists(tableName, columnName, columnDefinition) {
 export async function reconcileItemDispatchBalances(targetPool = pool) {
   try {
     console.log('🔄 [RECONCILIATION] Starting transport_requirement_items dispatch balance reconciliation...');
-    // 1. Calculate actual loaded quantity sum from truck_dispatches per exact item UUID or sub_indent_no
-    const [result] = await targetPool.query(`
-      UPDATE transport_requirement_items tri
-      LEFT JOIN (
-        SELECT requirement_item_id, COALESCE(SUM(loaded_quantity_mt), 0.000) AS total_dispatched
-        FROM truck_dispatches
-        GROUP BY requirement_item_id
-      ) td ON (td.requirement_item_id = tri.id OR td.requirement_item_id = tri.sub_indent_no)
-      SET 
-        tri.dispatched_quantity_mt = COALESCE(td.total_dispatched, 0.000),
-        tri.remaining_quantity_mt = GREATEST(0.000, tri.quantity_mt - COALESCE(td.total_dispatched, 0.000)),
-        tri.dispatch_status = CASE 
-          WHEN (tri.quantity_mt - COALESCE(td.total_dispatched, 0.000)) <= 0.001 AND tri.quantity_mt > 0 THEN 'FULLY_DISPATCHED'
-          WHEN COALESCE(td.total_dispatched, 0.000) > 0 THEN 'PARTIALLY_DISPATCHED'
-          ELSE 'PENDING'
-        END,
-        tri.allocation_status = CASE
-          WHEN (tri.quantity_mt - COALESCE(td.total_dispatched, 0.000)) <= 0.001 AND tri.quantity_mt > 0 THEN 'COMPLETED'
-          WHEN tri.allocation_status = 'RELEASED_FOR_REQUOTE' THEN 'RELEASED_FOR_REQUOTE'
-          ELSE 'ACTIVE'
-        END,
-        tri.updated_at = NOW();
-    `);
+    
+    // Fetch all items and all dispatches for deterministic mapping & reconciliation
+    const [items] = await targetPool.query('SELECT id, requirement_id, sub_indent_no, quantity_mt, allocation_status FROM transport_requirement_items');
+    const [dispatches] = await targetPool.query('SELECT id, requirement_id, requirement_item_id, loaded_quantity_mt FROM truck_dispatches');
 
-    // 2. Also reconcile parent transport_requirements status if all items are fully dispatched
+    // Build requirement item counts for legacy 'MAIN' handling
+    const reqItemCountMap = {};
+    (items || []).forEach(it => {
+      reqItemCountMap[it.requirement_id] = (reqItemCountMap[it.requirement_id] || 0) + 1;
+    });
+
+    let updatedCount = 0;
+    for (const item of (items || [])) {
+      // Find all matching dispatches without duplicate counting
+      const matchingDispatches = (dispatches || []).filter(d => {
+        if (!d) return false;
+        // Exact UUID match
+        if (d.requirement_item_id && d.requirement_item_id === item.id) return true;
+        // Exact sub_indent_no match
+        if (d.requirement_item_id && item.sub_indent_no && d.requirement_item_id === item.sub_indent_no) return true;
+        // Single child legacy match
+        if ((d.requirement_item_id === 'MAIN' || !d.requirement_item_id) && d.requirement_id === item.requirement_id && reqItemCountMap[item.requirement_id] === 1) return true;
+        return false;
+      });
+
+      const totalDispatched = matchingDispatches.reduce((acc, d) => acc + parseFloat(d.loaded_quantity_mt || 0), 0);
+      const allocatedQty = parseFloat(item.quantity_mt || 0);
+      const remainingQty = Math.max(0, parseFloat((allocatedQty - totalDispatched).toFixed(3)));
+      const dispatchStatus = remainingQty <= 0.001 && allocatedQty > 0 
+        ? 'FULLY_DISPATCHED' 
+        : (totalDispatched > 0 ? 'PARTIALLY_DISPATCHED' : 'PENDING');
+      
+      const allocStatus = remainingQty <= 0.001 && allocatedQty > 0 
+        ? 'COMPLETED' 
+        : (item.allocation_status === 'RELEASED_FOR_REQUOTE' ? 'RELEASED_FOR_REQUOTE' : 'ACTIVE');
+
+      await targetPool.query(
+        `UPDATE transport_requirement_items 
+         SET dispatched_quantity_mt = ?, remaining_quantity_mt = ?, dispatch_status = ?, allocation_status = ?, updated_at = NOW() 
+         WHERE id = ?`,
+        [totalDispatched, remainingQty, dispatchStatus, allocStatus, item.id]
+      );
+      updatedCount++;
+    }
+
+    // Reconcile parent requirements status
     await targetPool.query(`
       UPDATE transport_requirements tr
       SET status = CASE 
@@ -104,8 +125,8 @@ export async function reconcileItemDispatchBalances(targetPool = pool) {
       WHERE tr.status NOT IN ('ARCHIVED', 'CANCELLED', 'DELETED');
     `).catch(() => {});
 
-    console.log(`✅ [RECONCILIATION] Completed transport_requirement_items dispatch balance reconciliation. Affected rows: ${result?.affectedRows || 0}`);
-    return { success: true, affectedRows: result?.affectedRows || 0 };
+    console.log(`✅ [RECONCILIATION] Completed transport_requirement_items dispatch balance reconciliation. Reconciled items: ${updatedCount}`);
+    return { success: true, affectedRows: updatedCount };
   } catch (err) {
     console.error('❌ [RECONCILIATION ERROR] Failed to reconcile dispatch balances:', err.message);
     return { success: false, error: err.message };
