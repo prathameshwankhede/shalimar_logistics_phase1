@@ -2106,9 +2106,19 @@ async function handleCreateTruckDispatch(req, res) {
 
     const finalRateVal = parseFloat(finalizedSub.final_rate || finalizedSub.rate_per_mt || 0);
 
-    // 2. Acceptance Gate Check if original winner had pending acceptance
-    const isOriginalWinner = transMatchIds.some(id => String(id) === String(finalizedSub.transporter_id));
-    if (isOriginalWinner && finalizedSub.acceptance_status && String(finalizedSub.acceptance_status).toUpperCase() === 'REJECTED') {
+    // 2. Strict Transporter Authorization: ONLY the winning transporter who quoted the finalized rate is allowed to dispatch
+    const isWinningTransporter = transMatchIds.some(id => String(id) === String(finalizedSub.transporter_id));
+    if (!isWinningTransporter) {
+      await conn.rollback();
+      conn.release();
+      return res.status(403).json({
+        success: false,
+        code: 'FORBIDDEN_NOT_WINNING_TRANSPORTER',
+        error: 'Access denied. You are not the finalized winning transporter for this requirement.'
+      });
+    }
+
+    if (finalizedSub.acceptance_status && String(finalizedSub.acceptance_status).toUpperCase() === 'REJECTED') {
       await conn.rollback();
       conn.release();
       return res.status(400).json({

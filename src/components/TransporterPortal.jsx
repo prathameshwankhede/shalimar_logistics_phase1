@@ -453,7 +453,7 @@ export const TransporterPortal = () => {
     return true;
   });
 
-  // Flatten parent requirements with child sub-indents into individual sub-indent items for transporter bidding & fixed-rate dispatch
+  // Flatten parent requirements with child sub-indents into individual sub-indent items for transporter bidding
   const openRateRequests = [];
   rawOpenRateRequests.forEach((parentReq) => {
     const childItems = parentReq.items || [];
@@ -465,7 +465,7 @@ export const TransporterPortal = () => {
 
         // 1. Must not be fully dispatched or closed
         const dispStatusUpper = String(item.dispatch_status || '').toUpperCase();
-        if (dispStatusUpper === 'FULLY_DISPATCHED') {
+        if (dispStatusUpper === 'FULLY_DISPATCHED' || dispStatusUpper === 'COMPLETED') {
           return;
         }
 
@@ -483,16 +483,17 @@ export const TransporterPortal = () => {
           return;
         }
 
-        // Check if item has a finalized rate
-        const finalizedBid = (db.rate_submissions || []).find((s) => {
+        // 3. Must not have a finalized/accepted winner in the current cycle (Finalized contracts belong ONLY to winning transporter under Awarded Contracts)
+        const itemAcceptedByAnyone = (db.rate_submissions || []).some((s) => {
           if (!s) return false;
           const sReqMatch = String(s.requirement_id) === String(parentReq.id) || String(s.rate_request_id) === String(parentReq.id) || String(s.rate_request_id) === String(parentReqNo);
           const sItemMatch = String(s.item_id) === String(item.id) || String(s.item_id) === String(subIndentNo);
-          return sReqMatch && sItemMatch && (Boolean(s.is_finalized) || String(s.bid_status).toUpperCase() === 'FINALIZED' || Number(s.final_rate) > 0);
+          return sReqMatch && sItemMatch && isBidFrozen(s);
         });
 
-        const isFixedRateAllocation = Boolean(finalizedBid && remQty > 0);
-        const fixedRate = finalizedBid ? Number(finalizedBid.final_rate || finalizedBid.rate_per_mt || 0) : null;
+        if (itemAcceptedByAnyone) {
+          return; // Finalized items go ONLY to the winning transporter under Awarded Contracts & Dispatch
+        }
 
         openRateRequests.push({
           ...parentReq,
@@ -511,8 +512,8 @@ export const TransporterPortal = () => {
           drop_location: item.drop_location || parentReq.drop_location,
           material_type: item.product_name || item.material_type || parentReq.product_name,
           product_name: item.product_name || item.material_type || parentReq.product_name,
-          required_qty: remQty,
-          quantity_mt: remQty,
+          required_qty: remQty > 0 ? remQty : allocatedQty,
+          quantity_mt: remQty > 0 ? remQty : allocatedQty,
           allocated_quantity_mt: allocatedQty,
           dispatched_quantity_mt: totalDispatched,
           remaining_quantity_mt: remQty,
@@ -520,13 +521,8 @@ export const TransporterPortal = () => {
           target_date: item.target_date || parentReq.target_date,
           parent_total_qty: parentReq.total_quantity_mt || parentReq.quantity_mt,
           parent_req_no: parentReqNo,
-          is_fixed_rate_allocation: isFixedRateAllocation,
-          fixed_rate: fixedRate,
-          finalized_rate: fixedRate,
-          finalized_bid: finalizedBid,
-          rate_editable: false,
-          requires_new_bid: !isFixedRateAllocation,
-          is_requote: false
+          source_item_id: item.source_item_id || null,
+          is_reopened: Boolean(item.source_item_id)
         });
       });
     } else {
@@ -543,14 +539,12 @@ export const TransporterPortal = () => {
         return;
       }
 
-      const finalizedBid = (db.rate_submissions || []).find((s) => {
-        if (!s) return false;
-        const sReqMatch = String(s.requirement_id) === String(parentReq.id) || String(s.rate_request_id) === String(parentReq.id);
-        return sReqMatch && (Boolean(s.is_finalized) || String(s.bid_status).toUpperCase() === 'FINALIZED' || Number(s.final_rate) > 0);
-      });
-
-      const isFixedRateAllocation = Boolean(finalizedBid && remQty > 0);
-      const fixedRate = finalizedBid ? Number(finalizedBid.final_rate || finalizedBid.rate_per_mt || 0) : null;
+      const isAcceptedByAnyone = (db.rate_submissions || []).some(
+        (s) => (String(s.rate_request_id) === String(parentReq.id) || String(s.rate_request_id) === String(parentReq.request_no) || String(s.requirement_id) === String(parentReq.id)) && isBidFrozen(s)
+      );
+      if (isAcceptedByAnyone) {
+        return; // Finalized items go ONLY to winning transporter under Awarded Contracts
+      }
 
       openRateRequests.push({
         ...parentReq,
@@ -562,14 +556,7 @@ export const TransporterPortal = () => {
         quantity_mt: remQty > 0 ? remQty : allocatedQty,
         allocated_quantity_mt: allocatedQty,
         dispatched_quantity_mt: totalDispatched,
-        remaining_quantity_mt: remQty,
-        is_fixed_rate_allocation: isFixedRateAllocation,
-        fixed_rate: fixedRate,
-        finalized_rate: fixedRate,
-        finalized_bid: finalizedBid,
-        rate_editable: false,
-        requires_new_bid: !isFixedRateAllocation,
-        is_requote: false
+        remaining_quantity_mt: remQty
       });
     }
   });
