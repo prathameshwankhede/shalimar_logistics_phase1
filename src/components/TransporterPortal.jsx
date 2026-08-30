@@ -426,7 +426,20 @@ export const TransporterPortal = () => {
     return itemsList;
   }, [db.rate_requests, db.rate_submissions, currentTransporter, currentUser]);
 
-  const totalContractsCount = myFinalizedItems.length + myAllocations.length;
+  const dispatchedFinalizedItems = React.useMemo(() => {
+    return myFinalizedItems.filter(({ item, parentReq }) => {
+      const dispatches = (db.truck_dispatches || []).filter((d) => {
+        if (item && item.id) {
+          return d.requirement_item_id === item.id || d.requirement_item_id === item.sub_indent_no;
+        }
+        return d.requirement_id === parentReq.id;
+      });
+      const totalDispatched = dispatches.reduce((acc, curr) => acc + (parseFloat(curr.loaded_quantity_mt || curr.dispatched_qty) || 0), 0);
+      return totalDispatched > 0 || dispatches.length > 0;
+    });
+  }, [myFinalizedItems, db.truck_dispatches]);
+
+  const totalContractsCount = dispatchedFinalizedItems.length;
 
   // Available open rate requests (INDEPENDENT ITEM / SUB-INDENT EVALUATION)
   const rawOpenRateRequests = (db.rate_requests || []).filter((r) => {
@@ -2621,8 +2634,8 @@ export const TransporterPortal = () => {
             </div>
           </div>
 
-          {/* 1. Modern Awarded / Finalized Requirement Contracts */}
-          {myFinalizedItems
+          {/* 1. Modern Awarded / Finalized Requirement Contracts (Rendered only after dispatch) */}
+          {dispatchedFinalizedItems
             .filter(({ item, parentReq }) => {
               const dispatches = (db.truck_dispatches || []).filter((d) => {
                 if (item && item.id) {
@@ -2631,6 +2644,8 @@ export const TransporterPortal = () => {
                 return d.requirement_id === parentReq.id;
               });
               const totalDispatched = dispatches.reduce((acc, curr) => acc + (parseFloat(curr.loaded_quantity_mt || curr.dispatched_qty) || 0), 0);
+              if (totalDispatched <= 0 && dispatches.length === 0) return false;
+
               const allocatedQty = parseFloat(item.quantity_mt || item.required_qty || parentReq.quantity_mt || parentReq.required_qty || 0);
               const remainingBalance = Math.max(0, allocatedQty - totalDispatched);
               const isReleasedForRequote = item.dispatch_status === 'RELEASED_FOR_REQUOTE' || item.allocation_status === 'RELEASED_FOR_REQUOTE';
@@ -3127,6 +3142,16 @@ export const TransporterPortal = () => {
                 </div>
               );
             })}
+
+          {dispatchedFinalizedItems.length === 0 && (
+            <div className="glass-panel" style={{ padding: '40px 20px', textAlign: 'center', color: 'var(--text-muted)' }}>
+              <Truck size={48} style={{ opacity: 0.3, marginBottom: '12px' }} />
+              <div style={{ fontSize: '1rem', fontWeight: '800', color: 'var(--text-main)' }}>No Dispatched Contracts Yet</div>
+              <p style={{ fontSize: '0.84rem', marginTop: '6px', maxWidth: '500px', margin: '6px auto 0' }}>
+                When you dispatch trucks from the <strong>Open Requirements</strong> tab, your dispatched contracts, LR numbers, and delivery history reports will appear here.
+              </p>
+            </div>
+          )}
         </div>
       )}
 
