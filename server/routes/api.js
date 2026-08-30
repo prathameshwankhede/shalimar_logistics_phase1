@@ -2264,7 +2264,9 @@ async function handleGetTransporterDashboardSummary(req, res) {
        FROM rate_submissions 
        WHERE transporter_id IN (?) 
          AND (
+           is_finalized = 1 OR
            UPPER(COALESCE(bid_status, '')) IN ('FINALIZED', 'AWARDED', 'COUNTER_ACCEPTED') OR 
+           UPPER(COALESCE(acceptance_status, '')) IN ('ACCEPTED', 'PENDING') OR
            UPPER(COALESCE(status, '')) IN ('FINALIZED', 'AWARDED', 'ACCEPTED', 'RATE FROZEN', 'SELECTED') OR 
            final_rate IS NOT NULL
          )`,

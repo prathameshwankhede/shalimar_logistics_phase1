@@ -385,6 +385,55 @@ export const TransporterPortal = () => {
     return (cId && dId === cId) || (cCode && dId === cCode) || (cUser && dId === cUser);
   });
 
+  // 🏆 Modern Awarded / Finalized Requirements Won by This Authenticated Transporter
+  const myFinalizedItems = React.useMemo(() => {
+    const itemsList = [];
+    (db.rate_requests || []).forEach((req) => {
+      const childItems = req.items || [];
+      if (childItems.length > 0) {
+        childItems.forEach((child) => {
+          const myBid = findMyBid(child, db.rate_submissions, currentTransporter, currentUser) ||
+                        findMyBid({ ...child, id: child.id, requirement_id: req.id }, db.rate_submissions, currentTransporter, currentUser);
+          const isFinalized = myBid && (
+            Boolean(myBid.is_finalized) ||
+            String(myBid.bid_status || '').toUpperCase() === 'FINALIZED' ||
+            String(myBid.acceptance_status || '').toUpperCase() === 'ACCEPTED' ||
+            Number(myBid.final_rate) > 0
+          );
+          if (isFinalized) {
+            itemsList.push({
+              item: child,
+              parentReq: req,
+              myBid,
+              isMultiItem: true,
+              uniqueKey: `awarded_${req.id}_${child.id || child.sub_indent_no}`
+            });
+          }
+        });
+      } else {
+        const myBid = findMyBid(req, db.rate_submissions, currentTransporter, currentUser);
+        const isFinalized = myBid && (
+          Boolean(myBid.is_finalized) ||
+          String(myBid.bid_status || '').toUpperCase() === 'FINALIZED' ||
+          String(myBid.acceptance_status || '').toUpperCase() === 'ACCEPTED' ||
+          Number(myBid.final_rate) > 0
+        );
+        if (isFinalized) {
+          itemsList.push({
+            item: req,
+            parentReq: req,
+            myBid,
+            isMultiItem: false,
+            uniqueKey: `awarded_${req.id}`
+          });
+        }
+      }
+    });
+    return itemsList;
+  }, [db.rate_requests, db.rate_submissions, currentTransporter, currentUser]);
+
+  const totalContractsCount = myFinalizedItems.length + myAllocations.length;
+
   // Available open rate requests (ONLY ACTIVE UNACCEPTED & UNAWARDED REQUIREMENTS)
   const rawOpenRateRequests = (db.rate_requests || []).filter((r) => {
     if (!r || !r.id) return false;
@@ -1427,16 +1476,53 @@ export const TransporterPortal = () => {
               </div>
             )}
 
-            <div style={{ background: 'rgba(255,255,255,0.05)', padding: '10px 16px', borderRadius: '10px', textAlign: 'right' }}>
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>MY SUBMITTED BIDS</div>
-              <div style={{ fontSize: '1.2rem', fontWeight: '800', color: '#34d399' }}>
+            <div
+              onClick={() => setActiveTab('my_bids')}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setActiveTab('my_bids'); }}
+              style={{
+                background: activeTab === 'my_bids' ? 'rgba(52, 211, 153, 0.18)' : 'rgba(255,255,255,0.06)',
+                border: activeTab === 'my_bids' ? '1.5px solid #34d399' : '1px solid rgba(255,255,255,0.12)',
+                boxShadow: activeTab === 'my_bids' ? '0 0 16px rgba(52, 211, 153, 0.35)' : 'none',
+                padding: '10px 16px',
+                borderRadius: '12px',
+                textAlign: 'right',
+                cursor: 'pointer',
+                transition: 'all 0.2s ease-in-out'
+              }}
+              title="Click to view all your submitted freight bids"
+            >
+              <div style={{ fontSize: '0.74rem', color: activeTab === 'my_bids' ? '#34d399' : 'var(--text-muted)', fontWeight: '800', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '4px' }}>
+                <History size={13} /> MY SUBMITTED BIDS ➔
+              </div>
+              <div style={{ fontSize: '1.2rem', fontWeight: '800', color: '#34d399', marginTop: '2px' }}>
                 {dashboardSummary.submittedBids !== undefined ? dashboardSummary.submittedBids : mySubmissions.length} Bids
               </div>
             </div>
-            <div style={{ background: 'rgba(255,255,255,0.05)', padding: '10px 16px', borderRadius: '10px', textAlign: 'right' }}>
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>MY CONTRACTS</div>
-              <div style={{ fontSize: '1.2rem', fontWeight: '800', color: '#38bdf8' }}>
-                {dashboardSummary.contracts !== undefined ? dashboardSummary.contracts : myAllocations.length} Total
+
+            <div
+              onClick={() => setActiveTab('allocations')}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setActiveTab('allocations'); }}
+              style={{
+                background: activeTab === 'allocations' ? 'rgba(56, 189, 248, 0.18)' : 'rgba(255,255,255,0.06)',
+                border: activeTab === 'allocations' ? '1.5px solid #38bdf8' : '1px solid rgba(255,255,255,0.12)',
+                boxShadow: activeTab === 'allocations' ? '0 0 16px rgba(56, 189, 248, 0.35)' : 'none',
+                padding: '10px 16px',
+                borderRadius: '12px',
+                textAlign: 'right',
+                cursor: 'pointer',
+                transition: 'all 0.2s ease-in-out'
+              }}
+              title="Click to view all your awarded freight contracts and dispatch trucks"
+            >
+              <div style={{ fontSize: '0.74rem', color: activeTab === 'allocations' ? '#38bdf8' : 'var(--text-muted)', fontWeight: '800', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '4px' }}>
+                <Truck size={13} /> MY CONTRACTS ➔
+              </div>
+              <div style={{ fontSize: '1.2rem', fontWeight: '800', color: '#38bdf8', marginTop: '2px' }}>
+                {dashboardSummary.contracts !== undefined ? dashboardSummary.contracts : totalContractsCount} Total
               </div>
             </div>
           </div>
@@ -2228,7 +2314,12 @@ export const TransporterPortal = () => {
       {activeTab === 'allocations' && (
         <div className="glass-panel" style={{ padding: '24px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
-            <h3 style={{ fontSize: '1.1rem', fontWeight: '700' }}>Awarded Freight Contracts & Dispatch Management</h3>
+            <div>
+              <h3 style={{ fontSize: '1.1rem', fontWeight: '700' }}>Awarded Freight Contracts & Dispatch Management</h3>
+              <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: 0 }}>
+                All finalized freight requirements and delivery contracts awarded to {currentTransporter.company_name}
+              </p>
+            </div>
 
             {/* Sub-Filters: All, Active Pending, Completed */}
             <div style={{ display: 'flex', gap: '8px' }}>
@@ -2237,14 +2328,14 @@ export const TransporterPortal = () => {
                 className={allocationFilter === 'all' ? 'btn btn-primary' : 'btn btn-secondary'}
                 style={{ padding: '6px 12px', fontSize: '0.78rem' }}
               >
-                All Contracts ({myAllocations.length})
+                All Contracts ({totalContractsCount})
               </button>
               <button
                 onClick={() => setAllocationFilter('active')}
                 className={allocationFilter === 'active' ? 'btn btn-primary' : 'btn btn-secondary'}
                 style={{ padding: '6px 12px', fontSize: '0.78rem' }}
               >
-                🚚 Active / Loading
+                🚚 Active / In-Progress
               </button>
               <button
                 onClick={() => setAllocationFilter('completed')}
@@ -2256,6 +2347,182 @@ export const TransporterPortal = () => {
             </div>
           </div>
 
+          {/* 1. Modern Awarded / Finalized Requirement Contracts */}
+          {myFinalizedItems
+            .filter(({ item, parentReq }) => {
+              const dispatches = (db.truck_dispatches || []).filter((d) =>
+                d.requirement_item_id === item.id || d.requirement_id === parentReq.id
+              );
+              const totalDispatched = dispatches.reduce((acc, curr) => acc + (parseFloat(curr.loaded_quantity_mt || curr.dispatched_qty) || 0), 0);
+              const allocatedQty = parseFloat(item.quantity_mt || item.required_qty || parentReq.quantity_mt || parentReq.required_qty || 0);
+              const remainingBalance = Math.max(0, allocatedQty - totalDispatched);
+              const isCompleted = remainingBalance <= 0 || item.dispatch_status === 'FULLY_DISPATCHED' || parentReq.status === 'Completed';
+
+              if (allocationFilter === 'active') return !isCompleted;
+              if (allocationFilter === 'completed') return isCompleted;
+              return true;
+            })
+            .map(({ item, parentReq, myBid, uniqueKey }) => {
+              const reqNo = parentReq.req_no || parentReq.request_no || parentReq.id;
+              const subCode = item.sub_indent_no || `${reqNo}/${item.id || '01'}`;
+              const originCity = item.pickup_origin || parentReq.pickup_origin || parentReq.origin_city || '-';
+              const destCity = item.drop_location || parentReq.drop_location || parentReq.dest_city || '-';
+              const cargo = item.product_name || parentReq.product_name || parentReq.material_type || 'Cargo';
+              const totalQty = parseFloat(item.quantity_mt || item.required_qty || parentReq.quantity_mt || parentReq.required_qty || 0);
+              const finalRate = Number(myBid.final_rate || myBid.rate_per_mt || myBid.rate_per_unit || 0);
+              const isAccepted = String(myBid.acceptance_status || '').toUpperCase() === 'ACCEPTED';
+
+              const dispatches = (db.truck_dispatches || []).filter((d) =>
+                d.requirement_item_id === item.id || d.requirement_id === parentReq.id
+              );
+              const totalDispatched = dispatches.reduce((acc, curr) => acc + (parseFloat(curr.loaded_quantity_mt || curr.dispatched_qty) || 0), 0);
+              const remainingBalance = Math.max(0, totalQty - totalDispatched);
+              const isCompleted = remainingBalance <= 0 || item.dispatch_status === 'FULLY_DISPATCHED';
+
+              return (
+                <div
+                  key={uniqueKey}
+                  style={{
+                    background: isCompleted ? 'rgba(16, 185, 129, 0.04)' : 'rgba(255,255,255,0.03)',
+                    border: isCompleted ? '1px solid #10b981' : '1px solid var(--border-color)',
+                    borderRadius: '16px',
+                    padding: '20px',
+                    marginBottom: '24px'
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '16px', marginBottom: '16px', paddingBottom: '14px', borderBottom: '1px solid var(--border-color)' }}>
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px', flexWrap: 'wrap' }}>
+                        <span className={isCompleted ? "badge badge-awarded" : isAccepted ? "badge badge-open" : "badge badge-warning"}>
+                          {isCompleted ? '✓ CONTRACT COMPLETED' : isAccepted ? '✅ ACTIVE CONTRACT' : '🏆 AWAITING ACCEPTANCE'}
+                        </span>
+                        <span style={{ fontSize: '0.85rem', color: '#38bdf8', fontFamily: 'monospace', fontWeight: '800' }}>
+                          {subCode}
+                        </span>
+                        <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                          (Parent: {reqNo})
+                        </span>
+                      </div>
+                      <h4 style={{ fontSize: '1.2rem', fontWeight: '800' }}>{cargo} Delivery</h4>
+                      <p style={{ fontSize: '0.85rem', color: 'var(--text-sub)' }}>
+                        📍 {originCity} ➔ 📍 {destCity}
+                      </p>
+                    </div>
+
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Agreed Freight Rate</div>
+                      <div style={{ fontSize: '1.3rem', fontWeight: '800', color: '#34d399' }}>₹{finalRate}/MT</div>
+                      <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                        Allocated: <strong>{totalQty} MT</strong> | Dispatched: <strong style={{ color: '#38bdf8' }}>{totalDispatched} MT</strong> | Balance: <strong style={{ color: isCompleted ? '#34d399' : '#fbbf24' }}>{remainingBalance} MT</strong>
+                      </div>
+                    </div>
+                  </div>
+
+                  {!isAccepted ? (
+                    <div style={{
+                      background: 'rgba(245, 158, 11, 0.12)',
+                      border: '1px solid #f59e0b',
+                      borderRadius: '12px',
+                      padding: '14px 18px',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      flexWrap: 'wrap',
+                      gap: '12px'
+                    }}>
+                      <div>
+                        <div style={{ color: '#fbbf24', fontWeight: '800', fontSize: '0.9rem' }}>
+                          🏆 Quote Finalized at ₹{finalRate}/MT
+                        </div>
+                        <div style={{ color: 'var(--text-sub)', fontSize: '0.8rem' }}>
+                          Please accept the final negotiated freight rate to unlock truck dispatching.
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        disabled={submittingItems[`accept_${myBid.id}`]}
+                        onClick={() => handleAcceptFinalRateClick(item, myBid)}
+                        className="btn btn-success"
+                        style={{ padding: '8px 20px', fontWeight: '800', fontSize: '0.88rem', display: 'flex', alignItems: 'center', gap: '6px' }}
+                      >
+                        {submittingItems[`accept_${myBid.id}`] ? '⏳ Accepting...' : '🤝 Accept Final Rate'}
+                      </button>
+                    </div>
+                  ) : !isCompleted ? (
+                    <div style={{
+                      background: 'rgba(56, 189, 248, 0.08)',
+                      border: '1px solid rgba(56, 189, 248, 0.3)',
+                      borderRadius: '12px',
+                      padding: '14px 18px',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      flexWrap: 'wrap',
+                      gap: '12px'
+                    }}>
+                      <div>
+                        <div style={{ color: '#38bdf8', fontWeight: '800', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <CheckCircle2 size={16} color="#34d399" /> Rate Accepted — Ready for Truck Dispatch
+                        </div>
+                        <div style={{ color: 'var(--text-sub)', fontSize: '0.8rem' }}>
+                          Remaining capacity to dispatch: <strong style={{ color: '#fbbf24' }}>{remainingBalance} MT</strong>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleOpenDispatchModal(item, myBid)}
+                        className="btn btn-primary"
+                        style={{ padding: '8px 20px', fontWeight: '800', fontSize: '0.88rem', display: 'flex', alignItems: 'center', gap: '6px' }}
+                      >
+                        <Truck size={16} /> Dispatch New Truck
+                      </button>
+                    </div>
+                  ) : (
+                    <div style={{
+                      background: 'rgba(16, 185, 129, 0.08)',
+                      border: '1px solid rgba(16, 185, 129, 0.3)',
+                      borderRadius: '12px',
+                      padding: '12px 18px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      color: '#34d399',
+                      fontWeight: '800',
+                      fontSize: '0.88rem'
+                    }}>
+                      <CheckCircle2 size={18} /> 100% Contract Quantity Fully Dispatched ({totalQty} MT)
+                    </div>
+                  )}
+
+                  {/* Dispatches list if any */}
+                  {dispatches.length > 0 && (
+                    <div style={{ marginTop: '16px' }}>
+                      <div style={{ fontSize: '0.8rem', fontWeight: '800', color: 'var(--text-muted)', marginBottom: '8px' }}>
+                        DISPATCHED TRUCKS & LR HISTORY ({dispatches.length})
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '10px' }}>
+                        {dispatches.map((disp) => (
+                          <div key={disp.id} style={{ background: 'rgba(0,0,0,0.25)', padding: '10px 14px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.08)', fontSize: '0.8rem' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: '800' }}>
+                              <span style={{ color: '#38bdf8' }}>{disp.truck_number}</span>
+                              <span style={{ color: '#34d399' }}>{disp.loaded_quantity_mt || disp.dispatched_qty} MT</span>
+                            </div>
+                            <div style={{ color: 'var(--text-muted)', marginTop: '2px', fontFamily: 'monospace' }}>
+                              LR: {disp.lr_number}
+                            </div>
+                            <div style={{ color: 'var(--text-sub)', marginTop: '2px' }}>
+                              Driver: {disp.driver_name} ({disp.driver_mobile || disp.driver_phone})
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+
+          {/* 2. Legacy Allocations */}
           {myAllocations
             .filter((alloc) => {
               const dispatches = myDispatches.filter((d) => d.allocation_id === alloc.id);
@@ -2623,77 +2890,122 @@ export const TransporterPortal = () => {
       {/* TAB 4 (CORNER): My Submitted Bids History */}
       {activeTab === 'my_bids' && (
         <div className="glass-panel" style={{ padding: '24px' }}>
-          <h3 style={{ fontSize: '1.1rem', fontWeight: '700', marginBottom: '16px' }}>My Submitted Freight Bids & Counter-Offers History</h3>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
+            <div>
+              <h3 style={{ fontSize: '1.1rem', fontWeight: '700' }}>My Submitted Freight Bids & Counter-Offers History</h3>
+              <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: 0 }}>
+                Comprehensive log of all freight bids submitted by {currentTransporter.company_name}
+              </p>
+            </div>
+            <span className="badge badge-open" style={{ fontSize: '0.82rem', padding: '6px 14px', fontWeight: '800' }}>
+              Total Bids: {mySubmissions.length}
+            </span>
+          </div>
 
           <div className="custom-table-container">
             <table className="custom-table">
               <thead>
                 <tr>
-                  <th>Req No. & Title</th>
+                  <th>Req No. & Sub-Indent</th>
+                  <th>Route & Cargo</th>
                   <th>Submitted Quote</th>
-                  <th>Lowest Competing Bid</th>
                   <th>Est. Total Amount</th>
-                  <th>Transit Days</th>
                   <th>Bid Status</th>
                   <th style={{ textAlign: 'right' }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {mySubmissions.map((sub) => {
-                  const req = (db.rate_requests || []).find((r) => r.id === sub.rate_request_id || r.id === sub.requirement_id);
+                  const req = (db.rate_requests || []).find((r) => r.id === sub.rate_request_id || r.id === sub.requirement_id || r.req_no === sub.requirement_id);
+                  const childItem = req?.items?.find((i) => i.id === sub.item_id || i.sub_indent_no === sub.item_id);
+                  const targetItem = childItem || req;
+
                   const isNegotiating = sub.counter_offer_status === 'PENDING' || sub.bid_status === 'COUNTER_OFFERED';
                   const isFrozen = isBidFrozen(sub);
                   const isReqDeleted = !req;
 
+                  const bidStatusUpper = String(sub.bid_status || sub.status || '').toUpperCase();
+                  const counterOfferStatus = String(sub.counter_offer_status || '').toUpperCase();
+                  const isFinalized = Boolean(sub.is_finalized) || isFrozen || counterOfferStatus === 'ACCEPTED' || bidStatusUpper === 'COUNTER_ACCEPTED' || bidStatusUpper === 'FINALIZED' || Number(sub.final_rate) > 0;
+                  const isAccepted = String(sub.acceptance_status || '').toUpperCase() === 'ACCEPTED';
+                  const finalRate = Number(sub.final_rate || sub.rate_per_mt || sub.rate_per_unit || 0);
+
+                  const dispatchStatus = targetItem?.dispatch_status || req?.dispatch_status;
+                  const isAwardedToOther = Boolean(
+                    dispatchStatus &&
+                    dispatchStatus !== 'PENDING' &&
+                    !isFinalized
+                  );
+
+                  const submittedRate = Number(sub.rate_per_mt || sub.rate_per_unit || sub.original_rate || 0);
+                  const reqNo = req?.req_no || req?.request_no || sub.requirement_id || 'REQ';
+                  const subIndentNo = targetItem?.sub_indent_no || (childItem ? `${reqNo}/${childItem.id}` : reqNo);
+                  const originCity = targetItem?.pickup_origin || req?.pickup_origin || req?.origin_city || '-';
+                  const destCity = targetItem?.drop_location || req?.drop_location || req?.dest_city || '-';
+                  const cargo = targetItem?.product_name || req?.product_name || req?.material_type || 'Cargo';
+                  const qtyMt = Number(targetItem?.quantity_mt || targetItem?.required_qty || req?.quantity_mt || req?.required_qty || sub.quoted_quantity_mt || 0);
+
                   return (
-                    <tr key={sub.id} style={{ background: isReqDeleted ? 'rgba(239, 68, 68, 0.08)' : isNegotiating ? 'rgba(245, 158, 11, 0.08)' : 'transparent' }}>
+                    <tr
+                      key={sub.id}
+                      style={{
+                        background: isReqDeleted
+                          ? 'rgba(239, 68, 68, 0.08)'
+                          : isFinalized
+                          ? 'rgba(52, 211, 153, 0.06)'
+                          : isAwardedToOther
+                          ? 'rgba(100, 116, 139, 0.06)'
+                          : isNegotiating
+                          ? 'rgba(245, 158, 11, 0.08)'
+                          : 'transparent'
+                      }}
+                    >
                       <td>
                         {isReqDeleted ? (
                           <div>
                             <span className="badge badge-danger" style={{ marginBottom: '4px', background: 'rgba(239, 68, 68, 0.2)', color: '#fca5a5', border: '1px solid #ef4444' }}>
                               🗑️ CANCELLED BY ADMIN
                             </span>
-                            <div style={{ fontWeight: '700', color: 'var(--text-muted)' }}>Requirement Deleted by Shalimar Logistics Dept</div>
+                            <div style={{ fontWeight: '700', color: 'var(--text-muted)' }}>Requirement Deleted</div>
                           </div>
                         ) : (
                           <div>
-                            <span className="badge badge-open" style={{ marginBottom: '4px' }}>{req.request_no}</span>
-                            <div style={{ fontWeight: '700' }}>{req.title}</div>
-                            <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                              {req.origin_city} ➔ {req.dest_city} ({req.required_qty} MT)
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '2px' }}>
+                              <span className="badge badge-open" style={{ fontFamily: 'monospace', fontWeight: '800' }}>
+                                {subIndentNo}
+                              </span>
+                            </div>
+                            <div style={{ fontSize: '0.76rem', color: 'var(--text-muted)' }}>
+                              Batch: {reqNo}
                             </div>
                           </div>
                         )}
                       </td>
 
                       <td>
-                        <div style={{ fontSize: '1.1rem', fontWeight: '800', color: '#ffffff' }}>
-                          ₹{(Number(sub?.rate_per_unit) || 0).toLocaleString()} / MT
+                        <div style={{ fontWeight: '700', color: '#ffffff' }}>
+                          📍 {originCity} ➔ 📍 {destCity}
                         </div>
-                        <span style={{ fontSize: '0.7rem', color: isReqDeleted ? '#ef4444' : '#34d399', fontWeight: '700' }}>
-                          {isReqDeleted ? '🗑️ Cancelled' : '🔒 Rate Locked'}
-                        </span>
+                        <div style={{ fontSize: '0.78rem', color: 'var(--text-sub)' }}>
+                          {cargo} ({qtyMt} MT)
+                        </div>
                       </td>
 
                       <td>
-                        {sub?.counter_rate_per_unit ? (
-                          <div style={{ background: 'rgba(245, 158, 11, 0.2)', padding: '6px 10px', borderRadius: '8px', border: '1px solid #f59e0b', display: 'inline-block' }}>
-                            <span style={{ fontSize: '0.72rem', color: '#fbbf24', fontWeight: '700', display: 'block' }}>🔥 LOWEST COMPETING BID</span>
-                            <strong style={{ color: '#ffffff', fontSize: '1.05rem' }}>₹{sub.counter_rate_per_unit}/MT</strong>
+                        <div style={{ fontSize: '1.1rem', fontWeight: '800', color: '#ffffff' }}>
+                          ₹{submittedRate.toLocaleString()} / MT
+                        </div>
+                        {sub.counter_offer_rate && isNegotiating && (
+                          <div style={{ fontSize: '0.72rem', color: '#fbbf24', fontWeight: '700' }}>
+                            Counter Offer: ₹{sub.counter_offer_rate}/MT
                           </div>
-                        ) : (
-                          <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>No counter</span>
                         )}
                       </td>
 
                       <td>
                         <div style={{ fontWeight: '700', color: '#38bdf8' }}>
-                          ₹{((Number(sub?.rate_per_unit) || 0) * (req?.required_qty || 1)).toLocaleString()}
+                          ₹{(submittedRate * (qtyMt || 1)).toLocaleString()}
                         </div>
-                      </td>
-
-                      <td>
-                        <div style={{ fontSize: '0.85rem' }}>{sub.transit_days} Days</div>
                       </td>
 
                       <td>
@@ -2701,35 +3013,115 @@ export const TransporterPortal = () => {
                           <span className="badge badge-danger" style={{ background: 'rgba(239, 68, 68, 0.2)', color: '#fca5a5', border: '1px solid #ef4444' }}>
                             🗑️ Cancelled
                           </span>
-                        ) : isFrozen ? (
-                          <span className="badge badge-open" style={{ background: 'rgba(56, 189, 248, 0.25)', border: '1px solid #38bdf8' }}>
-                            ❄️ Rate Frozen
+                        ) : isFinalized ? (
+                          <span className="badge badge-awarded" style={{ background: '#dcfce7', color: '#047857', border: '1px solid #86efac', fontWeight: '800', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                            {isAccepted ? '✅ Rate Accepted' : `🏆 Rate Finalized (₹${finalRate}/MT)`}
+                          </span>
+                        ) : isAwardedToOther ? (
+                          <span style={{ fontSize: '0.78rem', background: '#f1f5f9', color: '#64748b', border: '1px solid #cbd5e1', padding: '4px 10px', borderRadius: '6px', fontWeight: '800', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                            🔒 Not Selected
                           </span>
                         ) : isNegotiating ? (
-                          <span className="badge badge-warning" style={{ background: 'rgba(245, 158, 11, 0.25)', border: '1px solid #f59e0b', color: '#fbbf24' }}>
+                          <span className="badge badge-warning" style={{ background: 'rgba(245, 158, 11, 0.25)', border: '1px solid #f59e0b', color: '#fbbf24', fontWeight: '800' }}>
                             💬 Action Required
                           </span>
                         ) : (
-                          <span className={`badge ${sub.status === 'Selected' ? 'badge-awarded' : 'badge-open'}`}>
-                            {sub.status}
+                          <span className="badge badge-open" style={{ fontWeight: '800' }}>
+                            ⏳ Under Review
                           </span>
                         )}
                       </td>
 
                       <td style={{ textAlign: 'right' }}>
-                        {isNegotiating && sub.counter_rate_per_unit && !isFrozen && !isReqDeleted && (
+                        <div style={{ display: 'inline-flex', gap: '6px', alignItems: 'center' }}>
+                          {isFinalized && !isAccepted && targetItem && (
+                            <button
+                              type="button"
+                              disabled={submittingItems[`accept_${sub.id}`]}
+                              onClick={() => handleAcceptFinalRateClick(targetItem, sub)}
+                              className="btn btn-success"
+                              style={{ padding: '5px 10px', fontSize: '0.75rem', fontWeight: '800' }}
+                              title="Accept finalized freight rate"
+                            >
+                              {submittingItems[`accept_${sub.id}`] ? '⏳ Accepting...' : '🤝 Accept'}
+                            </button>
+                          )}
+
+                          {isFinalized && isAccepted && targetItem && (
+                            <button
+                              type="button"
+                              onClick={() => handleOpenDispatchModal(targetItem, sub)}
+                              className="btn btn-primary"
+                              style={{ padding: '5px 10px', fontSize: '0.75rem', fontWeight: '800', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                              title="Dispatch truck for this contract"
+                            >
+                              <Truck size={13} /> Dispatch
+                            </button>
+                          )}
+
+                          {isNegotiating && sub.counter_rate_per_unit && !isFrozen && !isReqDeleted && (
+                            <button
+                              type="button"
+                              onClick={() => handleAcceptCounterRate(sub)}
+                              className="btn btn-success"
+                              style={{ padding: '5px 10px', fontSize: '0.75rem' }}
+                            >
+                              <Snowflake size={13} /> Match ₹{sub.counter_rate_per_unit}
+                            </button>
+                          )}
+
                           <button
-                            onClick={() => handleAcceptCounterRate(sub)}
-                            className="btn btn-success"
-                            style={{ padding: '6px 12px', fontSize: '0.78rem' }}
+                            type="button"
+                            onClick={() => setSelectedHistorySub(sub)}
+                            className="btn btn-secondary"
+                            style={{ padding: '5px 8px', fontSize: '0.75rem' }}
+                            title="View Bid Negotiation History"
                           >
-                            <Snowflake size={14} /> Match Lowest Bid ₹{sub.counter_rate_per_unit}/MT ❄️
+                            📜 History
                           </button>
-                        )}
+
+                          {req && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setActiveTab('open_requests');
+                                const batchKey = req.id || req.req_no;
+                                setExpandedBatches((prev) => ({ ...prev, [batchKey]: true }));
+                              }}
+                              className="btn btn-secondary"
+                              style={{ padding: '5px 8px', fontSize: '0.75rem', border: '1px solid #38bdf8', color: '#38bdf8' }}
+                              title="View in Open Requirements Table"
+                            >
+                              📂 View
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );
                 })}
+
+                {mySubmissions.length === 0 && (
+                  <tr>
+                    <td colSpan="6" style={{ textAlign: 'center', padding: '48px 20px' }}>
+                      <div style={{ fontSize: '2rem', marginBottom: '8px' }}>📝</div>
+                      <div style={{ fontSize: '1.05rem', fontWeight: '800', color: 'var(--text-main, #ffffff)', marginBottom: '4px' }}>
+                        No bids submitted yet
+                      </div>
+                      <div style={{ fontSize: '0.84rem', color: 'var(--text-muted)', marginBottom: '16px' }}>
+                        Submit competitive quotes on available open freight requirements to win transportation contracts.
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setActiveTab('open_requests')}
+                        className="btn btn-primary"
+                        style={{ padding: '8px 20px', fontWeight: '800' }}
+                      >
+                        ⚡ Browse Open Requirements
+                      </button>
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
