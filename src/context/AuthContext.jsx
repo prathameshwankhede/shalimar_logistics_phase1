@@ -247,30 +247,55 @@ const updateDB = async (newDb) => {
     }
   };
 
-  const quickSwitchUser = (username) => {
-    let currentDb = db;
-    let found = (currentDb.users || []).find((u) => u.username === username);
-    if (found) {
-      // 🛑 BLOCK SWITCHING TO INACTIVE TRANSPORTER
-      if (found.role === 'transporter' || found.transporter_id) {
-        const transporter = currentDb.transporters?.find((t) => t.id === found.transporter_id || t.username === found.username || t.code === found.username);
-        if (transporter && transporter.status === 'Inactive') {
-          alert(`🛑 Cannot switch to ${transporter?.company_name || username}. Account is marked INACTIVE by Admin.`);
-          return false;
-        }
-        if (transporter && !found.transporter_id) {
-          found = { ...found, transporter_id: transporter.id };
-        }
-      }
+  const quickSwitchUser = async (username) => {
+    const cleanUser = String(username || '').trim();
+    if (!cleanUser) return false;
 
-      const updatedWithLog = addSecurityLog(
-        currentDb,
-        `QUICK_SWITCH_ROLE (${(found?.role || "").toUpperCase()} - ${found.username})`,
-        found.username,
-        found.role,
-        'SWITCHED 🛡️'
-      );
-      updateDB(updatedWithLog);
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/api/auth/switch-transporter`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: cleanUser })
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success && data.token && data.user) {
+        setAuthToken(data.token);
+        setCurrentUser(data.user);
+        sessionStorage.setItem(USER_SESSION_KEY, JSON.stringify(data.user));
+        localStorage.setItem(USER_SESSION_KEY, JSON.stringify(data.user));
+
+        let currentDb = db;
+        const updatedWithLog = addSecurityLog(
+          currentDb,
+          `QUICK_SWITCH_ROLE (TRANSPORTER - ${data.user.username})`,
+          data.user.username,
+          'transporter',
+          'SWITCHED 🛡️'
+        );
+        updateDB(updatedWithLog);
+        return true;
+      }
+    } catch (e) {
+      console.warn('Backend switch-transporter error:', e.message);
+    }
+
+    let currentDb = db;
+    let found = (currentDb.users || []).find((u) => u.username === cleanUser);
+    if (!found) {
+      const transporter = currentDb.transporters?.find((t) => t.username === cleanUser || t.code === cleanUser || t.id === cleanUser);
+      if (transporter) {
+        found = {
+          id: transporter.id,
+          username: transporter.username || transporter.code,
+          name: transporter.company_name,
+          role: 'transporter',
+          transporter_id: transporter.id
+        };
+      }
+    }
+
+    if (found) {
       setCurrentUser(found);
       sessionStorage.setItem(USER_SESSION_KEY, JSON.stringify(found));
       return true;

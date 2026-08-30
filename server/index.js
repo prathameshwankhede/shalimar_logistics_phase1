@@ -47,11 +47,13 @@ app.use((req, res, next) => {
   next();
 });
 
-// Health check endpoint
+// Health check endpoint with deployment version marker
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
-    timestamp: new Date().toISOString(),
+    version: '1.9.0-phase1',
+    commit: 'cfeb02b+',
+    deploy_timestamp: new Date().toISOString(),
     env: process.env.NODE_ENV || 'development',
     port: PORT,
     db_host: process.env.DB_HOST || process.env.DATABASE_HOST || '127.0.0.1',

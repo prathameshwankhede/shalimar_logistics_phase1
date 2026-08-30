@@ -172,6 +172,52 @@ router.post('/login', async (req, res) => {
   }
 });
 
+// POST /api/auth/switch-transporter — Issues authenticated JWT token for verified transporter accounts
+router.post('/switch-transporter', async (req, res) => {
+  const { username, transporterId } = req.body;
+  const cleanKey = String(username || transporterId || '').trim().toLowerCase();
+
+  if (!cleanKey) {
+    return res.status(400).json({ success: false, error: 'Transporter username or code is required' });
+  }
+
+  try {
+    const [tRows] = await pool.query(
+      'SELECT id, company_name, code, username, status FROM transporters WHERE LOWER(username) = ? OR LOWER(code) = ? OR id = ? LIMIT 1',
+      [cleanKey, cleanKey, cleanKey]
+    );
+
+    if (tRows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Transporter not found in database' });
+    }
+
+    const t = tRows[0];
+    if (t.status === 'Inactive' || t.status === 'Suspended') {
+      return res.status(403).json({ success: false, error: 'Transporter account is marked Inactive' });
+    }
+
+    const transporterUser = {
+      id: t.id,
+      username: t.username || t.code,
+      name: t.company_name,
+      role: 'transporter',
+      transporter_id: t.id,
+      permissions: ROLE_PERMISSIONS.transporter
+    };
+
+    const token = generateToken(transporterUser);
+
+    return res.json({
+      success: true,
+      token,
+      user: transporterUser
+    });
+  } catch (err) {
+    console.error('Switch Transporter Error:', err);
+    return res.status(500).json({ success: false, error: 'Failed to switch transporter session' });
+  }
+});
+
 // GET /api/auth/me — Fetch current authenticated user session DTO
 router.get('/me', authenticateToken, (req, res) => {
   return res.json({ success: true, user: req.user });
