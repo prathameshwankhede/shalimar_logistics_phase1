@@ -2991,6 +2991,7 @@ router.post('/rate-submissions/:id/finalize', authenticateToken, handleFinalizeB
 router.post('/requirements/:requirementId/items/:itemId/accept-final-rate', authenticateToken, handleAcceptFinalRate);
 router.post('/rate-submissions/:id/accept-final-rate', authenticateToken, handleAcceptFinalRate);
 router.post('/requirements/:requirementId/items/:itemId/dispatch', authenticateToken, handleCreateTruckDispatch);
+router.post('/requirements/:requirementId/items/:itemId/dispatches', authenticateToken, handleCreateTruckDispatch);
 router.post('/requirements/:requirementId/items/:itemId/release-remaining-for-requote', authenticateToken, requireRole('admin'), handleReleaseRemainingForRequote);
 router.post('/requirements/:requirementId/items/:itemId/release-for-requote', authenticateToken, requireRole('admin'), handleReleaseRemainingForRequote);
 router.post('/requirements/:requirementId/items/:itemId/reopen-for-quote', authenticateToken, requireRole('admin'), handleReleaseRemainingForRequote);

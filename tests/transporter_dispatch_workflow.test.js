@@ -655,6 +655,31 @@ it('TEST 13: Truck dispatch successfully creates a security audit log', () => {
   assert.strictEqual(state.security_audit_logs[0].action.includes('MH31FC4512'), true);
 });
 
+// TEST 14: Truck dispatch execution never throws ReferenceError on parentReq
+it('TEST 14: Truck dispatch execution never throws ReferenceError on parentReq', () => {
+  const state = createMockWorkflowState();
+  finalizeRate(state, 'sub_win', 480, { username: 'admin', role: 'admin' });
+  acceptFinalRate(state, 'req_001', 'item_001', { id: 'trans_win', transporter_id: 'trans_win', username: 'win_transporter', role: 'transporter' });
+
+  const winUser = { id: 'trans_win', transporter_id: 'trans_win', username: 'win_transporter', role: 'transporter' };
+  let caughtError = null;
+  try {
+    const res = dispatchTruck(state, 'req_001', 'item_001', winUser, {
+      truck_number: 'MH31AA9999',
+      loaded_quantity_mt: 40.0,
+      driver_name: 'Suresh Patil',
+      driver_mobile: '9876500000',
+      driver_license: 'DL99999'
+    });
+    assert.strictEqual(res.status, 200);
+    assert.strictEqual(res.success, true);
+    assert.strictEqual(res.remaining_quantity_mt, 40.0);
+  } catch (err) {
+    caughtError = err;
+  }
+  assert.strictEqual(caughtError, null);
+});
+
 console.log('================================================================');
 console.log(`🎉 TEST SUMMARY: ${passedTests} PASSED, ${failedTests} FAILED`);
 console.log('================================================================');
