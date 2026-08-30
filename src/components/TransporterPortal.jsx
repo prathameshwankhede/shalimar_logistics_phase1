@@ -1,10 +1,7 @@
-// src/components/TransporterPortal.jsx
-// High-Speed 1-Line Express Freight Bidding UI with Corner Bids History Tab ⚡🚛
-
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { submitBid, submitTransporterResponse, fetchTransporterDashboardSummary } from '../api/rateSubmissionApi';
-import { acceptFinalRate, createTruckDispatch, requestDispatchAccess, getTransporterDispatchAuthorizations } from '../api/rateRequestApi';
+import { acceptFinalRate, createTruckDispatch, requestDispatchAccess, getTransporterDispatchAuthorizations, acceptRemainingAllocation, getTransporterItemAllocations } from '../api/rateRequestApi';
 import { NegotiationHistoryModal } from './NegotiationHistoryModal';
 import { ContractModal } from './ContractModal';
 import { ERPPaymentModal } from './ERPPaymentModal';
@@ -36,6 +33,7 @@ export const TransporterPortal = () => {
   // 📊 MYSQL-BACKED DASHBOARD SUMMARY COUNTERS
   const [dashboardSummary, setDashboardSummary] = useState(null);
   const [myAuthorizations, setMyAuthorizations] = useState([]);
+  const [myItemAllocations, setMyItemAllocations] = useState([]);
   const [requestingAccessId, setRequestingAccessId] = useState(null);
 
   const refreshAuthorizations = async () => {
@@ -46,6 +44,17 @@ export const TransporterPortal = () => {
       }
     } catch (e) {
       console.warn('Could not load authorizations:', e.message);
+    }
+  };
+
+  const refreshAllocations = async () => {
+    try {
+      const res = await getTransporterItemAllocations();
+      if (res && res.success) {
+        setMyItemAllocations(res.data || []);
+      }
+    } catch (e) {
+      console.warn('Could not load item allocations:', e.message);
     }
   };
 
@@ -66,6 +75,7 @@ export const TransporterPortal = () => {
   useEffect(() => {
     refreshDashboardSummary();
     refreshAuthorizations();
+    refreshAllocations();
   }, [currentTransporter, currentUser, db?.rate_submissions, db?.rate_requests]);
 
   // 🛡️ SAFE DATA REFRESH HELPER: Guarantees no ReferenceError or unhandled rejection during refresh
@@ -73,6 +83,7 @@ export const TransporterPortal = () => {
     try {
       refreshDashboardSummary();
       refreshAuthorizations();
+      refreshAllocations();
       if (typeof refreshRequirements === 'function') {
         return await refreshRequirements();
       } else if (typeof refreshDB === 'function') {
@@ -80,6 +91,26 @@ export const TransporterPortal = () => {
       }
     } catch (e) {
       console.error('Data refresh error:', e);
+    }
+  };
+
+  const handleAcceptAllocation = async (reqItem) => {
+    const parentId = reqItem.requirement_id || reqItem.id;
+    const itemId = reqItem.item_id || reqItem.sub_indent_no || reqItem.id;
+    setRequestingAccessId(itemId);
+    try {
+      const res = await acceptRemainingAllocation(parentId, itemId);
+      if (res && res.success) {
+        await refreshAuthorizations();
+        await refreshAllocations();
+        await safeRefreshRequirements();
+      } else {
+        alert(res?.error || 'Failed to accept remaining allocation.');
+      }
+    } catch (err) {
+      alert(err?.message || 'Error accepting remaining allocation.');
+    } finally {
+      setRequestingAccessId(null);
     }
   };
 
@@ -564,19 +595,54 @@ export const TransporterPortal = () => {
            String(currentUser?.username).toLowerCase() === String(winningTransporterId).toLowerCase())
         );
 
+        const myExistingBid = (db.rate_submissions || []).find((s) => {
+          if (!s) return false;
+          const sReqMatch = String(s.requirement_id) === String(parentReq.id) || String(s.rate_request_id) === String(parentReq.id) || String(s.rate_request_id) === String(parentReqNo);
+          const sItemMatch = String(s.item_id) === String(item.id) || String(s.item_id) === String(subIndentNo) || String(s.item_id) === 'MAIN';
+          const sTransMatch = String(s.transporter_id) === String(currentTransporter?.id) ||
+                              String(s.transporter_id) === String(currentUser?.transporter_id) ||
+                              String(s.transporter_id).toLowerCase() === String(currentTransporter?.code || '').toLowerCase() ||
+                              String(s.transporter_id).toLowerCase() === String(currentUser?.username || '').toLowerCase();
+          return sReqMatch && sItemMatch && sTransMatch;
+        });
+
+        const myAlloc = (myItemAllocations || []).find(a => 
+          (String(a.requirement_id) === String(parentReq.id)) &&
+          (String(a.requirement_item_id) === String(item.id) || String(a.requirement_item_id) === String(subIndentNo) || String(a.requirement_item_id) === 'MAIN')
+        );
+
         const myAuth = (myAuthorizations || []).find(a => 
           (String(a.requirement_id) === String(parentReq.id)) &&
           (String(a.requirement_item_id) === String(item.id) || String(a.requirement_item_id) === String(subIndentNo) || String(a.requirement_item_id) === 'MAIN')
         );
 
+        let allocationRole = 'UNRELATED_TRANSPORTER';
+        let allocationStatus = 'UNRELATED_TRANSPORTER';
+        let canDispatch = false;
         let authStatus = null;
+
         if (isWinningTransporter) {
+          allocationRole = 'WINNER';
+          allocationStatus = 'WINNER_ACTIVE';
           authStatus = 'WINNER';
-        } else if (myAuth) {
-          authStatus = myAuth.authorization_status;
+          canDispatch = true;
+        } else if (myAlloc?.acceptance_status === 'ACCEPTED' || myAuth?.authorization_status === 'APPROVED') {
+          allocationRole = 'ELIGIBLE_PREVIOUS_BIDDER';
+          allocationStatus = 'ACCEPTED_SHARED_TRANSPORTER';
+          authStatus = 'APPROVED';
+          canDispatch = true;
+        } else if (Boolean(myExistingBid) || Boolean(myAlloc)) {
+          allocationRole = 'ELIGIBLE_PREVIOUS_BIDDER';
+          allocationStatus = 'PREVIOUS_BIDDER_PENDING_ACCEPTANCE';
+          authStatus = 'AVAILABLE_FOR_ACCEPTANCE';
+          canDispatch = false;
         }
 
-        const canDispatch = authStatus === 'WINNER' || authStatus === 'APPROVED';
+        // Unrelated transporters who did NOT participate in bidding for this item cannot see finalized allocation
+        if (fixedRate !== null && allocationRole === 'UNRELATED_TRANSPORTER' && !isWinningTransporter) {
+          return;
+        }
+
         const isFixedRateAllocation = fixedRate !== null;
 
         openRateRequests.push({
@@ -610,8 +676,10 @@ export const TransporterPortal = () => {
           is_fixed_rate_allocation: isFixedRateAllocation,
           can_dispatch: canDispatch,
           auth_status: authStatus,
+          allocation_role: allocationRole,
+          allocation_status: allocationStatus,
           is_winning_transporter: isWinningTransporter,
-          is_awarded_to_other: Boolean(fixedRate !== null && !isWinningTransporter && authStatus !== 'APPROVED'),
+          is_awarded_to_other: Boolean(fixedRate !== null && !isWinningTransporter && !canDispatch),
           winning_transporter_id: winningTransporterId,
           fixed_rate: fixedRate,
           finalized_rate: fixedRate,
@@ -641,7 +709,6 @@ export const TransporterPortal = () => {
         return sReqMatch && (Boolean(s.is_finalized) || String(s.bid_status).toUpperCase() === 'FINALIZED' || Number(s.final_rate) > 0);
       });
 
-      let isFixedRateAllocation = false;
       let fixedRate = null;
       let myWinningBid = null;
       let winningTransporterId = null;
@@ -663,22 +730,53 @@ export const TransporterPortal = () => {
          String(currentUser?.username).toLowerCase() === String(winningTransporterId).toLowerCase())
       );
 
+      const myExistingBid = (db.rate_submissions || []).find((s) => {
+        if (!s) return false;
+        const sReqMatch = String(s.requirement_id) === String(parentReq.id) || String(s.rate_request_id) === String(parentReq.id) || String(s.rate_request_id) === String(parentReq.req_no);
+        const sTransMatch = String(s.transporter_id) === String(currentTransporter?.id) ||
+                            String(s.transporter_id) === String(currentUser?.transporter_id) ||
+                            String(s.transporter_id).toLowerCase() === String(currentTransporter?.code || '').toLowerCase() ||
+                            String(s.transporter_id).toLowerCase() === String(currentUser?.username || '').toLowerCase();
+        return sReqMatch && sTransMatch;
+      });
+
+      const myAlloc = (myItemAllocations || []).find(a => 
+        (String(a.requirement_id) === String(parentReq.id)) &&
+        (String(a.requirement_item_id) === String(parentReq.id) || String(a.requirement_item_id) === 'MAIN')
+      );
+
       const myAuth = (myAuthorizations || []).find(a => 
         (String(a.requirement_id) === String(parentReq.id)) &&
         (String(a.requirement_item_id) === String(parentReq.id) || String(a.requirement_item_id) === 'MAIN')
       );
 
+      let allocationRole = 'UNRELATED_TRANSPORTER';
+      let allocationStatus = 'UNRELATED_TRANSPORTER';
+      let canDispatch = false;
       let authStatus = null;
+
       if (isWinningTransporter) {
+        allocationRole = 'WINNER';
+        allocationStatus = 'WINNER_ACTIVE';
         authStatus = 'WINNER';
-      } else if (myAuth) {
-        authStatus = myAuth.authorization_status;
+        canDispatch = true;
+      } else if (myAlloc?.acceptance_status === 'ACCEPTED' || myAuth?.authorization_status === 'APPROVED') {
+        allocationRole = 'ELIGIBLE_PREVIOUS_BIDDER';
+        allocationStatus = 'ACCEPTED_SHARED_TRANSPORTER';
+        authStatus = 'APPROVED';
+        canDispatch = true;
+      } else if (Boolean(myExistingBid) || Boolean(myAlloc)) {
+        allocationRole = 'ELIGIBLE_PREVIOUS_BIDDER';
+        allocationStatus = 'PREVIOUS_BIDDER_PENDING_ACCEPTANCE';
+        authStatus = 'AVAILABLE_FOR_ACCEPTANCE';
+        canDispatch = false;
       }
 
-      const canDispatch = authStatus === 'WINNER' || authStatus === 'APPROVED';
-      if (fixedRate !== null) {
-        isFixedRateAllocation = true;
+      if (fixedRate !== null && allocationRole === 'UNRELATED_TRANSPORTER' && !isWinningTransporter) {
+        return;
       }
+
+      const isFixedRateAllocation = fixedRate !== null;
 
       openRateRequests.push({
         ...parentReq,
@@ -695,8 +793,10 @@ export const TransporterPortal = () => {
         is_fixed_rate_allocation: isFixedRateAllocation,
         can_dispatch: canDispatch,
         auth_status: authStatus,
+        allocation_role: allocationRole,
+        allocation_status: allocationStatus,
         is_winning_transporter: isWinningTransporter,
-        is_awarded_to_other: Boolean(fixedRate !== null && !isWinningTransporter && authStatus !== 'APPROVED'),
+        is_awarded_to_other: Boolean(fixedRate !== null && !isWinningTransporter && !canDispatch),
         winning_transporter_id: winningTransporterId,
         fixed_rate: fixedRate,
         finalized_rate: fixedRate,
@@ -2221,7 +2321,7 @@ export const TransporterPortal = () => {
                                                           {req.can_dispatch ? (
                                                             <>
                                                               <span style={{ fontSize: '0.88rem', fontWeight: '900', color: '#059669', background: '#dcfce7', border: '1.5px solid #86efac', padding: '4px 10px', borderRadius: '8px' }}>
-                                                                {req.auth_status === 'WINNER' ? '🏆 Awarded to You' : '✅ Access Approved'} — ₹{req.fixed_rate}/MT (Fixed)
+                                                                {req.allocation_status === 'WINNER_ACTIVE' || req.auth_status === 'WINNER' ? '🏆 Awarded to You' : '✅ Allocation Accepted'} — ₹{req.fixed_rate}/MT (Fixed)
                                                               </span>
                                                               <button
                                                                 type="button"
@@ -2232,6 +2332,21 @@ export const TransporterPortal = () => {
                                                                 <Truck size={14} /> Dispatch Truck
                                                               </button>
                                                             </>
+                                                          ) : req.allocation_status === 'PREVIOUS_BIDDER_PENDING_ACCEPTANCE' || req.auth_status === 'AVAILABLE_FOR_ACCEPTANCE' ? (
+                                                            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                                                              <span style={{ fontSize: '0.84rem', fontWeight: '800', color: '#0369a1', background: '#e0f2fe', border: '1.5px solid #7dd3fc', padding: '4px 10px', borderRadius: '8px' }}>
+                                                                🔒 ₹{req.fixed_rate}/MT (Fixed) | Status: Available for Acceptance
+                                                              </span>
+                                                              <button
+                                                                type="button"
+                                                                onClick={() => handleAcceptAllocation(req)}
+                                                                disabled={requestingAccessId === (req.item_id || req.id)}
+                                                                className="btn btn-primary"
+                                                                style={{ padding: '6px 14px', fontSize: '0.82rem', fontWeight: '900', borderRadius: '8px', background: 'linear-gradient(135deg, #059669 0%, #10b981 100%)', color: '#ffffff', border: 'none', cursor: 'pointer' }}
+                                                              >
+                                                                {requestingAccessId === (req.item_id || req.id) ? 'Accepting...' : 'Accept Remaining Allocation'}
+                                                              </button>
+                                                            </div>
                                                           ) : req.auth_status === 'PENDING' ? (
                                                             <span style={{ fontSize: '0.82rem', fontWeight: '900', color: '#b45309', background: '#fef3c7', border: '1.5px solid #f59e0b', padding: '5px 12px', borderRadius: '8px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
                                                               ⏳ Dispatch Access Request Pending (₹{req.fixed_rate}/MT Fixed)
@@ -2584,7 +2699,7 @@ export const TransporterPortal = () => {
                                 {req.can_dispatch ? (
                                   <>
                                     <span style={{ fontSize: '0.88rem', fontWeight: '900', color: '#059669', background: '#dcfce7', border: '1.5px solid #86efac', padding: '4px 10px', borderRadius: '8px' }}>
-                                      {req.auth_status === 'WINNER' ? '🏆 Awarded to You' : '✅ Access Approved'} — ₹{req.fixed_rate}/MT (Fixed)
+                                      {req.allocation_status === 'WINNER_ACTIVE' || req.auth_status === 'WINNER' ? '🏆 Awarded to You' : '✅ Allocation Accepted'} — ₹{req.fixed_rate}/MT (Fixed)
                                     </span>
                                     <button
                                       type="button"
@@ -2595,6 +2710,21 @@ export const TransporterPortal = () => {
                                       <Truck size={14} /> Dispatch Truck
                                     </button>
                                   </>
+                                ) : req.allocation_status === 'PREVIOUS_BIDDER_PENDING_ACCEPTANCE' || req.auth_status === 'AVAILABLE_FOR_ACCEPTANCE' ? (
+                                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                                    <span style={{ fontSize: '0.84rem', fontWeight: '800', color: '#0369a1', background: '#e0f2fe', border: '1.5px solid #7dd3fc', padding: '4px 10px', borderRadius: '8px' }}>
+                                      🔒 ₹{req.fixed_rate}/MT (Fixed) | Status: Available for Acceptance
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleAcceptAllocation(req)}
+                                      disabled={requestingAccessId === (req.item_id || req.id)}
+                                      className="btn btn-primary"
+                                      style={{ padding: '6px 14px', fontSize: '0.82rem', fontWeight: '900', borderRadius: '8px', background: 'linear-gradient(135deg, #059669 0%, #10b981 100%)', color: '#ffffff', border: 'none', cursor: 'pointer' }}
+                                    >
+                                      {requestingAccessId === (req.item_id || req.id) ? 'Accepting...' : 'Accept Remaining Allocation'}
+                                    </button>
+                                  </div>
                                 ) : req.auth_status === 'PENDING' ? (
                                   <span style={{ fontSize: '0.82rem', fontWeight: '900', color: '#b45309', background: '#fef3c7', border: '1.5px solid #f59e0b', padding: '5px 12px', borderRadius: '8px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
                                     ⏳ Dispatch Access Request Pending (₹{req.fixed_rate}/MT Fixed)

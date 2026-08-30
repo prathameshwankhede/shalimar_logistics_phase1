@@ -238,7 +238,26 @@ export async function ensureRequirementsTableExists() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
     `);
 
-    // Backfill existing finalized bids as WINNER authorizations
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS transporter_item_allocations (
+        id VARCHAR(100) NOT NULL PRIMARY KEY,
+        requirement_id VARCHAR(100) NOT NULL,
+        requirement_item_id VARCHAR(100) NOT NULL,
+        sub_indent_no VARCHAR(100) DEFAULT NULL,
+        transporter_id VARCHAR(100) NOT NULL,
+        finalized_rate DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+        allocation_role VARCHAR(50) NOT NULL DEFAULT 'ELIGIBLE_PREVIOUS_BIDDER',
+        acceptance_status VARCHAR(50) NOT NULL DEFAULT 'PENDING_ACCEPTANCE',
+        accepted_at DATETIME DEFAULT NULL,
+        created_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY uq_alloc_req_item_transporter (requirement_id, requirement_item_id, transporter_id),
+        INDEX idx_alloc_lookup (requirement_id, requirement_item_id, acceptance_status),
+        INDEX idx_alloc_trans (transporter_id, acceptance_status)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+
+    // Backfill existing finalized bids as WINNER authorizations and allocations
     await pool.query(`
       INSERT IGNORE INTO requirement_dispatch_authorizations (
         id, requirement_id, requirement_item_id, sub_indent_no, transporter_id, fixed_rate, authorization_status, approved_at, approved_by, created_at
@@ -253,6 +272,26 @@ export async function ensureRequirementsTableExists() {
         'WINNER',
         COALESCE(rs.finalized_at, rs.updated_at, NOW()),
         'admin',
+        COALESCE(rs.created_at, NOW())
+      FROM rate_submissions rs
+      WHERE (rs.is_finalized = 1 OR UPPER(COALESCE(rs.bid_status, '')) = 'FINALIZED' OR rs.final_rate > 0)
+        AND rs.transporter_id IS NOT NULL;
+    `).catch(() => {});
+
+    await pool.query(`
+      INSERT IGNORE INTO transporter_item_allocations (
+        id, requirement_id, requirement_item_id, sub_indent_no, transporter_id, finalized_rate, allocation_role, acceptance_status, accepted_at, created_at
+      )
+      SELECT 
+        CONCAT('alloc_win_', rs.id),
+        rs.requirement_id,
+        COALESCE(rs.item_id, 'MAIN'),
+        NULL,
+        rs.transporter_id,
+        COALESCE(rs.final_rate, rs.rate_per_mt, 0),
+        'WINNER',
+        'ACTIVE',
+        COALESCE(rs.finalized_at, rs.updated_at, NOW()),
         COALESCE(rs.created_at, NOW())
       FROM rate_submissions rs
       WHERE (rs.is_finalized = 1 OR UPPER(COALESCE(rs.bid_status, '')) = 'FINALIZED' OR rs.final_rate > 0)
@@ -1877,6 +1916,43 @@ async function handleFinalizeBid(req, res) {
       [authId, sub.requirement_id, sub.item_id || 'MAIN', null, sub.transporter_id, agreedRate, req.user.username || 'admin']
     ).catch(e => console.warn('Authorizations insert notice:', e.message));
 
+    // Automatically create/update WINNER allocation for winning transporter
+    const allocId = `alloc_win_${id}`;
+    await pool.query(
+      `INSERT INTO transporter_item_allocations (
+         id, requirement_id, requirement_item_id, sub_indent_no, transporter_id, finalized_rate, allocation_role, acceptance_status, accepted_at, created_at
+       ) VALUES (?, ?, ?, ?, ?, ?, 'WINNER', 'ACTIVE', NOW(), NOW())
+       ON DUPLICATE KEY UPDATE 
+         finalized_rate = VALUES(finalized_rate),
+         allocation_role = 'WINNER',
+         acceptance_status = 'ACTIVE',
+         accepted_at = NOW(),
+         updated_at = NOW()`,
+      [allocId, sub.requirement_id, sub.item_id || 'MAIN', null, sub.transporter_id, agreedRate]
+    ).catch(e => console.warn('Allocation insert notice:', e.message));
+
+    // Also populate eligible previous bidders for this item as PENDING_ACCEPTANCE
+    await pool.query(
+      `INSERT IGNORE INTO transporter_item_allocations (
+         id, requirement_id, requirement_item_id, sub_indent_no, transporter_id, finalized_rate, allocation_role, acceptance_status, created_at
+       )
+       SELECT 
+         CONCAT('alloc_prev_', rs.id),
+         rs.requirement_id,
+         COALESCE(rs.item_id, 'MAIN'),
+         NULL,
+         rs.transporter_id,
+         ?,
+         'ELIGIBLE_PREVIOUS_BIDDER',
+         'PENDING_ACCEPTANCE',
+         NOW()
+       FROM rate_submissions rs
+       WHERE rs.requirement_id = ? 
+         AND (rs.item_id = ? OR rs.item_id = 'MAIN')
+         AND rs.transporter_id != ?`,
+      [agreedRate, sub.requirement_id, sub.item_id || 'MAIN', sub.transporter_id]
+    ).catch(() => {});
+
     const [updatedRows] = await pool.query('SELECT * FROM rate_submissions WHERE id = ? LIMIT 1', [id]);
     return res.json({
       success: true,
@@ -2287,7 +2363,18 @@ async function handleCreateTruckDispatch(req, res) {
     }
 
     if (req.user?.role !== 'admin') {
-      // Check requirement_dispatch_authorizations for WINNER or APPROVED status
+      // 1. Check transporter_item_allocations for ACTIVE or ACCEPTED status
+      const [allocRows] = await conn.query(
+        `SELECT * FROM transporter_item_allocations 
+         WHERE requirement_id IN (?) 
+           AND (requirement_item_id IN (?) OR requirement_item_id = 'MAIN')
+           AND transporter_id IN (?)
+           AND (acceptance_status IN ('ACTIVE', 'ACCEPTED') OR allocation_role = 'WINNER')
+         LIMIT 1`,
+        [resolvedReqIds, resolvedItemIds.length > 0 ? resolvedItemIds : ['MAIN'], transMatchIds]
+      );
+
+      // 2. Check requirement_dispatch_authorizations for WINNER or APPROVED status
       const [authRows] = await conn.query(
         `SELECT * FROM requirement_dispatch_authorizations 
          WHERE requirement_id IN (?) 
@@ -2298,7 +2385,7 @@ async function handleCreateTruckDispatch(req, res) {
         [resolvedReqIds, resolvedItemIds.length > 0 ? resolvedItemIds : ['MAIN'], transMatchIds]
       );
 
-      let isAuthorized = authRows.length > 0;
+      let isAuthorized = allocRows.length > 0 || authRows.length > 0;
 
       // Fallback check against finalized bid transporter_id for legacy records
       if (!isAuthorized && finalizedSub && finalizedSub.transporter_id) {
@@ -3530,6 +3617,184 @@ router.get('/transporters/dispatch-authorizations', authenticateToken, async (re
     return res.json({ success: true, data: rows });
   } catch (err) {
     console.error('❌ GET dispatch-authorizations error:', err.message);
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// -------------------------------------------------------------
+// TRANSPORTER ITEM ALLOCATIONS & ACCEPTANCE WORKFLOW 🤝🚚
+// -------------------------------------------------------------
+
+// POST /api/requirements/:requirementId/items/:itemId/accept-remaining-allocation
+router.post('/requirements/:requirementId/items/:itemId/accept-remaining-allocation', authenticateToken, async (req, res) => {
+  const { requirementId, itemId } = req.params;
+  const authUser = req.user;
+  const transporterId = authUser.transporter_id || authUser.id;
+
+  if (!transporterId || authUser.role !== 'transporter') {
+    return res.status(403).json({ success: false, code: 'UNAUTHORIZED', error: 'Only verified transporters can accept remaining allocation.' });
+  }
+
+  await ensureRequirementsTableExists();
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+
+    // 1. Resolve requirement and item
+    const [reqRows] = await conn.query('SELECT * FROM transport_requirements WHERE id = ?', [requirementId]);
+    if (reqRows.length === 0) {
+      await conn.rollback();
+      conn.release();
+      return res.status(404).json({ success: false, code: 'REQ_NOT_FOUND', error: 'Requirement not found.' });
+    }
+
+    const [itemRows] = await conn.query(
+      'SELECT * FROM transport_requirement_items WHERE requirement_id = ? AND (id = ? OR sub_indent_no = ?)',
+      [requirementId, itemId, itemId]
+    );
+    const item = itemRows[0];
+    const actualItemId = item ? item.id : itemId;
+    const subIndentNo = item ? item.sub_indent_no : null;
+
+    // 2. Verify that transporter participated in original bidding for this exact requirement item
+    const transMatchIds = [transporterId, authUser.id, authUser.username, authUser.code].filter(Boolean);
+    const [bidRows] = await conn.query(
+      `SELECT * FROM rate_submissions 
+       WHERE requirement_id = ? AND (item_id = ? OR item_id = ? OR item_id = 'MAIN')
+         AND transporter_id IN (?)`,
+      [requirementId, actualItemId, subIndentNo || actualItemId, transMatchIds]
+    );
+
+    if (bidRows.length === 0) {
+      await conn.rollback();
+      conn.release();
+      return res.status(403).json({
+        success: false,
+        code: 'NOT_ELIGIBLE_FOR_ALLOCATION',
+        error: 'Only transporters who previously submitted bids for this requirement item are eligible to accept the remaining allocation.'
+      });
+    }
+
+    // 3. Resolve fixed finalized rate
+    const [finBids] = await conn.query(
+      `SELECT * FROM rate_submissions 
+       WHERE requirement_id = ? AND (item_id = ? OR item_id = ? OR item_id = 'MAIN')
+         AND (is_finalized = 1 OR UPPER(COALESCE(bid_status, '')) = 'FINALIZED' OR final_rate > 0)
+       ORDER BY is_finalized DESC, finalized_at DESC LIMIT 1`,
+      [requirementId, actualItemId, subIndentNo || actualItemId]
+    );
+
+    let fixedRate = finBids[0]?.final_rate || finBids[0]?.rate_per_mt;
+    if (!fixedRate) {
+      const [dispRateRows] = await conn.query(
+        `SELECT finalized_rate FROM truck_dispatches 
+         WHERE requirement_id = ? AND (requirement_item_id = ? OR requirement_item_id = ?) AND finalized_rate > 0
+         ORDER BY dispatched_at DESC LIMIT 1`,
+        [requirementId, actualItemId, subIndentNo || actualItemId]
+      );
+      if (dispRateRows.length > 0) fixedRate = dispRateRows[0].finalized_rate;
+    }
+
+    if (!fixedRate) {
+      await conn.rollback();
+      conn.release();
+      return res.status(400).json({ success: false, code: 'RATE_NOT_FINALIZED', error: 'No fixed finalized rate exists for this requirement item.' });
+    }
+
+    // 4. Calculate global remaining quantity with row locking
+    const totalItemQty = item ? parseFloat(item.quantity_mt || 0) : parseFloat(reqRows[0].quantity_mt || 0);
+    const [dispRows] = await conn.query(
+      `SELECT SUM(loaded_quantity_mt) AS total_dispatched 
+       FROM truck_dispatches 
+       WHERE requirement_id = ? AND (requirement_item_id = ? OR requirement_item_id = ?)`,
+      [requirementId, actualItemId, subIndentNo || actualItemId]
+    );
+    const alreadyDispatched = parseFloat(dispRows[0]?.total_dispatched || 0);
+    const remainingQty = Math.max(0, parseFloat((totalItemQty - alreadyDispatched).toFixed(3)));
+
+    if (remainingQty <= 0) {
+      await conn.rollback();
+      conn.release();
+      return res.status(400).json({
+        success: false,
+        code: 'NO_REMAINING_QUANTITY',
+        error: 'This requirement item is already fully dispatched. No remaining quantity available.'
+      });
+    }
+
+    // 5. Store / Update acceptance in transporter_item_allocations
+    const allocId = `alloc_${requirementId}_${actualItemId}_${transporterId}`;
+    await conn.query(
+      `INSERT INTO transporter_item_allocations (
+         id, requirement_id, requirement_item_id, sub_indent_no, transporter_id, finalized_rate, allocation_role, acceptance_status, accepted_at, created_at
+       ) VALUES (?, ?, ?, ?, ?, ?, 'ELIGIBLE_PREVIOUS_BIDDER', 'ACCEPTED', NOW(), NOW())
+       ON DUPLICATE KEY UPDATE 
+         finalized_rate = VALUES(finalized_rate),
+         acceptance_status = 'ACCEPTED',
+         accepted_at = NOW(),
+         updated_at = NOW()`,
+      [allocId, requirementId, actualItemId, subIndentNo, transporterId, fixedRate]
+    );
+
+    // Also sync requirement_dispatch_authorizations for unified dispatch checks
+    const authId = `auth_acc_${requirementId}_${actualItemId}_${transporterId}`;
+    await conn.query(
+      `INSERT INTO requirement_dispatch_authorizations (
+         id, requirement_id, requirement_item_id, sub_indent_no, transporter_id, fixed_rate, authorization_status, approved_at, approved_by, created_at
+       ) VALUES (?, ?, ?, ?, ?, ?, 'APPROVED', NOW(), 'self_accepted', NOW())
+       ON DUPLICATE KEY UPDATE 
+         fixed_rate = VALUES(fixed_rate),
+         authorization_status = 'APPROVED',
+         approved_at = NOW(),
+         approved_by = 'self_accepted',
+         updated_at = NOW()`,
+      [authId, requirementId, actualItemId, subIndentNo, transporterId, fixedRate]
+    );
+
+    await conn.commit();
+    conn.release();
+
+    return res.json({
+      success: true,
+      message: `Remaining allocation accepted at fixed rate ₹${fixedRate}/MT. You may now dispatch trucks.`,
+      data: {
+        requirement_id: requirementId,
+        requirement_item_id: actualItemId,
+        sub_indent_no: subIndentNo,
+        transporter_id: transporterId,
+        fixed_rate: fixedRate,
+        remaining_quantity_mt: remainingQty,
+        acceptance_status: 'ACCEPTED',
+        can_dispatch: true
+      }
+    });
+
+  } catch (err) {
+    await conn.rollback();
+    conn.release();
+    console.error('❌ accept-remaining-allocation Error:', err.message);
+    return res.status(500).json({ success: false, code: 'DATABASE_ERROR', error: err.message });
+  }
+});
+
+// GET /api/transporters/item-allocations — Transporter queries their item allocations
+router.get('/transporters/item-allocations', authenticateToken, async (req, res) => {
+  const authUser = req.user;
+  const transporterId = authUser.transporter_id || authUser.id;
+  await ensureRequirementsTableExists();
+  try {
+    let rows;
+    if (authUser.role === 'admin') {
+      [rows] = await pool.query('SELECT * FROM transporter_item_allocations ORDER BY created_at DESC');
+    } else {
+      [rows] = await pool.query(
+        'SELECT * FROM transporter_item_allocations WHERE transporter_id = ? ORDER BY created_at DESC',
+        [transporterId]
+      );
+    }
+    return res.json({ success: true, data: rows });
+  } catch (err) {
+    console.error('❌ GET item-allocations error:', err.message);
     return res.status(500).json({ success: false, error: err.message });
   }
 });

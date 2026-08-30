@@ -134,3 +134,15 @@ export async function getTransporterDispatchAuthorizations() {
     method: 'GET'
   });
 }
+
+export async function acceptRemainingAllocation(requirementId, itemId) {
+  return apiClient(`/api/requirements/${requirementId}/items/${itemId}/accept-remaining-allocation`, {
+    method: 'POST'
+  });
+}
+
+export async function getTransporterItemAllocations() {
+  return apiClient('/api/transporters/item-allocations', {
+    method: 'GET'
+  });
+}
