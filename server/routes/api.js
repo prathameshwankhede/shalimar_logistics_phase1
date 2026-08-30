@@ -377,6 +377,35 @@ export async function ensureBidNegotiationHistoryTableExists() {
         INDEX idx_bnh_transporter (transporter_id)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
     `);
+
+    // Clean up orphan history rows referencing deleted requirements or submissions
+    try {
+      await pool.query(`
+        DELETE bnh FROM bid_negotiation_history bnh
+        LEFT JOIN transport_requirements tr ON tr.id = bnh.requirement_id
+        WHERE tr.id IS NULL
+      `);
+      await pool.query(`
+        DELETE bnh FROM bid_negotiation_history bnh
+        LEFT JOIN rate_submissions rs ON rs.id = bnh.rate_submission_id
+        WHERE rs.id IS NULL
+      `);
+    } catch (e) {}
+
+    await pool.query(`
+      ALTER TABLE bid_negotiation_history
+      ADD CONSTRAINT fk_bnh_req
+      FOREIGN KEY (requirement_id) REFERENCES transport_requirements(id)
+      ON DELETE CASCADE
+    `).catch(() => {});
+
+    await pool.query(`
+      ALTER TABLE bid_negotiation_history
+      ADD CONSTRAINT fk_bnh_sub
+      FOREIGN KEY (rate_submission_id) REFERENCES rate_submissions(id)
+      ON DELETE CASCADE
+    `).catch(() => {});
+
     isBidNegotiationTableEnsured = true;
   } catch (err) {
     console.warn('bid_negotiation_history table creation notice:', err.message);
@@ -405,6 +434,35 @@ export async function ensureRateNegotiationsTableExists() {
         INDEX idx_negotiation_submission (rate_submission_id)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
     `);
+
+    // Clean up orphan negotiation rows referencing deleted requirements or submissions
+    try {
+      await pool.query(`
+        DELETE rn FROM rate_negotiations rn
+        LEFT JOIN transport_requirements tr ON tr.id = rn.requirement_id
+        WHERE tr.id IS NULL
+      `);
+      await pool.query(`
+        DELETE rn FROM rate_negotiations rn
+        LEFT JOIN rate_submissions rs ON rs.id = rn.rate_submission_id
+        WHERE rs.id IS NULL
+      `);
+    } catch (e) {}
+
+    await pool.query(`
+      ALTER TABLE rate_negotiations
+      ADD CONSTRAINT fk_rn_req
+      FOREIGN KEY (requirement_id) REFERENCES transport_requirements(id)
+      ON DELETE CASCADE
+    `).catch(() => {});
+
+    await pool.query(`
+      ALTER TABLE rate_negotiations
+      ADD CONSTRAINT fk_rn_sub
+      FOREIGN KEY (rate_submission_id) REFERENCES rate_submissions(id)
+      ON DELETE CASCADE
+    `).catch(() => {});
+
     isRateNegotiationsTableEnsured = true;
   } catch (err) {
     console.warn('rate_negotiations table creation notice:', err.message);
@@ -2272,23 +2330,36 @@ router.delete('/requirements/:parentId/items/:itemId', authenticateToken, requir
   const { parentId, itemId } = req.params;
   await ensureRequirementsTableExists();
   await ensureRateSubmissionsTableExists();
+  await ensureBidNegotiationHistoryTableExists();
+  await ensureRateNegotiationsTableExists();
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
 
-    // 1. Delete quotes specific to this child item
+    // 1. Delete negotiations and history specific to this child item
+    await conn.query(
+      'DELETE FROM bid_negotiation_history WHERE requirement_id = ? AND (item_id = ? OR item_id = (SELECT sub_indent_no FROM transport_requirement_items WHERE id = ? LIMIT 1))',
+      [parentId, itemId, itemId]
+    ).catch(() => {});
+
+    await conn.query(
+      'DELETE FROM rate_negotiations WHERE requirement_id = ? AND (item_id = ? OR item_id = (SELECT sub_indent_no FROM transport_requirement_items WHERE id = ? LIMIT 1))',
+      [parentId, itemId, itemId]
+    ).catch(() => {});
+
+    // 2. Delete quotes specific to this child item
     await conn.query(
       'DELETE FROM rate_submissions WHERE requirement_id = ? AND (item_id = ? OR item_id = (SELECT sub_indent_no FROM transport_requirement_items WHERE id = ? LIMIT 1))',
       [parentId, itemId, itemId]
     ).catch(() => {});
 
-    // 2. Delete child requirement item
+    // 3. Delete child requirement item
     const [delItemResult] = await conn.query(
       'DELETE FROM transport_requirement_items WHERE id = ? OR (requirement_id = ? AND sub_indent_no = ?)',
       [itemId, parentId, itemId]
     );
 
-    // 3. Recalculate parent requirement total quantity
+    // 4. Recalculate parent requirement total quantity
     const [remainingItems] = await conn.query(
       'SELECT quantity_mt FROM transport_requirement_items WHERE requirement_id = ?',
       [parentId]
@@ -2321,17 +2392,31 @@ router.delete('/requirements/:parentId/items/:itemId', authenticateToken, requir
   }
 });
 
-// DELETE /api/requirements/:id — Delete Parent Requirement, Child Items, and Related Rate Submissions
+// DELETE /api/requirements/:id — Delete Parent Requirement, Child Items, Bids, and Negotiation History
 router.delete('/requirements/:id', authenticateToken, requireRole('admin'), async (req, res) => {
   const { id } = req.params;
   await ensureRequirementsTableExists();
+  await ensureRateSubmissionsTableExists();
+  await ensureBidNegotiationHistoryTableExists();
+  await ensureRateNegotiationsTableExists();
   try {
     const conn = await pool.getConnection();
     try {
       await conn.beginTransaction();
+
+      // 1. Explicitly clean negotiation history & negotiations for this requirement
+      await conn.query('DELETE FROM bid_negotiation_history WHERE requirement_id = ? OR requirement_id = (SELECT req_no FROM transport_requirements WHERE id = ? LIMIT 1)', [id, id]).catch(() => {});
+      await conn.query('DELETE FROM rate_negotiations WHERE requirement_id = ? OR requirement_id = (SELECT req_no FROM transport_requirements WHERE id = ? LIMIT 1)', [id, id]).catch(() => {});
+
+      // 2. Delete rate submissions for this requirement
       await conn.query('DELETE FROM rate_submissions WHERE requirement_id = ? OR requirement_id = (SELECT req_no FROM transport_requirements WHERE id = ? LIMIT 1)', [id, id]).catch(() => {});
+
+      // 3. Delete requirement items
       await conn.query('DELETE FROM transport_requirement_items WHERE requirement_id = ?', [id]);
+
+      // 4. Delete parent requirement
       const [result] = await conn.query('DELETE FROM transport_requirements WHERE id = ?', [id]);
+
       await conn.commit();
       conn.release();
 
@@ -2339,7 +2424,7 @@ router.delete('/requirements/:id', authenticateToken, requireRole('admin'), asyn
         return res.status(404).json({ success: false, error: 'Requirement record not found' });
       }
 
-      return res.json({ success: true, message: 'Requirement and all child items deleted from MySQL' });
+      return res.json({ success: true, message: 'Requirement, child items, bids, and negotiation history deleted from MySQL' });
     } catch (e) {
       await conn.rollback();
       conn.release();

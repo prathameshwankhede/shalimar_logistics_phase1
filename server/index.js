@@ -1,4 +1,4 @@
-// Hostinger Passenger Process Reload Signal v1.8.5 - Production Security Hardening (Protected Diagnostics, Anti-Spoofing & Logout Session Cleanup)
+// Hostinger Passenger Process Reload Signal v1.8.6 - Atomic Delete Cascade & Complete Referential Integrity
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
