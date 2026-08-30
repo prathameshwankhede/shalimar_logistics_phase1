@@ -160,6 +160,27 @@ export const AdminDashboard = () => {
     }
   };
 
+  const resolveTransporterNameFromIdOrCode = (id, code, nameCandidate) => {
+    if (nameCandidate && nameCandidate !== 'Transporter' && !String(nameCandidate).startsWith('trans_')) {
+      return nameCandidate;
+    }
+    const cleanId = String(id || '').toLowerCase();
+    const cleanCode = String(code || '').toLowerCase();
+    const t = (db?.transporters || []).find(x => 
+      String(x.id).toLowerCase() === cleanId || 
+      String(x.code).toLowerCase() === cleanCode ||
+      String(x.username).toLowerCase() === cleanCode ||
+      String(x.id).toLowerCase() === cleanCode
+    );
+    if (t && (t.company_name || t.name || t.contact_person)) {
+      return t.company_name || t.name || t.contact_person;
+    }
+    if (cleanCode.includes('s001') || cleanId.includes('s001')) return 'sanjay';
+    if (cleanCode.includes('m001') || cleanId.includes('m001')) return 'malpani';
+    if (cleanCode.includes('r001') || cleanId.includes('r001')) return 'ram';
+    return code || id || 'Transporter';
+  };
+
   const transporterFolders = useMemo(() => {
     const map = {};
 
@@ -168,7 +189,7 @@ export const AdminDashboard = () => {
       const key = String(t.id || t.code || t.name);
       map[key] = {
         transporter_id: t.id || key,
-        transporter_name: t.company_name || t.name || t.code || 'Transporter',
+        transporter_name: resolveTransporterNameFromIdOrCode(t.id, t.code, t.company_name || t.name),
         transporter_code: t.code || t.username || '',
         contact_person: t.contact_person || '',
         phone: t.mobile || t.phone || '',
@@ -193,10 +214,16 @@ export const AdminDashboard = () => {
         }
       }
 
+      const resolvedName = resolveTransporterNameFromIdOrCode(
+        d.transporter_id,
+        d.transporter_code,
+        d.transporter_name
+      );
+
       if (!map[key]) {
         map[key] = {
           transporter_id: d.transporter_id || key,
-          transporter_name: d.transporter_name || d.transporter_id || 'Transporter',
+          transporter_name: resolvedName,
           transporter_code: d.transporter_code || '',
           contact_person: d.driver_name || '',
           phone: d.driver_mobile || '',
@@ -205,6 +232,8 @@ export const AdminDashboard = () => {
           totalFreightValue: 0,
           lastDispatchedAt: null
         };
+      } else if (!map[key].transporter_name || map[key].transporter_name === 'Transporter' || map[key].transporter_name.startsWith('trans_')) {
+        map[key].transporter_name = resolvedName;
       }
 
       map[key].dispatches.push(d);

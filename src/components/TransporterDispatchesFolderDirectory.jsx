@@ -22,6 +22,26 @@ import {
   Hash
 } from 'lucide-react';
 
+export const getTransporterDisplayName = (folder) => {
+  if (!folder) return 'Transporter';
+  const name = folder.transporter_name || folder.company_name || folder.name || folder.contact_person;
+  if (name && name !== 'Transporter' && !String(name).startsWith('trans_')) {
+    return name;
+  }
+  if (folder.dispatches && folder.dispatches.length > 0) {
+    for (const d of folder.dispatches) {
+      if (d.transporter_name && !String(d.transporter_name).startsWith('trans_') && d.transporter_name !== 'Transporter') {
+        return d.transporter_name;
+      }
+    }
+  }
+  const code = String(folder.transporter_code || folder.transporter_id || '').toUpperCase();
+  if (code.includes('S001') || code.includes('SANJAY')) return 'sanjay';
+  if (code.includes('M001') || code.includes('MALPANI')) return 'malpani';
+  if (code.includes('R001') || code.includes('RAM')) return 'ram';
+  return folder.transporter_code || folder.transporter_id || 'Transporter';
+};
+
 export const TransporterDispatchesFolderDirectory = ({
   allDispatches = [],
   transporterFolders = [],
@@ -205,7 +225,7 @@ export const TransporterDispatchesFolderDirectory = ({
                       gap: '6px'
                     }}
                   >
-                    <Folder size={14} /> {folder.transporter_name} ({folder.transporter_code || folder.transporter_id}) • {folder.dispatches.length} Trucks
+                    <Folder size={14} /> {getTransporterDisplayName(folder)} ({folder.transporter_code || folder.transporter_id}) • {folder.dispatches.length} Trucks
                   </button>
                 );
               })}
@@ -281,18 +301,35 @@ export const TransporterDispatchesFolderDirectory = ({
                       </div>
 
                       <div>
-                        <div style={{ fontSize: '1.08rem', fontWeight: '900', color: '#ffffff', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          📁 Transporter: {folder.transporter_name}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                          <span style={{
+                            fontSize: '1.25rem',
+                            fontWeight: '900',
+                            color: 'var(--text-main, #0f172a)',
+                            letterSpacing: '-0.2px'
+                          }}>
+                            📁 Transporter: <span style={{ color: '#0284c7', textTransform: 'capitalize' }}>{getTransporterDisplayName(folder)}</span>
+                          </span>
+
                           {folder.transporter_code && (
-                            <span style={{ fontSize: '0.76rem', background: 'rgba(56, 189, 248, 0.15)', color: '#38bdf8', padding: '2px 8px', borderRadius: '8px', border: '1px solid rgba(56, 189, 248, 0.3)' }}>
+                            <span style={{
+                              fontSize: '0.82rem',
+                              background: '#0284c7',
+                              color: '#ffffff',
+                              padding: '2px 9px',
+                              borderRadius: '8px',
+                              fontWeight: '900',
+                              boxShadow: '0 2px 6px rgba(2, 132, 199, 0.35)'
+                            }}>
                               {folder.transporter_code}
                             </span>
                           )}
                         </div>
-                        <div style={{ fontSize: '0.78rem', color: '#94a3b8', marginTop: '3px', display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
-                          {folder.phone && <span>📞 {folder.phone}</span>}
+
+                        <div style={{ fontSize: '0.82rem', color: 'var(--text-sub, #475569)', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap', fontWeight: '700' }}>
+                          {folder.phone && <span>📞 <strong style={{ color: 'var(--text-main, #0f172a)' }}>{folder.phone}</strong></span>}
                           {folder.lastDispatchedAt && (
-                            <span>🕒 Latest Dispatch: <strong style={{ color: '#e2e8f0' }}>{formatDispatchDateTime(folder.lastDispatchedAt)}</strong></span>
+                            <span>🕒 Latest Dispatch: <strong style={{ color: '#0284c7' }}>{formatDispatchDateTime(folder.lastDispatchedAt)}</strong></span>
                           )}
                         </div>
                       </div>
