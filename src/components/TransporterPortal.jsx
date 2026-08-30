@@ -606,24 +606,32 @@ export const TransporterPortal = () => {
   });
   const [isSubmittingDispatch, setIsSubmittingDispatch] = useState(false);
 
-  const handleOpenDispatchModal = (req, myBid) => {
+  const handleOpenDispatchModal = (req, myBid, parentReq = null) => {
+    const parent = parentReq || (db.rate_requests || []).find(r => r.id === (req.requirement_id || req.id)) || req;
+    const resolvedReq = {
+      ...req,
+      requirement_id: req.requirement_id || parent?.id || req.id,
+      parent_req_no: parent?.req_no || parent?.request_no || req.parent_req_no || null
+    };
+
     const dispatches = (db.truck_dispatches || []).filter((d) => {
-      if (req && (req.id || req.item_id || req.sub_indent_no)) {
+      if (resolvedReq && (resolvedReq.id || resolvedReq.item_id || resolvedReq.sub_indent_no)) {
         return (
-          d.requirement_item_id === req.id ||
-          d.requirement_item_id === req.item_id ||
-          d.requirement_item_id === req.sub_indent_no
+          d.requirement_item_id === resolvedReq.id ||
+          d.requirement_item_id === resolvedReq.item_id ||
+          d.requirement_item_id === resolvedReq.sub_indent_no
         );
       }
-      return d.requirement_id === (req.requirement_id || req.id);
+      return d.requirement_id === resolvedReq.requirement_id;
     });
 
     const alreadyDispatched = dispatches.reduce((acc, curr) => acc + (parseFloat(curr.loaded_quantity_mt || curr.dispatched_qty) || 0), 0);
-    const totalQty = parseFloat(req.quantity_mt || req.required_qty || 0);
+    const totalQty = parseFloat(resolvedReq.quantity_mt || resolvedReq.required_qty || 0);
     const remainingQty = Math.max(0, totalQty - alreadyDispatched);
 
     setDispatchingReqItem({
-      req,
+      req: resolvedReq,
+      parentReq: parent,
       myBid,
       totalQty,
       dispatchedQty: alreadyDispatched,
@@ -2609,7 +2617,7 @@ export const TransporterPortal = () => {
                       </div>
                       <button
                         type="button"
-                        onClick={() => handleOpenDispatchModal(item, myBid)}
+                        onClick={() => handleOpenDispatchModal(item, myBid, parentReq)}
                         className="btn btn-primary"
                         style={{ padding: '8px 20px', fontWeight: '800', fontSize: '0.88rem', display: 'flex', alignItems: 'center', gap: '6px' }}
                       >
@@ -3198,7 +3206,7 @@ export const TransporterPortal = () => {
                           {isFinalized && isAccepted && targetItem && (targetItem?.dispatch_status !== 'RELEASED_FOR_REQUOTE' && targetItem?.allocation_status !== 'RELEASED_FOR_REQUOTE') && (
                             <button
                               type="button"
-                              onClick={() => handleOpenDispatchModal(targetItem, sub)}
+                              onClick={() => handleOpenDispatchModal(targetItem, sub, req)}
                               className="btn btn-primary"
                               style={{ padding: '5px 10px', fontSize: '0.75rem', fontWeight: '800', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
                               title="Dispatch truck for this contract"
