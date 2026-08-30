@@ -1653,11 +1653,11 @@ export const TransporterPortal = () => {
 
           <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
             {pendingCounterOffers.length > 0 && (
-              <div style={{ background: 'rgba(245, 158, 11, 0.2)', border: '1px solid #f59e0b', padding: '10px 16px', borderRadius: '10px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <MessageSquare size={18} color="#fbbf24" />
+              <div style={{ background: '#fffbeb', border: '1.5px solid #f59e0b', padding: '10px 16px', borderRadius: '10px', display: 'flex', alignItems: 'center', gap: '10px', boxShadow: '0 2px 6px rgba(245, 158, 11, 0.15)' }}>
+                <MessageSquare size={20} color="#b45309" />
                 <div>
-                  <div style={{ fontSize: '0.75rem', color: '#fbbf24', fontWeight: '800' }}>🔥 LOWER COMPETING BID RECEIVED!</div>
-                  <div style={{ fontSize: '0.85rem', color: '#ffffff', fontWeight: '700' }}>{pendingCounterOffers.length} Lower Competitor Offer(s)</div>
+                  <div style={{ fontSize: '0.75rem', color: '#b45309', fontWeight: '900', textTransform: 'uppercase', letterSpacing: '0.5px' }}>🔥 LOWER COMPETING BID RECEIVED!</div>
+                  <div style={{ fontSize: '0.85rem', color: '#0f172a', fontWeight: '800' }}>{pendingCounterOffers.length} Lower Competitor Offer(s)</div>
                 </div>
               </div>
             )}
