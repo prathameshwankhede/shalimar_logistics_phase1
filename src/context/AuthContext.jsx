@@ -218,6 +218,7 @@ const updateDB = async (newDb) => {
         setCurrentUser(json.user);
         sessionStorage.setItem(USER_SESSION_KEY, JSON.stringify(json.user));
         localStorage.setItem(USER_SESSION_KEY, JSON.stringify(json.user));
+        refreshRequirements();
         return { success: true, user: json.user };
       } else {
         return { success: false, error: json.error || 'Invalid Username or Password' };

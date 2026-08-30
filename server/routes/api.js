@@ -3042,25 +3042,37 @@ async function handleGetOpenRequirements(req, res) {
       [parentIds]
     );
 
-    // Map: reqId_itemId -> winningTransporterId
+    // Map: reqId_itemId -> winningTransporterId and winningRate
     const winningTransporterMap = {};
+    const winningRateMap = {};
     finSubRows.forEach(s => {
       const k1 = `${s.requirement_id}_${s.item_id}`;
-      if (!winningTransporterMap[k1]) winningTransporterMap[k1] = String(s.transporter_id || '');
+      const r = Number(s.final_rate || s.rate_per_mt || 0);
+      if (!winningTransporterMap[k1]) {
+        winningTransporterMap[k1] = String(s.transporter_id || '');
+        if (r > 0) winningRateMap[k1] = r;
+      }
       if (s.requirement_id && !winningTransporterMap[s.requirement_id]) {
         winningTransporterMap[s.requirement_id] = String(s.transporter_id || '');
+        if (r > 0 && !winningRateMap[s.requirement_id]) winningRateMap[s.requirement_id] = r;
       }
     });
 
     const itemsMap = {};
     items.forEach(i => {
+      const itemKey = `${i.requirement_id}_${i.id}`;
+      const subKey = i.sub_indent_no ? `${i.requirement_id}_${i.sub_indent_no}` : null;
+      const mainKey = `${i.requirement_id}_MAIN`;
+      const reqKey = i.requirement_id;
+
+      const rate = winningRateMap[itemKey] || (subKey ? winningRateMap[subKey] : null) || winningRateMap[mainKey] || winningRateMap[reqKey] || null;
+      if (rate) {
+        i.remaining_finalized_rate = rate;
+        i.lowest_rate = rate;
+      }
+
       // If user is a transporter, check if this item is finalized to someone else
       if (isTransporter) {
-        const itemKey = `${i.requirement_id}_${i.id}`;
-        const subKey = i.sub_indent_no ? `${i.requirement_id}_${i.sub_indent_no}` : null;
-        const mainKey = `${i.requirement_id}_MAIN`;
-        const reqKey = i.requirement_id;
-
         const winnerId = winningTransporterMap[itemKey] || (subKey ? winningTransporterMap[subKey] : null) || winningTransporterMap[mainKey] || winningTransporterMap[reqKey];
         const remainingAllocTo = i.remaining_allocated_to ? String(i.remaining_allocated_to).toLowerCase() : null;
         const isExclusivelyAllocated = i.remaining_allocation_status === 'EXCLUSIVELY_ALLOCATED';
@@ -3068,7 +3080,7 @@ async function handleGetOpenRequirements(req, res) {
         const remQty = i.remaining_quantity_mt !== null && i.remaining_quantity_mt !== undefined
           ? parseFloat(i.remaining_quantity_mt)
           : Math.max(0, parseFloat(i.quantity_mt || 0) - totalDispatched);
-        const hasRemainingBalance = totalDispatched > 0 && remQty > 0;
+        const hasRemainingBalance = (totalDispatched > 0 || String(i.dispatch_status).toUpperCase() === 'PARTIALLY_DISPATCHED') && remQty > 0;
 
         if (winnerId) {
           const isWinner = callingTransporterMatches.includes(String(winnerId).toLowerCase());

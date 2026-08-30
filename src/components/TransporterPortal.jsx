@@ -73,6 +73,7 @@ export const TransporterPortal = () => {
   };
 
   useEffect(() => {
+    safeRefreshRequirements();
     refreshDashboardSummary();
     refreshAuthorizations();
     refreshAllocations();
@@ -545,16 +546,22 @@ export const TransporterPortal = () => {
           return;
         }
 
-        // 2. Calculate canonical remaining quantity
+        // 2. Calculate canonical remaining quantity (incorporating server-provided metrics)
         const dispatches = (db.truck_dispatches || []).filter((d) => {
           if (item && item.id) {
             return d.requirement_item_id === item.id || d.requirement_item_id === item.sub_indent_no;
           }
           return d.requirement_id === parentReq.id;
         });
-        const totalDispatched = dispatches.reduce((acc, curr) => acc + (parseFloat(curr.loaded_quantity_mt || curr.dispatched_qty) || 0), 0);
+        const totalDispatchedFromLocal = dispatches.reduce((acc, curr) => acc + (parseFloat(curr.loaded_quantity_mt || curr.dispatched_qty) || 0), 0);
+        const totalDispatched = Math.max(
+          totalDispatchedFromLocal,
+          parseFloat(item.dispatched_quantity_mt || parentReq.dispatched_quantity_mt || 0)
+        );
         const allocatedQty = parseFloat(item.quantity_mt || item.required_qty || 0);
-        const remQty = Math.max(0, allocatedQty - totalDispatched);
+        const remQty = item.remaining_quantity_mt !== null && item.remaining_quantity_mt !== undefined
+          ? parseFloat(item.remaining_quantity_mt)
+          : Math.max(0, allocatedQty - totalDispatched);
         if (remQty <= 0 && allocatedQty > 0) {
           return;
         }
@@ -570,7 +577,7 @@ export const TransporterPortal = () => {
           }
         }
 
-        // 4. Deterministic Rate Source of Truth (Priority 1: Finalized Bid Submission -> Priority 2: Dispatch History)
+        // 4. Deterministic Rate Source of Truth (Priority 1: Finalized Bid Submission -> Priority 2: Dispatch History -> Priority 3: Server Rate)
         const finalizedBid = (db.rate_submissions || []).find((s) => {
           if (!s) return false;
           const sReqMatch = String(s.requirement_id) === String(parentReq.id) || String(s.rate_request_id) === String(parentReq.id) || String(s.rate_request_id) === String(parentReqNo);
@@ -599,6 +606,9 @@ export const TransporterPortal = () => {
           // Priority 2: Existing truck_dispatches recorded finalized_rate
           fixedRate = Number(dispatches[0].finalized_rate);
           winningTransporterId = dispatches[0].transporter_id;
+        } else if (item.remaining_finalized_rate || item.lowest_rate || parentReq.lowest_rate) {
+          // Priority 3: Server provided lowest / finalized rate
+          fixedRate = Number(item.remaining_finalized_rate || item.lowest_rate || parentReq.lowest_rate);
         }
 
         const isWinningTransporter = Boolean(
@@ -736,9 +746,15 @@ export const TransporterPortal = () => {
         return;
       }
       const dispatches = (db.truck_dispatches || []).filter((d) => d.requirement_id === parentReq.id);
-      const totalDispatched = dispatches.reduce((acc, curr) => acc + (parseFloat(curr.loaded_quantity_mt || curr.dispatched_qty) || 0), 0);
+      const totalDispatchedFromLocal = dispatches.reduce((acc, curr) => acc + (parseFloat(curr.loaded_quantity_mt || curr.dispatched_qty) || 0), 0);
+      const totalDispatched = Math.max(
+        totalDispatchedFromLocal,
+        parseFloat(parentReq.dispatched_quantity_mt || 0)
+      );
       const allocatedQty = parseFloat(parentReq.quantity_mt || parentReq.total_quantity_mt || 0);
-      const remQty = Math.max(0, allocatedQty - totalDispatched);
+      const remQty = parentReq.remaining_quantity_mt !== null && parentReq.remaining_quantity_mt !== undefined
+        ? parseFloat(parentReq.remaining_quantity_mt)
+        : Math.max(0, allocatedQty - totalDispatched);
       if (remQty <= 0 && allocatedQty > 0) {
         return;
       }
@@ -760,6 +776,8 @@ export const TransporterPortal = () => {
       } else if (dispatches.length > 0 && Number(dispatches[0]?.finalized_rate) > 0) {
         fixedRate = Number(dispatches[0].finalized_rate);
         winningTransporterId = dispatches[0].transporter_id;
+      } else if (parentReq.remaining_finalized_rate || parentReq.lowest_rate) {
+        fixedRate = Number(parentReq.remaining_finalized_rate || parentReq.lowest_rate);
       }
 
       const isWinningTransporter = Boolean(
