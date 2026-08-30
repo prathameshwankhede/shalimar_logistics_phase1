@@ -2627,7 +2627,10 @@ export const TransporterPortal = () => {
               const cargo = item.product_name || parentReq.product_name || parentReq.material_type || 'Cargo';
               const totalQty = parseFloat(item.quantity_mt || item.required_qty || parentReq.quantity_mt || parentReq.required_qty || 0);
               const finalRate = Number(myBid.final_rate || myBid.rate_per_mt || myBid.rate_per_unit || 0);
-              const isAccepted = String(myBid.acceptance_status || '').toUpperCase() === 'ACCEPTED';
+              const isAccepted = String(myBid.acceptance_status || '').toUpperCase() === 'ACCEPTED' ||
+                                 String(myBid.bid_status || '').toUpperCase() === 'FINALIZED' ||
+                                 Boolean(myBid.is_finalized) ||
+                                 Number(myBid.final_rate) > 0;
 
               const dispatches = (db.truck_dispatches || []).filter((d) => {
                 if (item && item.id) {
@@ -2701,7 +2704,8 @@ export const TransporterPortal = () => {
                       padding: '14px 18px',
                       display: 'flex',
                       alignItems: 'center',
-                      gap: '12px'
+                      gap: '12px',
+                      marginBottom: '16px'
                     }}>
                       <div style={{ fontSize: '1.4rem' }}>🔄</div>
                       <div>
@@ -2723,7 +2727,8 @@ export const TransporterPortal = () => {
                       justifyContent: 'space-between',
                       alignItems: 'center',
                       flexWrap: 'wrap',
-                      gap: '12px'
+                      gap: '12px',
+                      marginBottom: '16px'
                     }}>
                       <div>
                         <div style={{ color: '#fbbf24', fontWeight: '800', fontSize: '0.9rem' }}>
@@ -2753,14 +2758,15 @@ export const TransporterPortal = () => {
                       justifyContent: 'space-between',
                       alignItems: 'center',
                       flexWrap: 'wrap',
-                      gap: '12px'
+                      gap: '12px',
+                      marginBottom: '16px'
                     }}>
                       <div>
                         <div style={{ color: '#38bdf8', fontWeight: '800', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <CheckCircle2 size={16} color="#34d399" /> Rate Accepted — Ready for Truck Dispatch
+                          <CheckCircle2 size={16} color="#34d399" /> Rate Finalized & Active — Ready for Truck Dispatch
                         </div>
                         <div style={{ color: 'var(--text-sub)', fontSize: '0.8rem' }}>
-                          Remaining capacity to dispatch: <strong style={{ color: '#fbbf24' }}>{remainingBalance} MT</strong>
+                          Remaining capacity to dispatch: <strong style={{ color: '#fbbf24' }}>{remainingBalance} MT</strong> of {totalQty} MT
                         </div>
                       </div>
                       <button
@@ -2783,36 +2789,89 @@ export const TransporterPortal = () => {
                       gap: '8px',
                       color: '#34d399',
                       fontWeight: '800',
-                      fontSize: '0.88rem'
+                      fontSize: '0.88rem',
+                      marginBottom: '16px'
                     }}>
                       <CheckCircle2 size={18} /> 100% Contract Quantity Fully Dispatched ({totalQty} MT)
                     </div>
                   )}
 
-                  {/* Dispatches list if any */}
-                  {dispatches.length > 0 && (
-                    <div style={{ marginTop: '16px' }}>
-                      <div style={{ fontSize: '0.8rem', fontWeight: '800', color: 'var(--text-muted)', marginBottom: '8px' }}>
-                        DISPATCHED TRUCKS & LR HISTORY ({dispatches.length})
+                  {/* 📊 Comprehensive Dispatched Trucks & LR Report */}
+                  <div style={{ marginTop: '12px', background: 'rgba(0,0,0,0.2)', padding: '16px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.06)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                      <div style={{ fontSize: '0.85rem', fontWeight: '800', color: '#38bdf8', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <Truck size={16} /> DISPATCH REPORT & LR HISTORY ({dispatches.length} Trucks Dispatched)
                       </div>
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '10px' }}>
-                        {dispatches.map((disp) => (
-                          <div key={disp.id} style={{ background: 'rgba(0,0,0,0.25)', padding: '10px 14px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.08)', fontSize: '0.8rem' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: '800' }}>
-                              <span style={{ color: '#38bdf8' }}>{disp.truck_number}</span>
-                              <span style={{ color: '#34d399' }}>{disp.loaded_quantity_mt || disp.dispatched_qty} MT</span>
-                            </div>
-                            <div style={{ color: 'var(--text-muted)', marginTop: '2px', fontFamily: 'monospace' }}>
-                              LR: {disp.lr_number}
-                            </div>
-                            <div style={{ color: 'var(--text-sub)', marginTop: '2px' }}>
-                              Driver: {disp.driver_name} ({disp.driver_mobile || disp.driver_phone})
-                            </div>
-                          </div>
-                        ))}
+                      <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                        Total Dispatched: <strong style={{ color: '#34d399' }}>{totalDispatched} MT</strong> / {totalQty} MT
                       </div>
                     </div>
-                  )}
+
+                    {dispatches.length > 0 ? (
+                      <div style={{ overflowX: 'auto' }}>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+                          <thead>
+                            <tr style={{ background: 'rgba(255,255,255,0.04)', borderBottom: '1px solid rgba(255,255,255,0.1)', textAlign: 'left', color: 'var(--text-muted)' }}>
+                              <th style={{ padding: '8px 10px' }}>LR NUMBER</th>
+                              <th style={{ padding: '8px 10px' }}>TRUCK NO.</th>
+                              <th style={{ padding: '8px 10px' }}>LOADED (MT)</th>
+                              <th style={{ padding: '8px 10px' }}>DRIVER DETAILS</th>
+                              <th style={{ padding: '8px 10px' }}>DATE & TIME</th>
+                              <th style={{ padding: '8px 10px' }}>FREIGHT (₹)</th>
+                              <th style={{ padding: '8px 10px', textAlign: 'right' }}>ACTION</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {dispatches.map((disp, dIdx) => {
+                              const loadedQtyNum = parseFloat(disp.loaded_quantity_mt || disp.dispatched_qty || 0);
+                              const freightAmt = (loadedQtyNum * finalRate).toLocaleString('en-IN', { maximumFractionDigits: 2 });
+                              const dispDate = disp.dispatched_at ? new Date(disp.dispatched_at).toLocaleString('en-IN', { dateStyle: 'short', timeStyle: 'short' }) : '-';
+
+                              return (
+                                <tr key={disp.id || dIdx} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                                  <td style={{ padding: '8px 10px' }}>
+                                    <span style={{ color: '#38bdf8', fontFamily: 'monospace', fontWeight: '800', background: 'rgba(56, 189, 248, 0.1)', padding: '2px 6px', borderRadius: '4px' }}>
+                                      {disp.lr_number || 'N/A'}
+                                    </span>
+                                  </td>
+                                  <td style={{ padding: '8px 10px', fontWeight: '800', color: '#ffffff' }}>
+                                    {disp.truck_number}
+                                  </td>
+                                  <td style={{ padding: '8px 10px', fontWeight: '800', color: '#34d399' }}>
+                                    {loadedQtyNum} MT
+                                  </td>
+                                  <td style={{ padding: '8px 10px', color: 'var(--text-sub)' }}>
+                                    <div><strong>{disp.driver_name || 'Driver'}</strong></div>
+                                    <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>{disp.driver_mobile || disp.driver_phone || '-'}</div>
+                                  </td>
+                                  <td style={{ padding: '8px 10px', color: 'var(--text-muted)', fontSize: '0.78rem' }}>
+                                    {dispDate}
+                                  </td>
+                                  <td style={{ padding: '8px 10px', fontWeight: '700', color: '#fbbf24' }}>
+                                    ₹{freightAmt}
+                                  </td>
+                                  <td style={{ padding: '8px 10px', textAlign: 'right' }}>
+                                    <button
+                                      type="button"
+                                      onClick={() => setSelectedDispatchSlip(disp)}
+                                      className="btn btn-secondary"
+                                      style={{ padding: '4px 10px', fontSize: '0.75rem', fontWeight: '700', borderRadius: '6px' }}
+                                    >
+                                      🖨️ View LR Slip
+                                    </button>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : (
+                      <div style={{ padding: '14px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.82rem', background: 'rgba(255,255,255,0.02)', borderRadius: '8px' }}>
+                        🚚 No trucks dispatched yet. Click <strong>"Dispatch New Truck"</strong> above to record your first dispatch and generate an LR slip.
+                      </div>
+                    )}
+                  </div>
                 </div>
               );
             })}
