@@ -1688,12 +1688,10 @@ export const TransporterPortal = () => {
               title="Click to view all your awarded freight contracts and dispatch trucks"
             >
               <div style={{ fontSize: '0.74rem', color: activeTab === 'allocations' ? '#38bdf8' : 'var(--text-muted)', fontWeight: '800', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '4px' }}>
-                <Truck size={13} /> MY CONTRACTS ➔
+                <Truck size={13} /> DISPATCHED TRUCKS ➔
               </div>
               <div style={{ fontSize: '1.2rem', fontWeight: '800', color: '#38bdf8', marginTop: '2px' }}>
-                {dashboardSummary?.contracts !== undefined && dashboardSummary?.contracts !== null && dashboardSummary.contracts > 0
-                  ? dashboardSummary.contracts
-                  : totalContractsCount} Total
+                {totalContractsCount} Dispatched
               </div>
             </div>
           </div>
@@ -1770,7 +1768,7 @@ export const TransporterPortal = () => {
               cursor: 'pointer'
             }}
           >
-            <Truck size={17} /> Awarded Contracts & Dispatch ({myAllocations.length})
+            <Truck size={17} /> Dispatched Orders & LR History ({totalContractsCount})
           </button>
 
           <button
@@ -2602,9 +2600,9 @@ export const TransporterPortal = () => {
         <div className="glass-panel" style={{ padding: '24px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
             <div>
-              <h3 style={{ fontSize: '1.1rem', fontWeight: '700' }}>Awarded Freight Contracts & Dispatch Management</h3>
+              <h3 style={{ fontSize: '1.1rem', fontWeight: '700' }}>Dispatched Orders & LR History</h3>
               <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: 0 }}>
-                All finalized freight requirements and delivery contracts awarded to {currentTransporter.company_name}
+                All dispatched freight shipments, live truck delivery logs, and generated LR records for {currentTransporter.company_name}
               </p>
             </div>
 
@@ -2615,7 +2613,7 @@ export const TransporterPortal = () => {
                 className={allocationFilter === 'all' ? 'btn btn-primary' : 'btn btn-secondary'}
                 style={{ padding: '6px 12px', fontSize: '0.78rem' }}
               >
-                All Contracts ({totalContractsCount})
+                All Dispatches ({totalContractsCount})
               </button>
               <button
                 onClick={() => setAllocationFilter('active')}
