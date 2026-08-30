@@ -331,13 +331,26 @@ export const TransporterPortal = () => {
         .filter(Boolean)
         .map(normalizeKey);
 
-      const requirementMatch =
-        reqKeys.some(key => bidReqKeys.includes(key));
+      const reqIdClean = req.requirement_id || req.id;
+      const itemIdClean = req.item_id || req.sub_indent_id;
+      const subIndentNoClean = req.sub_indent_no;
 
-      const itemMatch =
-        itemKeys.some(key => bidItemKeys.includes(key));
+      const bidReqIdClean = bid.requirement_id || bid.rate_request_id;
+      const bidItemIdClean = bid.item_id || bid.sub_indent_id;
+      const bidSubIndentNoClean = bid.sub_indent_no;
 
-      return requirementMatch || itemMatch;
+      const hasSpecificItem = Boolean(itemIdClean || (subIndentNoClean && String(subIndentNoClean).includes('/')));
+      const bidHasSpecificItem = Boolean(bidItemIdClean || (bidSubIndentNoClean && String(bidSubIndentNoClean).includes('/')));
+
+      if (hasSpecificItem || bidHasSpecificItem) {
+        // Must match parent requirement AND specific sub-indent item
+        const reqMatches = reqKeys.some(key => bidReqKeys.includes(key));
+        const itemMatches = itemKeys.some(key => bidItemKeys.includes(key));
+        return reqMatches && itemMatches;
+      }
+
+      const requirementMatch = reqKeys.some(key => bidReqKeys.includes(key));
+      return requirementMatch;
     }) || null;
   };
 
@@ -370,12 +383,10 @@ export const TransporterPortal = () => {
   });
   const myAllocations = (db.allocations || []).filter((a) => {
     const aId = String(a.transporter_id || '').toLowerCase();
-    const aName = String(a.transporter_name || '').toLowerCase();
     const cId = String(currentTransporter?.id || '').toLowerCase();
     const cCode = String(currentTransporter?.code || '').toLowerCase();
     const cUser = String(currentTransporter?.username || '').toLowerCase();
-    const cName = String(currentTransporter?.company_name || '').toLowerCase();
-    return (cId && aId === cId) || (cCode && aId === cCode) || (cUser && aId === cUser) || (cName && aName && aName.includes(cName));
+    return (cId && aId === cId) || (cCode && aId === cCode) || (cUser && aId === cUser);
   });
   const myDispatches = (db.truck_dispatches || []).filter((d) => {
     const dId = String(d.transporter_id || '').toLowerCase();
@@ -434,23 +445,11 @@ export const TransporterPortal = () => {
 
   const totalContractsCount = myFinalizedItems.length + myAllocations.length;
 
-  // Available open rate requests (ONLY ACTIVE UNACCEPTED & UNAWARDED REQUIREMENTS)
+  // Available open rate requests (INDEPENDENT ITEM / SUB-INDENT EVALUATION)
   const rawOpenRateRequests = (db.rate_requests || []).filter((r) => {
     if (!r || !r.id) return false;
-
-    // 1. Exclude if requirement is marked Awarded or Closed
-    if (r.status === 'Awarded' || r.status === 'Closed') return false;
-
-    // 2. Exclude if allocated in db.allocations to any transporter
-    const isAllocated = (db.allocations || []).some((a) => String(a.rate_request_id) === String(r.id) || String(a.rate_request_id) === String(r.request_no));
-    if (isAllocated) return false;
-
-    // 3. Exclude if rate is accepted/frozen by any transporter
-    const isAcceptedByAnyone = (db.rate_submissions || []).some(
-      (s) => (String(s.rate_request_id) === String(r.id) || String(s.rate_request_id) === String(r.request_no) || String(s.requirement_id) === String(r.id)) && isBidFrozen(s)
-    );
-    if (isAcceptedByAnyone) return false;
-
+    const statusUpper = String(r.status || '').toUpperCase();
+    if (statusUpper === 'ARCHIVED' || statusUpper === 'DELETED' || statusUpper === 'CANCELLED') return false;
     return true;
   });
 
@@ -463,6 +462,34 @@ export const TransporterPortal = () => {
         const subIdxStr = (idx + 1).toString().padStart(2, '0');
         const parentReqNo = parentReq.req_no || parentReq.request_no || parentReq.id;
         const subIndentNo = item.sub_indent_no || `${parentReqNo}/${subIdxStr}`;
+
+        // Independent evaluation of item / sub-indent open status:
+        // 1. Must not be fully dispatched or closed
+        const dispStatusUpper = String(item.dispatch_status || '').toUpperCase();
+        const allocStatusUpper = String(item.allocation_status || '').toUpperCase();
+        if (dispStatusUpper === 'FULLY_DISPATCHED' || dispStatusUpper === 'RELEASED_FOR_REQUOTE' || allocStatusUpper === 'RELEASED_FOR_REQUOTE') {
+          return;
+        }
+
+        // 2. Remaining quantity must be > 0
+        const remQty = item.remaining_quantity_mt !== null && item.remaining_quantity_mt !== undefined
+          ? Number(item.remaining_quantity_mt)
+          : Number(item.quantity_mt || item.required_qty || 0) - Number(item.dispatched_quantity_mt || 0);
+        if (remQty <= 0 && Number(item.quantity_mt || item.required_qty || 0) > 0) {
+          return;
+        }
+
+        // 3. Must not have a finalized/accepted winner in the current cycle
+        const itemAcceptedByAnyone = (db.rate_submissions || []).some((s) => {
+          if (!s) return false;
+          const sReqMatch = String(s.requirement_id) === String(parentReq.id) || String(s.rate_request_id) === String(parentReq.id) || String(s.rate_request_id) === String(parentReqNo);
+          const sItemMatch = String(s.item_id) === String(item.id) || String(s.item_id) === String(subIndentNo);
+          return sReqMatch && sItemMatch && isBidFrozen(s);
+        });
+
+        if (itemAcceptedByAnyone) {
+          return;
+        }
 
         openRateRequests.push({
           ...parentReq,
@@ -481,22 +508,34 @@ export const TransporterPortal = () => {
           drop_location: item.drop_location || parentReq.drop_location,
           material_type: item.product_name || item.material_type || parentReq.product_name,
           product_name: item.product_name || item.material_type || parentReq.product_name,
-          required_qty: Number(item.quantity_mt || item.required_qty || 0),
-          quantity_mt: Number(item.quantity_mt || item.required_qty || 0),
+          required_qty: remQty > 0 ? remQty : Number(item.quantity_mt || item.required_qty || 0),
+          quantity_mt: remQty > 0 ? remQty : Number(item.quantity_mt || item.required_qty || 0),
           unit: item.unit || 'MT',
           target_date: item.target_date || parentReq.target_date,
           parent_total_qty: parentReq.total_quantity_mt || parentReq.quantity_mt,
-          parent_req_no: parentReqNo
+          parent_req_no: parentReqNo,
+          source_item_id: item.source_item_id || null,
+          is_reopened: Boolean(item.source_item_id)
         });
       });
     } else {
-      openRateRequests.push({
-        ...parentReq,
-        item_id: parentReq.id,
-        sub_indent_id: parentReq.id,
-        sub_indent_no: parentReq.req_no || parentReq.request_no || parentReq.id,
-        parent_req_no: parentReq.req_no || parentReq.request_no || parentReq.id
-      });
+      // Legacy single-item requirement
+      const statusUpper = String(parentReq.status || '').toUpperCase();
+      if (statusUpper === 'AWARDED' || statusUpper === 'CLOSED' || statusUpper === 'COMPLETED' || statusUpper === 'FULLY_DISPATCHED') {
+        return;
+      }
+      const isAcceptedByAnyone = (db.rate_submissions || []).some(
+        (s) => (String(s.rate_request_id) === String(parentReq.id) || String(s.rate_request_id) === String(parentReq.request_no) || String(s.requirement_id) === String(parentReq.id)) && isBidFrozen(s)
+      );
+      if (!isAcceptedByAnyone) {
+        openRateRequests.push({
+          ...parentReq,
+          item_id: parentReq.id,
+          sub_indent_id: parentReq.id,
+          sub_indent_no: parentReq.req_no || parentReq.request_no || parentReq.id,
+          parent_req_no: parentReq.req_no || parentReq.request_no || parentReq.id
+        });
+      }
     }
   });
 

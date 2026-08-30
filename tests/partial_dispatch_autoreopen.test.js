@@ -561,6 +561,186 @@ it('TEST 14: Partial dispatch creates valid sub-indent and LR metadata without p
   assert.ok(res.reopened_item_id);
 });
 
+// Helper to simulate Transporter Portal open requirement list generation
+function getOpenRequirementsForPortal(state) {
+  const rawOpenRateRequests = (state.requirements || []).filter((r) => {
+    if (!r || !r.id) return false;
+    const statusUpper = String(r.status || '').toUpperCase();
+    if (statusUpper === 'ARCHIVED' || statusUpper === 'DELETED' || statusUpper === 'CANCELLED') return false;
+    return true;
+  });
+
+  const openRateRequests = [];
+  rawOpenRateRequests.forEach((parentReq) => {
+    const childItems = state.items.filter(i => i.requirement_id === parentReq.id);
+    if (childItems.length > 0) {
+      childItems.forEach((item) => {
+        const dispStatusUpper = String(item.dispatch_status || '').toUpperCase();
+        const allocStatusUpper = String(item.allocation_status || '').toUpperCase();
+        if (dispStatusUpper === 'FULLY_DISPATCHED' || dispStatusUpper === 'RELEASED_FOR_REQUOTE' || allocStatusUpper === 'RELEASED_FOR_REQUOTE') {
+          return;
+        }
+
+        const remQty = item.remaining_quantity_mt !== null && item.remaining_quantity_mt !== undefined
+          ? Number(item.remaining_quantity_mt)
+          : Number(item.quantity_mt || item.required_qty || 0) - Number(item.dispatched_quantity_mt || 0);
+        if (remQty <= 0 && Number(item.quantity_mt || item.required_qty || 0) > 0) {
+          return;
+        }
+
+        const itemAcceptedByAnyone = (state.rate_submissions || []).some((s) => {
+          if (!s) return false;
+          const sReqMatch = String(s.requirement_id) === String(parentReq.id);
+          const sItemMatch = String(s.item_id) === String(item.id) || String(s.item_id) === String(item.sub_indent_no);
+          return sReqMatch && sItemMatch && (s.is_finalized === 1 || s.acceptance_status === 'ACCEPTED');
+        });
+
+        if (itemAcceptedByAnyone) {
+          return;
+        }
+
+        openRateRequests.push({
+          ...parentReq,
+          id: parentReq.id,
+          requirement_id: parentReq.id,
+          item_id: item.id,
+          sub_indent_no: item.sub_indent_no,
+          quantity_mt: remQty,
+          remaining_quantity_mt: remQty,
+          source_item_id: item.source_item_id || null,
+          is_reopened: Boolean(item.source_item_id)
+        });
+      });
+    }
+  });
+
+  return openRateRequests;
+}
+
+// TEST 15: Partial dispatch creates /02 and it appears in Open Requirements
+it('TEST 15: Partial dispatch creates /02 and it appears in Open Requirements', () => {
+  const state = createTestState();
+  const userA = { id: 'trans_A', transporter_id: 'trans_A', role: 'transporter' };
+
+  executeDispatchTransaction(state, { user: userA, reqId: 'req_004', itemId: 'item_004_01', loadedQty: 5 });
+
+  const openReqs = getOpenRequirementsForPortal(state);
+  assert.strictEqual(openReqs.length, 1);
+  assert.strictEqual(openReqs[0].sub_indent_no, 'SNPL/26-27/REQ-0004/02');
+  assert.strictEqual(openReqs[0].quantity_mt, 5);
+  assert.strictEqual(openReqs[0].is_reopened, true);
+});
+
+// TEST 16: Original transporter can see /02
+it('TEST 16: Original transporter can see /02', () => {
+  const state = createTestState();
+  const userA = { id: 'trans_A', transporter_id: 'trans_A', role: 'transporter' };
+
+  executeDispatchTransaction(state, { user: userA, reqId: 'req_004', itemId: 'item_004_01', loadedQty: 5 });
+
+  const openReqs = getOpenRequirementsForPortal(state);
+  const found02 = openReqs.find(r => r.sub_indent_no === 'SNPL/26-27/REQ-0004/02');
+  assert.ok(found02, 'Original transporter should see /02 in open requirements');
+});
+
+// TEST 17: Another eligible transporter can see /02
+it('TEST 17: Another eligible transporter can see /02', () => {
+  const state = createTestState();
+  const userA = { id: 'trans_A', transporter_id: 'trans_A', role: 'transporter' };
+
+  executeDispatchTransaction(state, { user: userA, reqId: 'req_004', itemId: 'item_004_01', loadedQty: 5 });
+
+  const openReqs = getOpenRequirementsForPortal(state);
+  const found02 = openReqs.find(r => r.sub_indent_no === 'SNPL/26-27/REQ-0004/02');
+  assert.ok(found02, 'Other eligible transporter should see /02 in open requirements');
+});
+
+// TEST 18: Previous finalized /01 bid does NOT hide /02
+it('TEST 18: Previous finalized /01 bid does NOT hide /02', () => {
+  const state = createTestState();
+  const userA = { id: 'trans_A', transporter_id: 'trans_A', role: 'transporter' };
+
+  // Prior finalized submission for /01 exists
+  assert.strictEqual(state.rate_submissions.length, 1);
+  assert.strictEqual(state.rate_submissions[0].item_id, 'item_004_01');
+
+  executeDispatchTransaction(state, { user: userA, reqId: 'req_004', itemId: 'item_004_01', loadedQty: 5 });
+
+  const openReqs = getOpenRequirementsForPortal(state);
+  assert.strictEqual(openReqs.some(r => r.sub_indent_no === 'SNPL/26-27/REQ-0004/02'), true);
+});
+
+// TEST 19: Both transporters can submit independent quotes on /02
+it('TEST 19: Both transporters can submit independent quotes on /02', () => {
+  const state = createTestState();
+  const userA = { id: 'trans_A', transporter_id: 'trans_A', role: 'transporter' };
+  const userB = { id: 'trans_B', transporter_id: 'trans_B', role: 'transporter' };
+
+  const dispRes = executeDispatchTransaction(state, { user: userA, reqId: 'req_004', itemId: 'item_004_01', loadedQty: 5 });
+  const item02Id = dispRes.reopened_item_id;
+
+  const quoteA = submitQuote(state, { user: userA, reqId: 'req_004', itemId: item02Id, rate: 22 });
+  const quoteB = submitQuote(state, { user: userB, reqId: 'req_004', itemId: item02Id, rate: 19 });
+
+  assert.strictEqual(quoteA.success, true);
+  assert.strictEqual(quoteB.success, true);
+
+  const subs02 = state.rate_submissions.filter(s => s.item_id === item02Id);
+  assert.strictEqual(subs02.length, 2);
+  assert.strictEqual(subs02.find(s => s.transporter_id === 'trans_A').rate_per_mt, 22);
+  assert.strictEqual(subs02.find(s => s.transporter_id === 'trans_B').rate_per_mt, 19);
+});
+
+// TEST 20: Completed /01 remains hidden from Open Requirements while /02 remains visible
+it('TEST 20: Completed /01 remains hidden from Open Requirements while /02 remains visible', () => {
+  const state = createTestState();
+  const userA = { id: 'trans_A', transporter_id: 'trans_A', role: 'transporter' };
+
+  executeDispatchTransaction(state, { user: userA, reqId: 'req_004', itemId: 'item_004_01', loadedQty: 5 });
+
+  const openReqs = getOpenRequirementsForPortal(state);
+  assert.strictEqual(openReqs.some(r => r.sub_indent_no === 'SNPL/26-27/REQ-0004/01'), false);
+  assert.strictEqual(openReqs.some(r => r.sub_indent_no === 'SNPL/26-27/REQ-0004/02'), true);
+});
+
+// TEST 21: Refreshing the Transporter Portal does not hide /02
+it('TEST 21: Refreshing the Transporter Portal does not hide /02', () => {
+  const state = createTestState();
+  const userA = { id: 'trans_A', transporter_id: 'trans_A', role: 'transporter' };
+
+  executeDispatchTransaction(state, { user: userA, reqId: 'req_004', itemId: 'item_004_01', loadedQty: 5 });
+
+  // Simulate refresh 1
+  const openReqs1 = getOpenRequirementsForPortal(state);
+  assert.strictEqual(openReqs1.length, 1);
+
+  // Simulate refresh 2
+  const openReqs2 = getOpenRequirementsForPortal(state);
+  assert.strictEqual(openReqs2.length, 1);
+  assert.strictEqual(openReqs2[0].sub_indent_no, 'SNPL/26-27/REQ-0004/02');
+});
+
+// TEST 22: Admin can see and finalize quotes for /02
+it('TEST 22: Admin can see and finalize quotes for /02', () => {
+  const state = createTestState();
+  const userA = { id: 'trans_A', transporter_id: 'trans_A', role: 'transporter' };
+  const userB = { id: 'trans_B', transporter_id: 'trans_B', role: 'transporter' };
+  const admin = { id: 'usr_admin', username: 'admin', role: 'admin' };
+
+  const dispRes = executeDispatchTransaction(state, { user: userA, reqId: 'req_004', itemId: 'item_004_01', loadedQty: 5 });
+  const item02Id = dispRes.reopened_item_id;
+
+  submitQuote(state, { user: userA, reqId: 'req_004', itemId: item02Id, rate: 22 });
+  submitQuote(state, { user: userB, reqId: 'req_004', itemId: item02Id, rate: 19 });
+
+  const finalRes = finalizeCycleWinner(state, { user: admin, reqId: 'req_004', itemId: item02Id, transporterId: 'trans_B', finalRate: 19 });
+  assert.strictEqual(finalRes.success, true);
+
+  const subB = state.rate_submissions.find(s => s.item_id === item02Id && s.transporter_id === 'trans_B');
+  assert.strictEqual(subB.is_finalized, 1);
+  assert.strictEqual(subB.final_rate, 19);
+});
+
 console.log('================================================================');
 console.log(`📊 TEST RESULTS: ${passedTests} Passed | ${failedTests} Failed`);
 console.log('================================================================');
