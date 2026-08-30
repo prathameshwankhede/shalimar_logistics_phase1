@@ -2215,7 +2215,7 @@ async function handleCreateTruckDispatch(req, res) {
 
     const finalRateVal = parseFloat(finalizedSub.final_rate || finalizedSub.rate_per_mt || 0);
 
-    // 2. Transporter Verification: Ensure authenticated transporter exists and rate is active
+    // 2. Transporter Verification & Authorization: Ensure authenticated transporter is the winning finalized transporter
     if (!authTransporter || !authTransporter.id) {
       await conn.rollback();
       conn.release();
@@ -2224,6 +2224,20 @@ async function handleCreateTruckDispatch(req, res) {
         code: 'UNAUTHORIZED_TRANSPORTER',
         error: 'Access denied. Valid transporter authentication required.'
       });
+    }
+
+    if (finalizedSub.transporter_id) {
+      const winningTransporterId = String(finalizedSub.transporter_id);
+      const isWinner = transMatchIds.some(tid => String(tid) === winningTransporterId || String(tid).toLowerCase() === winningTransporterId.toLowerCase());
+      if (!isWinner && req.user?.role !== 'admin') {
+        await conn.rollback();
+        conn.release();
+        return res.status(403).json({
+          success: false,
+          code: 'TRANSPORTER_NOT_AUTHORIZED_FOR_DISPATCH',
+          error: 'Only the winning finalized transporter is authorized to dispatch trucks for this allocation.'
+        });
+      }
     }
 
     if (finalizedSub.acceptance_status && String(finalizedSub.acceptance_status).toUpperCase() === 'REJECTED') {

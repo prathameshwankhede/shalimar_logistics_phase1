@@ -510,16 +510,28 @@ export const TransporterPortal = () => {
         let isFixedRateAllocation = false;
         let fixedRate = null;
         let myWinningBid = null;
+        let winningTransporterId = null;
 
         if (effectiveFinalizedBid) {
-          // All eligible transporters see this item in the special FIXED RATE & DIRECT DISPATCH format 🚚✨
-          isFixedRateAllocation = true;
           fixedRate = Number(effectiveFinalizedBid.final_rate || effectiveFinalizedBid.rate_per_mt || 0);
           myWinningBid = effectiveFinalizedBid;
+          winningTransporterId = effectiveFinalizedBid.transporter_id;
         } else if (dispatches.length > 0 && Number(dispatches[0]?.finalized_rate) > 0) {
           // Priority 2: Existing truck_dispatches recorded finalized_rate
-          isFixedRateAllocation = true;
           fixedRate = Number(dispatches[0].finalized_rate);
+          winningTransporterId = dispatches[0].transporter_id;
+        }
+
+        const isWinningTransporter = Boolean(
+          winningTransporterId &&
+          (String(currentTransporter?.id) === String(winningTransporterId) ||
+           String(currentUser?.transporter_id) === String(winningTransporterId) ||
+           String(currentTransporter?.code).toLowerCase() === String(winningTransporterId).toLowerCase() ||
+           String(currentUser?.username).toLowerCase() === String(winningTransporterId).toLowerCase())
+        );
+
+        if (fixedRate !== null) {
+          isFixedRateAllocation = isWinningTransporter;
         }
 
         openRateRequests.push({
@@ -551,11 +563,14 @@ export const TransporterPortal = () => {
           source_item_id: item.source_item_id || null,
           is_reopened: Boolean(item.source_item_id),
           is_fixed_rate_allocation: isFixedRateAllocation,
+          can_dispatch: isWinningTransporter,
+          is_awarded_to_other: Boolean(fixedRate !== null && !isWinningTransporter),
+          winning_transporter_id: winningTransporterId,
           fixed_rate: fixedRate,
           finalized_rate: fixedRate,
           finalized_bid: myWinningBid,
           rate_editable: false,
-          requires_new_bid: !isFixedRateAllocation,
+          requires_new_bid: !isFixedRateAllocation && fixedRate === null,
           is_requote: false
         });
       });
@@ -582,11 +597,27 @@ export const TransporterPortal = () => {
       let isFixedRateAllocation = false;
       let fixedRate = null;
       let myWinningBid = null;
+      let winningTransporterId = null;
 
       if (finalizedBid) {
-        isFixedRateAllocation = true;
         fixedRate = Number(finalizedBid.final_rate || finalizedBid.rate_per_mt || 0);
         myWinningBid = finalizedBid;
+        winningTransporterId = finalizedBid.transporter_id;
+      } else if (dispatches.length > 0 && Number(dispatches[0]?.finalized_rate) > 0) {
+        fixedRate = Number(dispatches[0].finalized_rate);
+        winningTransporterId = dispatches[0].transporter_id;
+      }
+
+      const isWinningTransporter = Boolean(
+        winningTransporterId &&
+        (String(currentTransporter?.id) === String(winningTransporterId) ||
+         String(currentUser?.transporter_id) === String(winningTransporterId) ||
+         String(currentTransporter?.code).toLowerCase() === String(winningTransporterId).toLowerCase() ||
+         String(currentUser?.username).toLowerCase() === String(winningTransporterId).toLowerCase())
+      );
+
+      if (fixedRate !== null) {
+        isFixedRateAllocation = isWinningTransporter;
       }
 
       openRateRequests.push({
@@ -600,12 +631,16 @@ export const TransporterPortal = () => {
         allocated_quantity_mt: allocatedQty,
         dispatched_quantity_mt: totalDispatched,
         remaining_quantity_mt: remQty,
+        unit: parentReq.unit || 'MT',
         is_fixed_rate_allocation: isFixedRateAllocation,
+        can_dispatch: isWinningTransporter,
+        is_awarded_to_other: Boolean(fixedRate !== null && !isWinningTransporter),
+        winning_transporter_id: winningTransporterId,
         fixed_rate: fixedRate,
         finalized_rate: fixedRate,
         finalized_bid: myWinningBid,
         rate_editable: false,
-        requires_new_bid: !isFixedRateAllocation,
+        requires_new_bid: !isFixedRateAllocation && fixedRate === null,
         is_requote: false
       });
     }
@@ -2119,7 +2154,7 @@ export const TransporterPortal = () => {
                                                     </td>
 
                                                     <td style={{ padding: '10px 14px' }}>
-                                                      {req.is_fixed_rate_allocation ? (
+                                                      {req.is_fixed_rate_allocation && req.can_dispatch ? (
                                                         <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
                                                           <span style={{ fontSize: '0.88rem', fontWeight: '900', color: '#059669', background: '#dcfce7', border: '1.5px solid #86efac', padding: '4px 10px', borderRadius: '8px' }}>
                                                             ₹{req.fixed_rate}/MT (Fixed)
@@ -2133,6 +2168,21 @@ export const TransporterPortal = () => {
                                                             <Truck size={14} /> Dispatch Truck
                                                           </button>
                                                         </div>
+                                                      ) : (req.is_awarded_to_other || (!req.can_dispatch && req.fixed_rate !== null)) ? (
+                                                        <span style={{
+                                                          fontSize: '0.8rem',
+                                                          background: '#f1f5f9',
+                                                          color: '#64748b',
+                                                          border: '1px solid #cbd5e1',
+                                                          padding: '5px 12px',
+                                                          borderRadius: '8px',
+                                                          fontWeight: '800',
+                                                          display: 'inline-flex',
+                                                          alignItems: 'center',
+                                                          gap: '4px'
+                                                        }}>
+                                                          🔒 Awarded to Other Transporter
+                                                        </span>
                                                       ) : hasSubmittedQuote ? (
                                                         renderTransporterNegotiationCell(myExistingBid, req)
                                                       ) : (isAwarded || (req.dispatch_status && req.dispatch_status !== 'PENDING')) ? (
@@ -2444,7 +2494,7 @@ export const TransporterPortal = () => {
                           </td>
 
                           <td>
-                            {req.is_fixed_rate_allocation ? (
+                            {req.is_fixed_rate_allocation && req.can_dispatch ? (
                               <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
                                 <span style={{ fontSize: '0.88rem', fontWeight: '900', color: '#059669', background: '#dcfce7', border: '1.5px solid #86efac', padding: '4px 10px', borderRadius: '8px' }}>
                                   ₹{req.fixed_rate}/MT (Fixed)
@@ -2458,6 +2508,21 @@ export const TransporterPortal = () => {
                                   <Truck size={14} /> Dispatch Truck
                                 </button>
                               </div>
+                            ) : (req.is_awarded_to_other || (!req.can_dispatch && req.fixed_rate !== null)) ? (
+                              <span style={{
+                                fontSize: '0.8rem',
+                                background: '#f1f5f9',
+                                color: '#64748b',
+                                border: '1px solid #cbd5e1',
+                                padding: '5px 12px',
+                                borderRadius: '8px',
+                                fontWeight: '800',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px'
+                              }}>
+                                🔒 Awarded to Other Transporter
+                              </span>
                             ) : hasSubmittedQuote ? (
                               renderTransporterNegotiationCell(myExistingBid, req)
                             ) : (isAwarded || (req.dispatch_status && req.dispatch_status !== 'PENDING')) ? (

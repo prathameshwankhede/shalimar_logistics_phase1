@@ -1,11 +1,11 @@
-// ============================================================================
-// WINNING LOW-RATE TRANSPORTER FIXED FORMAT & ISOLATION TEST SUITE
+﻿// ============================================================================
+// WINNING TRANSPORTER DISPATCH AUTHORIZATION TEST SUITE
 // ============================================================================
 
 import assert from 'assert';
 
 console.log('================================================================');
-console.log('🧪 RUNNING WINNING LOW-RATE TRANSPORTER FIXED FORMAT TEST SUITE');
+console.log('🧪 RUNNING WINNING TRANSPORTER DISPATCH AUTHORIZATION TEST SUITE');
 console.log('================================================================');
 
 let passedTests = 0;
@@ -67,11 +67,24 @@ function buildFrontendOpenRequirements(rawRequirements, dbState, transporter) {
         let isFixedRateAllocation = false;
         let fixedRate = null;
         let myWinningBid = null;
+        let winningTransporterId = null;
 
         if (finalizedBid) {
-          isFixedRateAllocation = true;
           fixedRate = Number(finalizedBid.final_rate || finalizedBid.rate_per_mt || 0);
           myWinningBid = finalizedBid;
+          winningTransporterId = finalizedBid.transporter_id;
+        } else if (dispatches.length > 0 && Number(dispatches[0]?.finalized_rate) > 0) {
+          fixedRate = Number(dispatches[0].finalized_rate);
+          winningTransporterId = dispatches[0].transporter_id;
+        }
+
+        const isWinningTransporter = Boolean(
+          winningTransporterId &&
+          transMatchIds.some(tid => String(tid) === String(winningTransporterId) || String(tid).toLowerCase() === String(winningTransporterId).toLowerCase())
+        );
+
+        if (fixedRate !== null) {
+          isFixedRateAllocation = isWinningTransporter;
         }
 
         openRateRequests.push({
@@ -84,11 +97,14 @@ function buildFrontendOpenRequirements(rawRequirements, dbState, transporter) {
           dispatched_quantity_mt: totalDispatched,
           remaining_quantity_mt: remQty,
           is_fixed_rate_allocation: isFixedRateAllocation,
+          can_dispatch: isWinningTransporter,
+          is_awarded_to_other: Boolean(fixedRate !== null && !isWinningTransporter),
+          winning_transporter_id: winningTransporterId,
           fixed_rate: fixedRate,
           finalized_rate: fixedRate,
           finalized_bid: myWinningBid,
           rate_editable: false,
-          requires_new_bid: !isFixedRateAllocation,
+          requires_new_bid: !isFixedRateAllocation && fixedRate === null,
           is_requote: false
         });
       });
@@ -99,316 +115,179 @@ function buildFrontendOpenRequirements(rawRequirements, dbState, transporter) {
 }
 
 // -------------------------------------------------------------
-// Pure Simulator for Backend Dispatch Resolution
+// Pure Simulator for Backend Dispatch Creation Handler
 // -------------------------------------------------------------
-function simulateDispatch(dbState, params, body, authUser) {
-  const { requirementId, itemId } = params;
-  const loadedQty = parseFloat(body.loaded_quantity_mt);
+function simulateBackendDispatch(dbState, reqId, itemId, payload, authTransporter) {
+  const req = dbState.transport_requirements.find(r => r.id === reqId);
+  if (!req) throw { status: 404, code: 'REQ_NOT_FOUND' };
 
-  if (isNaN(loadedQty) || loadedQty <= 0) {
-    return { status: 400, success: false, error: 'Loaded quantity must be > 0' };
-  }
+  const item = (dbState.transport_requirement_items || []).find(i => (i.id === itemId || i.sub_indent_no === itemId));
+  if (!item) throw { status: 400, code: 'ITEM_RESOLUTION_FAILED' };
 
-  const parentReq = dbState.transport_requirements.find(
-    r => r.id === requirementId || r.req_no === requirementId
-  );
-  if (!parentReq) {
-    return { status: 404, success: false, code: 'REQUIREMENT_NOT_FOUND', error: 'Parent requirement not found.' };
-  }
-
-  const resolvedReqIds = [parentReq.id, parentReq.req_no].filter(Boolean);
-
-  const candidateItemIds = [
-    body.requirement_item_id,
-    body.item_id,
-    itemId,
-    body.sub_indent_no
-  ].filter(Boolean).filter(v => v !== 'MAIN');
-
-  const allChildItems = dbState.transport_requirement_items.filter(
-    i => resolvedReqIds.includes(i.requirement_id)
+  const finBid = (dbState.rate_submissions || []).find(s => 
+    s.requirement_id === reqId && 
+    (s.item_id === item.id || s.item_id === item.sub_indent_no || s.item_id === 'MAIN') &&
+    (Boolean(s.is_finalized) || Number(s.final_rate) > 0)
   );
 
-  let originalItemRec = null;
-  if (candidateItemIds.length > 0) {
-    originalItemRec = allChildItems.find(
-      i => candidateItemIds.includes(i.id) || candidateItemIds.includes(i.sub_indent_no)
-    );
+  if (!finBid) throw { status: 400, code: 'RATE_NOT_FINALIZED' };
+
+  // Authorization Check: Must be the winning transporter
+  const winningTransporterId = String(finBid.transporter_id);
+  const transMatchIds = [authTransporter?.id, authTransporter?.code, authTransporter?.username].filter(Boolean).map(String);
+  const isWinner = transMatchIds.some(tid => tid === winningTransporterId || tid.toLowerCase() === winningTransporterId.toLowerCase());
+
+  if (!isWinner) {
+    throw { status: 403, code: 'TRANSPORTER_NOT_AUTHORIZED_FOR_DISPATCH', error: 'Only winning transporter is authorized' };
   }
 
-  if (!originalItemRec && allChildItems.length > 0) {
-    return {
-      status: 400,
-      success: false,
-      code: 'ITEM_RESOLUTION_FAILED',
-      error: 'Unable to resolve exact requirement item for dispatch.'
-    };
+  const dispatches = (dbState.truck_dispatches || []).filter(d => d.requirement_item_id === item.id || d.requirement_item_id === item.sub_indent_no);
+  const alreadyDispatched = dispatches.reduce((acc, d) => acc + d.loaded_quantity_mt, 0);
+  const remaining = Math.max(0, item.quantity_mt - alreadyDispatched);
+
+  if (payload.loaded_quantity_mt > remaining) {
+    throw { status: 400, code: 'EXCEEDS_REMAINING_QUANTITY' };
   }
 
-  const resolvedItemIds = originalItemRec
-    ? [originalItemRec.id, originalItemRec.sub_indent_no].filter(Boolean)
-    : ['MAIN'];
-
-  const finalizedSub = dbState.rate_submissions.find(
-    s => resolvedReqIds.includes(s.requirement_id) &&
-         (resolvedItemIds.includes(s.item_id) || s.item_id === 'MAIN' || !s.item_id) &&
-         (Boolean(s.is_finalized) || String(s.bid_status).toUpperCase() === 'FINALIZED' || Number(s.final_rate) > 0)
-  );
-
-  if (!finalizedSub) {
-    return { status: 400, success: false, code: 'RATE_NOT_FINALIZED', error: 'Rate not finalized.' };
-  }
-
-  if (!authUser || !authUser.id) {
-    return {
-      status: 403,
-      success: false,
-      code: 'UNAUTHORIZED_TRANSPORTER',
-      error: 'Access denied. Valid transporter authentication required.'
-    };
-  }
-
-  const finalRateVal = parseFloat(finalizedSub.final_rate || finalizedSub.rate_per_mt || 0);
-  const totalItemQty = parseFloat(originalItemRec.quantity_mt || originalItemRec.required_qty || 0);
-
-  const itemDispatches = dbState.truck_dispatches.filter(
-    d => resolvedReqIds.includes(d.requirement_id) &&
-         (d.requirement_item_id === originalItemRec.id || d.requirement_item_id === originalItemRec.sub_indent_no)
-  );
-
-  const alreadyDispatched = itemDispatches.reduce(
-    (sum, d) => sum + parseFloat(d.loaded_quantity_mt || 0), 0
-  );
-
-  const remainingBalance = parseFloat(Math.max(0, totalItemQty - alreadyDispatched).toFixed(3));
-
-  if (loadedQty > remainingBalance) {
-    return {
-      status: 400,
-      success: false,
-      code: 'EXCEEDS_REMAINING_QUANTITY',
-      error: `Loaded quantity (${loadedQty} MT) cannot exceed remaining balance (${remainingBalance} MT).`,
-      remaining_quantity_mt: remainingBalance
-    };
-  }
-
-  const lrNumber = `LR-2026-${Math.floor(100000 + Math.random() * 900000)}`;
-  const dispatchRecord = {
+  const dispRecord = {
     id: `disp_${Date.now()}`,
-    requirement_id: parentReq.id,
-    requirement_item_id: originalItemRec.id,
-    transporter_id: authUser.id,
-    finalized_rate: finalRateVal,
-    truck_number: body.truck_number,
-    loaded_quantity_mt: loadedQty,
-    lr_number: lrNumber
+    requirement_id: reqId,
+    requirement_item_id: item.id,
+    transporter_id: authTransporter.id,
+    finalized_rate: finBid.final_rate,
+    loaded_quantity_mt: payload.loaded_quantity_mt,
+    lr_number: `LR-${Date.now()}`
   };
-  dbState.truck_dispatches.push(dispatchRecord);
+  dbState.truck_dispatches.push(dispRecord);
 
-  const newTotalDispatched = parseFloat((alreadyDispatched + loadedQty).toFixed(3));
-  const newRemaining = parseFloat(Math.max(0, totalItemQty - newTotalDispatched).toFixed(3));
+  // Update item
+  const newDispatched = alreadyDispatched + payload.loaded_quantity_mt;
+  const newRemaining = Math.max(0, item.quantity_mt - newDispatched);
+  item.dispatched_quantity_mt = newDispatched;
+  item.remaining_quantity_mt = newRemaining;
+  item.dispatch_status = newRemaining <= 0.001 ? 'FULLY_DISPATCHED' : 'PARTIALLY_DISPATCHED';
 
-  originalItemRec.dispatched_quantity_mt = newTotalDispatched;
-  originalItemRec.remaining_quantity_mt = newRemaining;
-  originalItemRec.dispatch_status = newRemaining <= 0 ? 'FULLY_DISPATCHED' : 'PARTIALLY_DISPATCHED';
-
-  return {
-    status: 200,
-    success: true,
-    lr_number: lrNumber,
-    loaded_quantity_mt: loadedQty,
-    dispatched_quantity_mt: newTotalDispatched,
-    remaining_quantity_mt: newRemaining,
-    fixed_rate: finalRateVal,
-    dispatch_status: newRemaining > 0 ? 'PARTIALLY_DISPATCHED' : 'FULLY_DISPATCHED'
-  };
+  return { success: true, lr_number: dispRecord.lr_number, remaining_mt: newRemaining };
 }
 
-// =============================================================
-// TEST EXECUTION
-// =============================================================
+// -------------------------------------------------------------
+// TESTS
+// -------------------------------------------------------------
 
-function createInitialState() {
+function createScenario() {
   return {
-    transport_requirements: [
-      {
-        id: 'req_44mt',
-        req_no: 'SNPL/26-27/REQ-0001',
-        title: '44 MT Soya Transport Nagpur (MIDC) to nagpur',
-        total_quantity_mt: 44,
-        quantity_mt: 44,
-        status: 'Active'
-      }
-    ],
+    transport_requirements: [{ id: 'req_200', req_no: 'REQ-200', total_quantity_mt: 200, status: 'Active' }],
     transport_requirement_items: [
-      {
-        id: 'item_req_44mt_01',
-        requirement_id: 'req_44mt',
-        sub_indent_no: 'SNPL/26-27/REQ-0001/01',
-        product_name: 'soya',
-        quantity_mt: 44,
-        required_qty: 44,
-        dispatched_quantity_mt: 0,
-        remaining_quantity_mt: 44,
-        dispatch_status: 'PENDING',
-        allocation_status: 'ACTIVE'
-      }
+      { id: 'item_200_01', requirement_id: 'req_200', sub_indent_no: 'REQ-200/01', quantity_mt: 200, dispatched_quantity_mt: 0, remaining_quantity_mt: 200, dispatch_status: 'PENDING' }
     ],
     rate_submissions: [
-      {
-        id: 'sub_trans_A',
-        requirement_id: 'req_44mt',
-        item_id: 'item_req_44mt_01',
-        transporter_id: 'trans_A',
-        transporter_name: 'Winning Low Rate Transporter A',
-        rate_per_mt: 44,
-        final_rate: 44,
-        is_finalized: 1,
-        bid_status: 'FINALIZED',
-        acceptance_status: 'ACCEPTED'
-      },
-      {
-        id: 'sub_trans_B',
-        requirement_id: 'req_44mt',
-        item_id: 'item_req_44mt_01',
-        transporter_id: 'trans_B',
-        transporter_name: 'Losing Transporter B',
-        rate_per_mt: 55,
-        final_rate: null,
-        is_finalized: 0,
-        bid_status: 'SUBMITTED',
-        acceptance_status: null
-      }
+      { id: 'sub_A', requirement_id: 'req_200', item_id: 'item_200_01', transporter_id: 'trans_A', rate_per_mt: 55, final_rate: 55, is_finalized: 1, bid_status: 'FINALIZED' },
+      { id: 'sub_B', requirement_id: 'req_200', item_id: 'item_200_01', transporter_id: 'trans_B', rate_per_mt: 60, is_finalized: 0 }
     ],
     truck_dispatches: []
   };
 }
 
-const transA = { id: 'trans_A', code: 'TRA001', username: 'transporterA' };
-const transB = { id: 'trans_B', code: 'TRB002', username: 'transporterB' };
-
-it('TEST 1: Transporter A sees the request in the exact required format with ₹44/MT (Fixed) & Dispatch Truck', () => {
-  const db = createInitialState();
+it('TEST 1: Transporter A quotes ₹55 and Transporter B quotes ₹60. Admin finalizes Transporter A. Only Transporter A sees Dispatch Truck button.', () => {
+  const db = createScenario();
   const rawReqs = [{ ...db.transport_requirements[0], items: db.transport_requirement_items }];
+  
+  const viewA = buildFrontendOpenRequirements(rawReqs, db, { id: 'trans_A' });
+  assert.strictEqual(viewA[0].is_fixed_rate_allocation, true);
+  assert.strictEqual(viewA[0].can_dispatch, true);
 
-  const openReqsA = buildFrontendOpenRequirements(rawReqs, db, transA);
-  assert.equal(openReqsA.length, 1, 'Transporter A sees the item');
-  assert.equal(openReqsA[0].sub_indent_no, 'SNPL/26-27/REQ-0001/01');
-  assert.equal(openReqsA[0].is_fixed_rate_allocation, true);
-  assert.equal(openReqsA[0].fixed_rate, 44);
-  assert.equal(openReqsA[0].requires_new_bid, false);
+  const viewB = buildFrontendOpenRequirements(rawReqs, db, { id: 'trans_B' });
+  assert.strictEqual(viewB[0].is_fixed_rate_allocation, false);
+  assert.strictEqual(viewB[0].can_dispatch, false);
+  assert.strictEqual(viewB[0].is_awarded_to_other, true);
 });
 
-it('TEST 2: Transporter B also sees the remaining quantity at the same exact fixed rate (₹44/MT) with dispatch enabled', () => {
-  const db = createInitialState();
+it('TEST 2: Transporter A dispatches 150 of 200 MT. Remaining 50 MT stays available ONLY to Transporter A.', () => {
+  const db = createScenario();
+  const res = simulateBackendDispatch(db, 'req_200', 'item_200_01', { loaded_quantity_mt: 150 }, { id: 'trans_A' });
+  assert.strictEqual(res.remaining_mt, 50);
+
   const rawReqs = [{ ...db.transport_requirements[0], items: db.transport_requirement_items }];
-
-  const openReqsB = buildFrontendOpenRequirements(rawReqs, db, transB);
-  assert.equal(openReqsB.length, 1, 'Transporter B sees the finalized item at fixed rate');
-  assert.equal(openReqsB[0].is_fixed_rate_allocation, true);
-  assert.equal(openReqsB[0].fixed_rate, 44);
-  assert.equal(openReqsB[0].requires_new_bid, false);
+  const viewA = buildFrontendOpenRequirements(rawReqs, db, { id: 'trans_A' });
+  assert.strictEqual(viewA[0].remaining_quantity_mt, 50);
+  assert.strictEqual(viewA[0].can_dispatch, true);
 });
 
-it('TEST 3: Transporter A dispatches 40 MT -> remaining balance becomes 4 MT', () => {
-  const db = createInitialState();
-  const res = simulateDispatch(
-    db,
-    { requirementId: 'req_44mt', itemId: 'item_req_44mt_01' },
-    {
-      requirement_id: 'req_44mt',
-      item_id: 'item_req_44mt_01',
-      sub_indent_no: 'SNPL/26-27/REQ-0001/01',
-      truck_number: 'MH31AA1111',
-      loaded_quantity_mt: 40
-    },
-    transA
-  );
+it('TEST 3: Transporter B cannot see the dispatch button after partial dispatch.', () => {
+  const db = createScenario();
+  simulateBackendDispatch(db, 'req_200', 'item_200_01', { loaded_quantity_mt: 150 }, { id: 'trans_A' });
 
-  assert.equal(res.status, 200);
-  assert.equal(res.remaining_quantity_mt, 4);
-  assert.equal(res.dispatch_status, 'PARTIALLY_DISPATCHED');
+  const rawReqs = [{ ...db.transport_requirements[0], items: db.transport_requirement_items }];
+  const viewB = buildFrontendOpenRequirements(rawReqs, db, { id: 'trans_B' });
+  assert.strictEqual(viewB[0].can_dispatch, false);
+  assert.strictEqual(viewB[0].is_awarded_to_other, true);
 });
 
-it('TEST 4: Transporter B dispatches remaining 4 MT at the same fixed rate (₹44/MT) -> item becomes FULLY_DISPATCHED', () => {
-  const db = createInitialState();
-  // Transporter A dispatches 40 MT
-  simulateDispatch(
-    db,
-    { requirementId: 'req_44mt', itemId: 'item_req_44mt_01' },
-    {
-      requirement_id: 'req_44mt',
-      item_id: 'item_req_44mt_01',
-      sub_indent_no: 'SNPL/26-27/REQ-0001/01',
-      truck_number: 'MH31AA1111',
-      loaded_quantity_mt: 40
-    },
-    transA
-  );
+it('TEST 4: Transporter B manually calls the dispatch API. Backend returns HTTP 403 TRANSPORTER_NOT_AUTHORIZED_FOR_DISPATCH.', () => {
+  const db = createScenario();
+  simulateBackendDispatch(db, 'req_200', 'item_200_01', { loaded_quantity_mt: 150 }, { id: 'trans_A' });
 
-  // Transporter B dispatches remaining 4 MT
-  const resB = simulateDispatch(
-    db,
-    { requirementId: 'req_44mt', itemId: 'item_req_44mt_01' },
-    {
-      requirement_id: 'req_44mt',
-      item_id: 'item_req_44mt_01',
-      sub_indent_no: 'SNPL/26-27/REQ-0001/01',
-      truck_number: 'MH31BB2222',
-      loaded_quantity_mt: 4
-    },
-    transB
-  );
-
-  assert.equal(resB.status, 200);
-  assert.equal(resB.remaining_quantity_mt, 0);
-  assert.equal(resB.dispatched_quantity_mt, 44);
-  assert.equal(resB.dispatch_status, 'FULLY_DISPATCHED');
-  assert.equal(db.truck_dispatches.length, 2);
-  assert.equal(db.truck_dispatches[0].transporter_id, 'trans_A');
-  assert.equal(db.truck_dispatches[1].transporter_id, 'trans_B');
+  assert.throws(() => {
+    simulateBackendDispatch(db, 'req_200', 'item_200_01', { loaded_quantity_mt: 20 }, { id: 'trans_B' });
+  }, (err) => {
+    return err.status === 403 && err.code === 'TRANSPORTER_NOT_AUTHORIZED_FOR_DISPATCH';
+  });
 });
 
-it('TEST 5: Attempting to dispatch more than remaining balance is rejected for all transporters', () => {
-  const db = createInitialState();
-  // Transporter A dispatches 40 MT
-  simulateDispatch(
-    db,
-    { requirementId: 'req_44mt', itemId: 'item_req_44mt_01' },
-    {
-      requirement_id: 'req_44mt',
-      item_id: 'item_req_44mt_01',
-      sub_indent_no: 'SNPL/26-27/REQ-0001/01',
-      truck_number: 'MH31AA1111',
-      loaded_quantity_mt: 40
-    },
-    transA
-  );
+it('TEST 5: Transporter A can dispatch remaining quantity successfully (50 MT -> 0 MT).', () => {
+  const db = createScenario();
+  simulateBackendDispatch(db, 'req_200', 'item_200_01', { loaded_quantity_mt: 150 }, { id: 'trans_A' });
+  const resFinal = simulateBackendDispatch(db, 'req_200', 'item_200_01', { loaded_quantity_mt: 50 }, { id: 'trans_A' });
+  assert.strictEqual(resFinal.remaining_mt, 0);
+  assert.strictEqual(db.transport_requirement_items[0].dispatch_status, 'FULLY_DISPATCHED');
+});
 
-  // Transporter B attempts to dispatch 5 MT (when only 4 MT is left)
-  const resB = simulateDispatch(
-    db,
-    { requirementId: 'req_44mt', itemId: 'item_req_44mt_01' },
-    {
-      requirement_id: 'req_44mt',
-      item_id: 'item_req_44mt_01',
-      sub_indent_no: 'SNPL/26-27/REQ-0001/01',
-      truck_number: 'MH31BB2222',
-      loaded_quantity_mt: 5
-    },
-    transB
-  );
+it('TEST 6: Fixed rate remains ₹55 throughout the remaining dispatch lifecycle.', () => {
+  const db = createScenario();
+  simulateBackendDispatch(db, 'req_200', 'item_200_01', { loaded_quantity_mt: 150 }, { id: 'trans_A' });
+  assert.strictEqual(db.truck_dispatches[0].finalized_rate, 55);
+});
 
-  assert.equal(resB.status, 400);
-  assert.equal(resB.code, 'EXCEEDS_REMAINING_QUANTITY');
+it('TEST 7: No re-quote sub-indent is generated on partial dispatch.', () => {
+  const db = createScenario();
+  simulateBackendDispatch(db, 'req_200', 'item_200_01', { loaded_quantity_mt: 150 }, { id: 'trans_A' });
+  assert.strictEqual(db.transport_requirement_items.length, 1);
+  assert.strictEqual(db.transport_requirement_items[0].sub_indent_no, 'REQ-200/01');
+});
+
+it('TEST 8: Sibling sub-indent authorization does not leak between /01 and /02.', () => {
+  const db = {
+    transport_requirements: [{ id: 'req_batch', req_no: 'REQ-BATCH', total_quantity_mt: 200, status: 'Active' }],
+    transport_requirement_items: [
+      { id: 'item_01', requirement_id: 'req_batch', sub_indent_no: 'REQ-BATCH/01', quantity_mt: 100, dispatched_quantity_mt: 0, remaining_quantity_mt: 100 },
+      { id: 'item_02', requirement_id: 'req_batch', sub_indent_no: 'REQ-BATCH/02', quantity_mt: 100, dispatched_quantity_mt: 0, remaining_quantity_mt: 100 }
+    ],
+    rate_submissions: [
+      { id: 'sub_01', requirement_id: 'req_batch', item_id: 'item_01', transporter_id: 'trans_A', final_rate: 50, is_finalized: 1, bid_status: 'FINALIZED' },
+      { id: 'sub_02', requirement_id: 'req_batch', item_id: 'item_02', transporter_id: 'trans_B', final_rate: 48, is_finalized: 1, bid_status: 'FINALIZED' }
+    ],
+    truck_dispatches: []
+  };
+
+  const rawReqs = [{ ...db.transport_requirements[0], items: db.transport_requirement_items }];
+  
+  // Transporter A view: Can dispatch /01, CANNOT dispatch /02
+  const viewA = buildFrontendOpenRequirements(rawReqs, db, { id: 'trans_A' });
+  const item01A = viewA.find(i => i.item_id === 'item_01');
+  const item02A = viewA.find(i => i.item_id === 'item_02');
+  assert.strictEqual(item01A.can_dispatch, true);
+  assert.strictEqual(item02A.can_dispatch, false);
+
+  // Transporter B view: CANNOT dispatch /01, CAN dispatch /02
+  const viewB = buildFrontendOpenRequirements(rawReqs, db, { id: 'trans_B' });
+  const item01B = viewB.find(i => i.item_id === 'item_01');
+  const item02B = viewB.find(i => i.item_id === 'item_02');
+  assert.strictEqual(item01B.can_dispatch, false);
+  assert.strictEqual(item02B.can_dispatch, true);
 });
 
 console.log('================================================================');
-console.log(`🎉 TEST SUMMARY: ${passedTests} PASSED, ${failedTests} FAILED`);
+console.log(`📊 TEST RESULTS: ${passedTests} Passed | ${failedTests} Failed`);
 console.log('================================================================');
 
-if (failedTests > 0) {
-  process.exit(1);
-} else {
-  process.exit(0);
-}
+if (failedTests > 0) process.exit(1);
