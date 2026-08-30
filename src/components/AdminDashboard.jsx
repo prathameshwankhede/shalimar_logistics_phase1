@@ -1152,13 +1152,39 @@ export const AdminDashboard = () => {
   };
 
   const [bulkReqRows, setBulkReqRows] = useState(() => [createSingleReqRow(0)]);
+  const dropLocationRefs = useRef({});
+
+  const handleQtyKeyDown = (e, idx) => {
+    if (e.key === 'Tab' && !e.shiftKey) {
+      if (idx === bulkReqRows.length - 1) {
+        if (bulkReqRows.length < 50) {
+          if (e.repeat) return;
+          e.preventDefault();
+          const nextIdx = bulkReqRows.length;
+          const newRow = createSingleReqRow(nextIdx);
+          setBulkReqRows((prev) => [...prev, newRow]);
+          setTimeout(() => {
+            const nextEl = dropLocationRefs.current[newRow.id];
+            if (nextEl) {
+              nextEl.focus();
+            }
+          }, 30);
+        }
+      }
+    }
+  };
 
   const handleAddBulkRow = () => {
     if (bulkReqRows.length >= 50) {
       alert('Maximum 50 Rate Requests can be created at once in a single batch!');
       return;
     }
-    setBulkReqRows((prev) => [...prev, createSingleReqRow(prev.length)]);
+    const newRow = createSingleReqRow(bulkReqRows.length);
+    setBulkReqRows((prev) => [...prev, newRow]);
+    setTimeout(() => {
+      const el = dropLocationRefs.current[newRow.id];
+      if (el) el.focus();
+    }, 30);
   };
 
   const handleDuplicateLastRow = () => {
@@ -1179,6 +1205,10 @@ export const AdminDashboard = () => {
       request_no: reqNo
     };
     setBulkReqRows((prev) => [...prev, newRow]);
+    setTimeout(() => {
+      const el = dropLocationRefs.current[newRow.id];
+      if (el) el.focus();
+    }, 30);
   };
 
   const handleRemoveBulkRow = (rowId) => {
@@ -2170,6 +2200,7 @@ export const AdminDashboard = () => {
                             🎯 DROP LOCATION
                           </label>
                           <select
+                            ref={(el) => { dropLocationRefs.current[row.id] = el; }}
                             className="form-control"
                             value={row.dest_city || ''}
                             onChange={(e) => handleUpdateBulkRow(row.id, 'dest_city', e.target.value)}
@@ -2241,6 +2272,7 @@ export const AdminDashboard = () => {
                             className="form-control"
                             value={row.required_qty}
                             onChange={(e) => handleUpdateBulkRow(row.id, 'required_qty', e.target.value)}
+                            onKeyDown={(e) => handleQtyKeyDown(e, idx)}
                             style={{ fontSize: '0.85rem', height: '42px', background: 'rgba(15, 23, 42, 0.9)', border: '1px solid rgba(192, 132, 252, 0.4)', color: '#ffffff', fontWeight: '800', borderRadius: '8px' }}
                           />
                         </div>
@@ -2252,6 +2284,7 @@ export const AdminDashboard = () => {
                           </label>
                           <input
                             type="date"
+                            tabIndex={-1}
                             className="form-control"
                             min={todayStr}
                             value={row.target_date}
@@ -2264,6 +2297,7 @@ export const AdminDashboard = () => {
                         <div>
                           <button
                             type="button"
+                            tabIndex={-1}
                             onClick={() => handleRemoveBulkRow(row.id)}
                             className="btn btn-danger"
                             style={{ padding: '9px 12px', height: '42px', borderRadius: '8px', boxShadow: '0 0 10px rgba(239, 68, 68, 0.2)' }}
