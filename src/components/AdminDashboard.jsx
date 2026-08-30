@@ -2597,7 +2597,6 @@ export const AdminDashboard = () => {
                                 <th style={{ color: '#f8fafc', padding: '14px 16px', fontSize: '0.8rem', fontWeight: '900', borderBottom: '2px solid #334155' }}>TARGET DATE</th>
                                 <th style={{ color: '#f8fafc', padding: '14px 16px', fontSize: '0.8rem', fontWeight: '900', borderBottom: '2px solid #334155' }}>SUBMITTED QUOTES</th>
                                 <th style={{ color: '#f8fafc', padding: '14px 16px', fontSize: '0.8rem', fontWeight: '900', borderBottom: '2px solid #334155' }}>💬 COUNTER OFFER</th>
-                                <th style={{ color: '#f8fafc', padding: '14px 16px', fontSize: '0.8rem', fontWeight: '900', borderBottom: '2px solid #334155' }}>📊 BID & APPROVAL REPORT</th>
                                 <th style={{ color: '#f8fafc', padding: '14px 16px', fontSize: '0.8rem', fontWeight: '900', borderBottom: '2px solid #334155' }}>STATUS</th>
                                 <th style={{ color: '#f8fafc', padding: '14px 16px', fontSize: '0.8rem', fontWeight: '900', borderBottom: '2px solid #334155', textAlign: 'center' }}>ACTIONS</th>
                                 <th className="finalize-rate-header" style={{ color: '#f8fafc', padding: '14px 16px', fontSize: '0.8rem', fontWeight: '900', borderBottom: '2px solid #334155', textAlign: 'center' }}>🏅 FINALIZE RATE</th>
@@ -2694,21 +2693,6 @@ export const AdminDashboard = () => {
                                     {/* 💬 COUNTER OFFER */}
                                     <td className="counter-offer-cell" style={{ padding: '14px 16px' }}>
                                       {renderCounterOfferCell(openedReq.id || reqNoStr, item.id || subCode, bids, lowestRate, subCode)}
-                                    </td>
-
-                                    <td style={{ padding: '14px 16px' }}>
-                                      {awardedTransporter ? (
-                                        <div>
-                                          <div style={{ fontSize: '0.82rem', color: '#059669', fontWeight: '900' }}>
-                                            🏆 Approved: {awardedTransporter}
-                                          </div>
-                                          <span style={{ fontSize: '0.72rem', background: '#f1f5f9', color: '#475569', border: '1px solid #cbd5e1', padding: '2px 8px', borderRadius: '4px', cursor: 'pointer', display: 'inline-block', marginTop: '2px' }}>
-                                            📋 Audit Log
-                                          </span>
-                                        </div>
-                                      ) : (
-                                        <span style={{ fontSize: '0.8rem', color: '#64748b' }}>Pending Approval</span>
-                                      )}
                                     </td>
 
                                     <td style={{ padding: '14px 16px' }}>
@@ -2912,7 +2896,6 @@ export const AdminDashboard = () => {
                           <th>Target Date</th>
                           <th>Submitted Bids</th>
                           <th>💬 COUNTER OFFER</th>
-                          <th>📊 Bidding & Approval Report</th>
                           <th>Status</th>
                           <th style={{ textAlign: 'right' }}>Actions</th>
                         </tr>
@@ -3072,50 +3055,7 @@ export const AdminDashboard = () => {
                                   )}
                                 </td>
 
-                                {/* 6. BIDDING & APPROVAL REPORT */}
-                                <td>
-                                  {(() => {
-                                    const alloc = (db.allocations || []).find((a) => String(a.rate_request_id) === String(req.id) || String(a.rate_request_id) === String(reqNoStr));
-                                    const transporter = alloc ? (db.transporters || []).find((t) => t.id === alloc.transporter_id) : null;
-
-                                    return (
-                                      <div>
-                                        {finalizedBids.length > 0 ? (
-                                          <div>
-                                            <div style={{ fontSize: '0.78rem', color: '#059669', fontWeight: '900' }}>
-                                              🏆 Finalized: {finalizedBids[0].transporter_name || finalizedBids[0].transporter_id}
-                                            </div>
-                                            <div style={{ fontSize: '0.74rem', color: '#0284c7', fontWeight: '800' }}>
-                                              Rate: ₹{finalizedBids[0].final_rate || finalizedBids[0].rate_per_mt}/MT
-                                            </div>
-                                          </div>
-                                        ) : alloc ? (
-                                          <div style={{ fontSize: '0.78rem', color: '#34d399', fontWeight: '900' }}>
-                                            🏆 Approved: {transporter?.company_name || 'Transporter'}
-                                          </div>
-                                        ) : displayBidCount > 0 ? (
-                                          <div style={{ fontSize: '0.78rem', color: '#38bdf8', fontWeight: '800' }}>
-                                            📥 {displayBidCount} Transporter Quote(s)
-                                          </div>
-                                        ) : (
-                                          <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                                            ⏳ Awaiting Quotes
-                                          </div>
-                                        )}
-                                        <button
-                                          type="button"
-                                          onClick={() => setSelectedAuditReportModal(req)}
-                                          className="btn btn-secondary"
-                                          style={{ padding: '3px 8px', fontSize: '0.72rem', marginTop: '4px', border: '1px solid #38bdf8', color: '#38bdf8', borderRadius: '6px' }}
-                                        >
-                                          📋 Audit Log
-                                        </button>
-                                      </div>
-                                    );
-                                  })()}
-                                </td>
-
-                                {/* 7. STATUS */}
+                                {/* 6. STATUS */}
                                 <td>
                                   {isCompleted ? (
                                     <span className="badge badge-awarded" style={{ background: '#dcfce7', color: '#166534', border: '1.5px solid #86efac', fontWeight: '900', padding: '4px 10px', borderRadius: '12px' }}>
