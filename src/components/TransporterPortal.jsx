@@ -76,6 +76,20 @@ export const TransporterPortal = () => {
     refreshDashboardSummary();
     refreshAuthorizations();
     refreshAllocations();
+
+    // 🔄 Periodic polling to invalidate stale allocations across active transporter sessions
+    const pollInterval = setInterval(() => {
+      refreshDashboardSummary();
+      refreshAuthorizations();
+      refreshAllocations();
+      if (typeof refreshRequirements === 'function') {
+        refreshRequirements();
+      } else if (typeof refreshDB === 'function') {
+        refreshDB();
+      }
+    }, 8000);
+
+    return () => clearInterval(pollInterval);
   }, [currentTransporter, currentUser, db?.rate_submissions, db?.rate_requests]);
 
   // 🛡️ SAFE DATA REFRESH HELPER: Guarantees no ReferenceError or unhandled rejection during refresh
@@ -616,12 +630,35 @@ export const TransporterPortal = () => {
           (String(a.requirement_item_id) === String(item.id) || String(a.requirement_item_id) === String(subIndentNo) || String(a.requirement_item_id) === 'MAIN')
         );
 
+        const remainingAllocatedTo = item.remaining_allocated_to || parentReq.remaining_allocated_to;
+        const remainingAllocStatus = item.remaining_allocation_status || parentReq.remaining_allocation_status;
+
+        const isRemainingAccepted = Boolean(remainingAllocatedTo && remainingAllocStatus === 'EXCLUSIVELY_ALLOCATED');
+        const isCurrentTransporterAssigned = Boolean(
+          remainingAllocatedTo &&
+          (String(currentTransporter?.id) === String(remainingAllocatedTo) ||
+           String(currentUser?.transporter_id) === String(remainingAllocatedTo) ||
+           String(currentTransporter?.code).toLowerCase() === String(remainingAllocatedTo).toLowerCase() ||
+           String(currentUser?.username).toLowerCase() === String(remainingAllocatedTo).toLowerCase())
+        );
+
+        // If remaining allocation has already been exclusively accepted by another transporter,
+        // HIDE/REMOVE this item from ALL other transporters' Open/Available Requirements lists!
+        if (isRemainingAccepted && !isCurrentTransporterAssigned) {
+          return;
+        }
+
         let allocationRole = 'UNRELATED_TRANSPORTER';
         let allocationStatus = 'UNRELATED_TRANSPORTER';
         let canDispatch = false;
         let authStatus = null;
 
-        if (isWinningTransporter) {
+        if (isRemainingAccepted && isCurrentTransporterAssigned) {
+          allocationRole = 'ACCEPTED_EXCLUSIVE_TRANSPORTER';
+          allocationStatus = 'ACCEPTED_SHARED_TRANSPORTER';
+          authStatus = 'APPROVED';
+          canDispatch = true;
+        } else if (isWinningTransporter) {
           allocationRole = 'WINNER';
           allocationStatus = 'WINNER_ACTIVE';
           authStatus = 'WINNER';
@@ -750,12 +787,35 @@ export const TransporterPortal = () => {
         (String(a.requirement_item_id) === String(parentReq.id) || String(a.requirement_item_id) === 'MAIN')
       );
 
+      const remainingAllocatedTo = parentReq.remaining_allocated_to;
+      const remainingAllocStatus = parentReq.remaining_allocation_status;
+
+      const isRemainingAccepted = Boolean(remainingAllocatedTo && remainingAllocStatus === 'EXCLUSIVELY_ALLOCATED');
+      const isCurrentTransporterAssigned = Boolean(
+        remainingAllocatedTo &&
+        (String(currentTransporter?.id) === String(remainingAllocatedTo) ||
+         String(currentUser?.transporter_id) === String(remainingAllocatedTo) ||
+         String(currentTransporter?.code).toLowerCase() === String(remainingAllocatedTo).toLowerCase() ||
+         String(currentUser?.username).toLowerCase() === String(remainingAllocatedTo).toLowerCase())
+      );
+
+      // If remaining allocation has already been exclusively accepted by another transporter,
+      // HIDE/REMOVE this item from ALL other transporters' Open/Available Requirements lists!
+      if (isRemainingAccepted && !isCurrentTransporterAssigned) {
+        return;
+      }
+
       let allocationRole = 'UNRELATED_TRANSPORTER';
       let allocationStatus = 'UNRELATED_TRANSPORTER';
       let canDispatch = false;
       let authStatus = null;
 
-      if (isWinningTransporter) {
+      if (isRemainingAccepted && isCurrentTransporterAssigned) {
+        allocationRole = 'ACCEPTED_EXCLUSIVE_TRANSPORTER';
+        allocationStatus = 'ACCEPTED_SHARED_TRANSPORTER';
+        authStatus = 'APPROVED';
+        canDispatch = true;
+      } else if (isWinningTransporter) {
         allocationRole = 'WINNER';
         allocationStatus = 'WINNER_ACTIVE';
         authStatus = 'WINNER';

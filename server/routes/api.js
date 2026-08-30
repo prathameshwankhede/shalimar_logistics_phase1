@@ -171,7 +171,11 @@ export async function ensureRequirementsTableExists() {
       { name: 'archived_by', def: 'VARCHAR(100) NULL' },
       { name: 'cancelled_at', def: 'DATETIME NULL' },
       { name: 'cancelled_by', def: 'VARCHAR(100) NULL' },
-      { name: 'cancellation_reason', def: 'TEXT NULL' }
+      { name: 'cancellation_reason', def: 'TEXT NULL' },
+      { name: 'remaining_allocated_to', def: 'VARCHAR(100) DEFAULT NULL' },
+      { name: 'remaining_allocation_status', def: 'VARCHAR(50) DEFAULT NULL' },
+      { name: 'remaining_allocation_accepted_at', def: 'DATETIME DEFAULT NULL' },
+      { name: 'remaining_finalized_rate', def: 'DECIMAL(12,2) DEFAULT NULL' }
     ];
     for (const { name, def } of reqCols) {
       await ensureColumnExists('transport_requirements', name, def);
@@ -208,7 +212,11 @@ export async function ensureRequirementsTableExists() {
       { name: 'released_for_requote_by', def: 'VARCHAR(100) DEFAULT NULL' },
       { name: 'released_for_requote_reason', def: 'TEXT DEFAULT NULL' },
       { name: 'replacement_item_id', def: 'VARCHAR(100) DEFAULT NULL' },
-      { name: 'source_item_id', def: 'VARCHAR(100) DEFAULT NULL' }
+      { name: 'source_item_id', def: 'VARCHAR(100) DEFAULT NULL' },
+      { name: 'remaining_allocated_to', def: 'VARCHAR(100) DEFAULT NULL' },
+      { name: 'remaining_allocation_status', def: 'VARCHAR(50) DEFAULT NULL' },
+      { name: 'remaining_allocation_accepted_at', def: 'DATETIME DEFAULT NULL' },
+      { name: 'remaining_finalized_rate', def: 'DECIMAL(12,2) DEFAULT NULL' }
     ];
     for (const { name, def } of childCols) {
       await ensureColumnExists('transport_requirement_items', name, def);
@@ -376,7 +384,11 @@ function formatParentRequirementDto(parentRow, childItems = [], bidsCount = 0, i
       hsn_code: item.hsn_code || '',
       target_date: itemTargetDate,
       submitted_bids_count: stats.bids_count || 0,
-      lowest_rate: stats.lowest_rate || null
+      lowest_rate: stats.lowest_rate || null,
+      remaining_allocated_to: item.remaining_allocated_to || null,
+      remaining_allocation_status: item.remaining_allocation_status || null,
+      remaining_allocation_accepted_at: item.remaining_allocation_accepted_at || null,
+      remaining_finalized_rate: item.remaining_finalized_rate || null
     };
   });
 
@@ -447,6 +459,10 @@ function formatParentRequirementDto(parentRow, childItems = [], bidsCount = 0, i
     cancelled_at: parentRow.cancelled_at || null,
     cancelled_by: parentRow.cancelled_by || null,
     cancellation_reason: parentRow.cancellation_reason || null,
+    remaining_allocated_to: parentRow.remaining_allocated_to || null,
+    remaining_allocation_status: parentRow.remaining_allocation_status || null,
+    remaining_allocation_accepted_at: parentRow.remaining_allocation_accepted_at || null,
+    remaining_finalized_rate: parentRow.remaining_finalized_rate || null,
     submitted_bids_count: totalBids,
     bid_count: totalBids,
     negotiation_count: negCount,
@@ -2393,6 +2409,25 @@ async function handleCreateTruckDispatch(req, res) {
         isAuthorized = transMatchIds.some(tid => String(tid) === winningTransporterId || String(tid).toLowerCase() === winningTransporterId.toLowerCase());
       }
 
+      // Check exclusive remaining allocation rule:
+      const exclusiveAllocatedTo = originalItemRec?.remaining_allocated_to || parentReq?.remaining_allocated_to;
+      const exclusiveAllocStatus = originalItemRec?.remaining_allocation_status || parentReq?.remaining_allocation_status;
+
+      if (exclusiveAllocatedTo && exclusiveAllocStatus === 'EXCLUSIVELY_ALLOCATED') {
+        const isExclusiveAssignee = transMatchIds.some(
+          tid => String(tid) === String(exclusiveAllocatedTo) || String(tid).toLowerCase() === String(exclusiveAllocatedTo).toLowerCase()
+        );
+        if (!isExclusiveAssignee) {
+          await conn.rollback();
+          conn.release();
+          return res.status(403).json({
+            success: false,
+            code: 'TRANSPORTER_NOT_AUTHORIZED_FOR_DISPATCH',
+            error: 'The remaining allocation for this item has been exclusively assigned to another transporter.'
+          });
+        }
+      }
+
       if (!isAuthorized) {
         await conn.rollback();
         conn.release();
@@ -3640,8 +3675,8 @@ router.post('/requirements/:requirementId/items/:itemId/accept-remaining-allocat
   try {
     await conn.beginTransaction();
 
-    // 1. Resolve requirement and item
-    const [reqRows] = await conn.query('SELECT * FROM transport_requirements WHERE id = ?', [requirementId]);
+    // 1. Resolve requirement and lock row (SELECT ... FOR UPDATE)
+    const [reqRows] = await conn.query('SELECT * FROM transport_requirements WHERE id = ? FOR UPDATE', [requirementId]);
     if (reqRows.length === 0) {
       await conn.rollback();
       conn.release();
@@ -3649,15 +3684,34 @@ router.post('/requirements/:requirementId/items/:itemId/accept-remaining-allocat
     }
 
     const [itemRows] = await conn.query(
-      'SELECT * FROM transport_requirement_items WHERE requirement_id = ? AND (id = ? OR sub_indent_no = ?)',
+      'SELECT * FROM transport_requirement_items WHERE requirement_id = ? AND (id = ? OR sub_indent_no = ?) FOR UPDATE',
       [requirementId, itemId, itemId]
     );
     const item = itemRows[0];
     const actualItemId = item ? item.id : itemId;
     const subIndentNo = item ? item.sub_indent_no : null;
 
-    // 2. Verify that transporter participated in original bidding for this exact requirement item
+    // 2. Concurrency check: Atomically verify if already exclusively accepted by another transporter
     const transMatchIds = [transporterId, authUser.id, authUser.username, authUser.code].filter(Boolean);
+    const currentAllocatedTo = item ? item.remaining_allocated_to : reqRows[0].remaining_allocated_to;
+    const currentAllocStatus = item ? item.remaining_allocation_status : reqRows[0].remaining_allocation_status;
+
+    if (currentAllocatedTo && currentAllocStatus === 'EXCLUSIVELY_ALLOCATED') {
+      const isCallerAlreadyAllocated = transMatchIds.some(
+        tid => String(tid) === String(currentAllocatedTo) || String(tid).toLowerCase() === String(currentAllocatedTo).toLowerCase()
+      );
+      if (!isCallerAlreadyAllocated) {
+        await conn.rollback();
+        conn.release();
+        return res.status(409).json({
+          success: false,
+          code: 'REMAINING_ALLOCATION_ALREADY_ACCEPTED',
+          error: 'The remaining allocation for this requirement has already been accepted by another transporter.'
+        });
+      }
+    }
+
+    // 3. Verify that transporter participated in original bidding for this exact requirement item
     const [bidRows] = await conn.query(
       `SELECT * FROM rate_submissions 
        WHERE requirement_id = ? AND (item_id = ? OR item_id = ? OR item_id = 'MAIN')
@@ -3675,7 +3729,7 @@ router.post('/requirements/:requirementId/items/:itemId/accept-remaining-allocat
       });
     }
 
-    // 3. Resolve fixed finalized rate
+    // 4. Resolve fixed finalized rate
     const [finBids] = await conn.query(
       `SELECT * FROM rate_submissions 
        WHERE requirement_id = ? AND (item_id = ? OR item_id = ? OR item_id = 'MAIN')
@@ -3701,8 +3755,8 @@ router.post('/requirements/:requirementId/items/:itemId/accept-remaining-allocat
       return res.status(400).json({ success: false, code: 'RATE_NOT_FINALIZED', error: 'No fixed finalized rate exists for this requirement item.' });
     }
 
-    // 4. Calculate global remaining quantity with row locking
-    const totalItemQty = item ? parseFloat(item.quantity_mt || 0) : parseFloat(reqRows[0].quantity_mt || 0);
+    // 5. Calculate global remaining quantity
+    const totalItemQty = item ? parseFloat(item.quantity_mt || 0) : parseFloat(reqRows[0].quantity_mt || reqRows[0].total_quantity_mt || 0);
     const [dispRows] = await conn.query(
       `SELECT SUM(loaded_quantity_mt) AS total_dispatched 
        FROM truck_dispatches 
@@ -3722,21 +3776,67 @@ router.post('/requirements/:requirementId/items/:itemId/accept-remaining-allocat
       });
     }
 
-    // 5. Store / Update acceptance in transporter_item_allocations
+    // 6. Atomically persist exclusive remaining allocation in the requirement table
+    if (item) {
+      await conn.query(
+        `UPDATE transport_requirement_items
+         SET remaining_allocated_to = ?,
+             remaining_allocation_status = 'EXCLUSIVELY_ALLOCATED',
+             remaining_allocation_accepted_at = NOW(),
+             remaining_finalized_rate = ?,
+             allocation_status = 'EXCLUSIVELY_ALLOCATED',
+             remaining_quantity_mt = ?,
+             updated_at = NOW()
+         WHERE id = ?`,
+        [transporterId, fixedRate, remainingQty, item.id]
+      );
+    } else {
+      await conn.query(
+        `UPDATE transport_requirements
+         SET remaining_allocated_to = ?,
+             remaining_allocation_status = 'EXCLUSIVELY_ALLOCATED',
+             remaining_allocation_accepted_at = NOW(),
+             remaining_finalized_rate = ?,
+             remaining_quantity_mt = ?,
+             updated_at = NOW()
+         WHERE id = ?`,
+        [transporterId, fixedRate, remainingQty, requirementId]
+      );
+    }
+
+    // 7. Revoke/supersede dispatch authorizations for other transporters on this remaining allocation
+    await conn.query(
+      `UPDATE requirement_dispatch_authorizations 
+       SET authorization_status = 'SUPERSEDED', updated_at = NOW()
+       WHERE requirement_id = ? AND (requirement_item_id = ? OR requirement_item_id = 'MAIN')
+         AND transporter_id != ?`,
+      [requirementId, actualItemId, transporterId]
+    );
+
+    await conn.query(
+      `UPDATE transporter_item_allocations 
+       SET acceptance_status = 'SUPERSEDED', updated_at = NOW()
+       WHERE requirement_id = ? AND (requirement_item_id = ? OR requirement_item_id = 'MAIN')
+         AND transporter_id != ?`,
+      [requirementId, actualItemId, transporterId]
+    );
+
+    // 8. Assign exclusive allocation record to accepting transporter
     const allocId = `alloc_${requirementId}_${actualItemId}_${transporterId}`;
     await conn.query(
       `INSERT INTO transporter_item_allocations (
          id, requirement_id, requirement_item_id, sub_indent_no, transporter_id, finalized_rate, allocation_role, acceptance_status, accepted_at, created_at
-       ) VALUES (?, ?, ?, ?, ?, ?, 'ELIGIBLE_PREVIOUS_BIDDER', 'ACCEPTED', NOW(), NOW())
+       ) VALUES (?, ?, ?, ?, ?, ?, 'ACCEPTED_EXCLUSIVE_TRANSPORTER', 'ACCEPTED', NOW(), NOW())
        ON DUPLICATE KEY UPDATE 
          finalized_rate = VALUES(finalized_rate),
+         allocation_role = 'ACCEPTED_EXCLUSIVE_TRANSPORTER',
          acceptance_status = 'ACCEPTED',
          accepted_at = NOW(),
          updated_at = NOW()`,
       [allocId, requirementId, actualItemId, subIndentNo, transporterId, fixedRate]
     );
 
-    // Also sync requirement_dispatch_authorizations for unified dispatch checks
+    // Sync requirement_dispatch_authorizations for unified dispatch checks
     const authId = `auth_acc_${requirementId}_${actualItemId}_${transporterId}`;
     await conn.query(
       `INSERT INTO requirement_dispatch_authorizations (
@@ -3756,7 +3856,7 @@ router.post('/requirements/:requirementId/items/:itemId/accept-remaining-allocat
 
     return res.json({
       success: true,
-      message: `Remaining allocation accepted at fixed rate ₹${fixedRate}/MT. You may now dispatch trucks.`,
+      message: `Remaining allocation of ${remainingQty} MT exclusively assigned at fixed rate ₹${fixedRate}/MT. You may now dispatch trucks.`,
       data: {
         requirement_id: requirementId,
         requirement_item_id: actualItemId,
@@ -3764,6 +3864,8 @@ router.post('/requirements/:requirementId/items/:itemId/accept-remaining-allocat
         transporter_id: transporterId,
         fixed_rate: fixedRate,
         remaining_quantity_mt: remainingQty,
+        remaining_allocated_to: transporterId,
+        remaining_allocation_status: 'EXCLUSIVELY_ALLOCATED',
         acceptance_status: 'ACCEPTED',
         can_dispatch: true
       }
