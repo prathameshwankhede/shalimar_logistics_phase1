@@ -3063,14 +3063,35 @@ async function handleGetOpenRequirements(req, res) {
 
         const winnerId = winningTransporterMap[itemKey] || (subKey ? winningTransporterMap[subKey] : null) || winningTransporterMap[mainKey] || winningTransporterMap[reqKey];
         const remainingAllocTo = i.remaining_allocated_to ? String(i.remaining_allocated_to).toLowerCase() : null;
+        const isExclusivelyAllocated = i.remaining_allocation_status === 'EXCLUSIVELY_ALLOCATED';
+        const totalDispatched = parseFloat(i.dispatched_quantity_mt || 0);
+        const remQty = i.remaining_quantity_mt !== null && i.remaining_quantity_mt !== undefined
+          ? parseFloat(i.remaining_quantity_mt)
+          : Math.max(0, parseFloat(i.quantity_mt || 0) - totalDispatched);
+        const hasRemainingBalance = totalDispatched > 0 && remQty > 0;
 
         if (winnerId) {
           const isWinner = callingTransporterMatches.includes(String(winnerId).toLowerCase());
           const isAssigned = remainingAllocTo && callingTransporterMatches.includes(remainingAllocTo);
 
-          // If item is finalized to another transporter and caller is not the winner or assigned, DO NOT SEND TO THIS TRANSPORTER!
-          if (!isWinner && !isAssigned) {
-            return;
+          // 1. If already exclusively allocated to a transporter ("jo pahle final karga vo uska"):
+          // Only that assigned transporter can see it.
+          // For all other transporters: "baki transporter ke org se gayb"!
+          if (isExclusivelyAllocated) {
+            if (!isAssigned) {
+              return; // GAYAB!
+            }
+          } else if (hasRemainingBalance) {
+            // 2. Partially dispatched with remaining balance (e.g. 25 MT left):
+            // "remening jo 25 hai vo automating sabko jana chaiye jo jo rate final huya tha lowest uske sath"
+            // Visible to all eligible transporters so anyone can accept!
+            // (Do not return)
+          } else {
+            // 3. Normal un-dispatched finalized item:
+            // Only winning transporter sees it to start dispatching trucks.
+            if (!isWinner && !isAssigned) {
+              return;
+            }
           }
         }
       }
@@ -3092,10 +3113,24 @@ async function handleGetOpenRequirements(req, res) {
           // single item requirement
           const parentWinnerId = winningTransporterMap[p.id];
           const remainingAllocTo = p.remaining_allocated_to ? String(p.remaining_allocated_to).toLowerCase() : null;
+          const isExclusivelyAllocated = p.remaining_allocation_status === 'EXCLUSIVELY_ALLOCATED';
+          const totalDispatched = parseFloat(p.dispatched_quantity_mt || 0);
+          const remQty = p.remaining_quantity_mt !== null && p.remaining_quantity_mt !== undefined
+            ? parseFloat(p.remaining_quantity_mt)
+            : Math.max(0, parseFloat(p.quantity_mt || 0) - totalDispatched);
+          const hasRemainingBalance = totalDispatched > 0 && remQty > 0;
+
           if (parentWinnerId) {
             const isWinner = callingTransporterMatches.includes(String(parentWinnerId).toLowerCase());
             const isAssigned = remainingAllocTo && callingTransporterMatches.includes(remainingAllocTo);
-            return isWinner || isAssigned;
+
+            if (isExclusivelyAllocated) {
+              return isAssigned; // Gayab for everyone else!
+            } else if (hasRemainingBalance) {
+              return true; // Available to all!
+            } else {
+              return isWinner || isAssigned;
+            }
           }
           return true; // unfinalized, open to all
         }
@@ -3784,21 +3819,25 @@ router.post('/requirements/:requirementId/items/:itemId/accept-remaining-allocat
       }
     }
 
-    // 3. Verify that transporter participated in original bidding for this exact requirement item
+    // 3. Verify that transporter is authorized (registered transporter or previous bidder)
+    const [transporterCheck] = await conn.query(
+      `SELECT id FROM transporters WHERE id IN (?) OR code IN (?) OR username IN (?)`,
+      [transMatchIds, transMatchIds, transMatchIds]
+    );
     const [bidRows] = await conn.query(
-      `SELECT * FROM rate_submissions 
+      `SELECT id FROM rate_submissions 
        WHERE requirement_id = ? AND (item_id = ? OR item_id = ? OR item_id = 'MAIN')
          AND transporter_id IN (?)`,
       [requirementId, actualItemId, subIndentNo || actualItemId, transMatchIds]
     );
 
-    if (bidRows.length === 0) {
+    if (transporterCheck.length === 0 && bidRows.length === 0) {
       await conn.rollback();
       conn.release();
       return res.status(403).json({
         success: false,
         code: 'NOT_ELIGIBLE_FOR_ALLOCATION',
-        error: 'Only transporters who previously submitted bids for this requirement item are eligible to accept the remaining allocation.'
+        error: 'Only verified transporters are eligible to accept the remaining allocation.'
       });
     }
 

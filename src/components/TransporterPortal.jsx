@@ -668,15 +668,18 @@ export const TransporterPortal = () => {
           allocationStatus = 'ACCEPTED_SHARED_TRANSPORTER';
           authStatus = 'APPROVED';
           canDispatch = true;
-        } else if (Boolean(myExistingBid) || Boolean(myAlloc)) {
+        } else if (Boolean(myExistingBid) || Boolean(myAlloc) || (fixedRate !== null && totalDispatched > 0 && remQty > 0)) {
           allocationRole = 'ELIGIBLE_PREVIOUS_BIDDER';
           allocationStatus = 'PREVIOUS_BIDDER_PENDING_ACCEPTANCE';
           authStatus = 'AVAILABLE_FOR_ACCEPTANCE';
           canDispatch = false;
         }
 
-        // STRICT ISOLATION: Finalized items must ONLY be visible to the winning transporter or explicitly assigned transporter
-        if (fixedRate !== null && !isWinningTransporter && !isCurrentTransporterAssigned) {
+        const isPartiallyDispatchedWithRemaining = fixedRate !== null && totalDispatched > 0 && remQty > 0;
+
+        // If normal finalized item with NO partial dispatch yet, only winning transporter can see it.
+        // But if partially dispatched with remaining balance (e.g. 25 MT left), all eligible transporters can see it to accept!
+        if (fixedRate !== null && !isPartiallyDispatchedWithRemaining && !isWinningTransporter && !isCurrentTransporterAssigned) {
           return;
         }
 
@@ -825,15 +828,18 @@ export const TransporterPortal = () => {
         allocationStatus = 'ACCEPTED_SHARED_TRANSPORTER';
         authStatus = 'APPROVED';
         canDispatch = true;
-      } else if (Boolean(myExistingBid) || Boolean(myAlloc)) {
+      } else if (Boolean(myExistingBid) || Boolean(myAlloc) || (fixedRate !== null && totalDispatched > 0 && remQty > 0)) {
         allocationRole = 'ELIGIBLE_PREVIOUS_BIDDER';
         allocationStatus = 'PREVIOUS_BIDDER_PENDING_ACCEPTANCE';
         authStatus = 'AVAILABLE_FOR_ACCEPTANCE';
         canDispatch = false;
       }
 
-      // STRICT ISOLATION: Finalized items must ONLY be visible to the winning transporter or explicitly assigned transporter
-      if (fixedRate !== null && !isWinningTransporter && !isCurrentTransporterAssigned) {
+      const isPartiallyDispatchedWithRemaining = fixedRate !== null && totalDispatched > 0 && remQty > 0;
+
+      // If normal finalized item with NO partial dispatch yet, only winning transporter can see it.
+      // But if partially dispatched with remaining balance (e.g. 25 MT left), all eligible transporters can see it to accept!
+      if (fixedRate !== null && !isPartiallyDispatchedWithRemaining && !isWinningTransporter && !isCurrentTransporterAssigned) {
         return;
       }
 
