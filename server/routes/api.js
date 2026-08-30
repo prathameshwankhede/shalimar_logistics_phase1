@@ -149,6 +149,9 @@ function formatParentRequirementDto(parentRow, childItems = [], bidsCount = 0, i
 
     const stats = itemStatsMap[`${parentRow.id}_${item.id}`] || itemStatsMap[item.id] || itemStatsMap[autoSubIndentNo] || {};
 
+    const itemDispatchedQty = Number(item.dispatched_quantity_mt || 0);
+    const itemRemainingQty = item.remaining_quantity_mt !== null && item.remaining_quantity_mt !== undefined ? Number(item.remaining_quantity_mt) : Math.max(0, Number(item.quantity_mt || item.required_qty || 0) - itemDispatchedQty);
+
     return {
       id: item.id || `item_${idx}`,
       requirement_id: parentRow.id,
@@ -157,6 +160,9 @@ function formatParentRequirementDto(parentRow, childItems = [], bidsCount = 0, i
       material_type: item.product_name || item.material_type || '',
       quantity_mt: Number(item.quantity_mt || item.required_qty || 0),
       required_qty: Number(item.quantity_mt || item.required_qty || 0),
+      dispatched_quantity_mt: itemDispatchedQty,
+      remaining_quantity_mt: itemRemainingQty,
+      dispatch_status: item.dispatch_status || (itemRemainingQty <= 0 && itemDispatchedQty > 0 ? 'FULLY_DISPATCHED' : (itemDispatchedQty > 0 ? 'PARTIALLY_DISPATCHED' : 'PENDING')),
       unit: item.unit || 'MT',
       pickup_origin: item.pickup_origin || parentRow.pickup_origin || '',
       drop_location: item.drop_location || parentRow.drop_location || '',
@@ -168,6 +174,8 @@ function formatParentRequirementDto(parentRow, childItems = [], bidsCount = 0, i
   });
 
   const totalQty = itemsFormatted.reduce((acc, curr) => acc + curr.quantity_mt, 0);
+  const totalDispatchedQty = itemsFormatted.reduce((acc, curr) => acc + (curr.dispatched_quantity_mt || 0), 0);
+  const totalRemainingQty = itemsFormatted.reduce((acc, curr) => acc + (curr.remaining_quantity_mt || 0), 0);
 
   const isBatch = itemsFormatted.length > 0;
   const firstItem = itemsFormatted[0] || {};
@@ -249,6 +257,9 @@ function formatParentRequirementDto(parentRow, childItems = [], bidsCount = 0, i
     total_quantity_mt: totalQty,
     quantity_mt: totalQty,
     required_qty: totalQty,
+    dispatched_quantity_mt: totalDispatchedQty,
+    remaining_quantity_mt: totalRemainingQty,
+    dispatch_status: (totalRemainingQty <= 0 && totalDispatchedQty > 0) ? 'FULLY_DISPATCHED' : (totalDispatchedQty > 0 ? 'PARTIALLY_DISPATCHED' : 'PENDING'),
     product_name: itemsFormatted.map(i => i.product_name).join(', '),
     material_type: itemsFormatted.map(i => i.product_name).join(', ')
   };
@@ -526,6 +537,129 @@ export async function ensureRateNegotiationsTableExists() {
   }
 }
 
+// -------------------------------------------------------------
+// TRUCK DISPATCHES & CONCURRENCY-SAFE LR SEQUENCES SCHEMA 🚛📄
+// -------------------------------------------------------------
+let isTruckDispatchesTableEnsured = false;
+export async function ensureTruckDispatchesTableExists() {
+  if (isTruckDispatchesTableEnsured) return;
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS lr_sequences (
+        prefix VARCHAR(50) NOT NULL PRIMARY KEY,
+        last_seq INT NOT NULL DEFAULT 0,
+        updated_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS truck_dispatches (
+        id VARCHAR(100) NOT NULL PRIMARY KEY,
+        requirement_id VARCHAR(100) NOT NULL,
+        requirement_item_id VARCHAR(100) NOT NULL,
+        transporter_id VARCHAR(100) NOT NULL,
+        finalized_rate DECIMAL(12,2) NOT NULL,
+        truck_number VARCHAR(50) NOT NULL,
+        loaded_quantity_mt DECIMAL(12,3) NOT NULL,
+        driver_name VARCHAR(150) NOT NULL,
+        driver_mobile VARCHAR(50) NOT NULL,
+        driver_license VARCHAR(100) NOT NULL,
+        lr_number VARCHAR(100) NOT NULL,
+        dispatch_reference VARCHAR(100) DEFAULT NULL,
+        dispatch_status VARCHAR(50) NOT NULL DEFAULT 'Dispatched',
+        dispatched_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        created_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_dispatches_req_item (requirement_id, requirement_item_id),
+        INDEX idx_dispatches_transporter (transporter_id),
+        UNIQUE KEY unique_lr_number (lr_number)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
+    const subCols = [
+      "is_finalized TINYINT(1) DEFAULT 0",
+      "finalized_rate DECIMAL(12,2) DEFAULT NULL",
+      "finalized_by VARCHAR(100) DEFAULT NULL",
+      "acceptance_status VARCHAR(50) DEFAULT NULL",
+      "transporter_accepted_at DATETIME DEFAULT NULL",
+      "transporter_accepted_by VARCHAR(100) DEFAULT NULL"
+    ];
+    for (const col of subCols) {
+      await pool.query(`ALTER TABLE rate_submissions ADD COLUMN ${col}`).catch(() => {});
+    }
+
+    const itemCols = [
+      "dispatch_status VARCHAR(50) DEFAULT 'PENDING'",
+      "dispatched_quantity_mt DECIMAL(12,3) DEFAULT 0",
+      "remaining_quantity_mt DECIMAL(12,3) DEFAULT NULL"
+    ];
+    for (const col of itemCols) {
+      await pool.query(`ALTER TABLE transport_requirement_items ADD COLUMN ${col}`).catch(() => {});
+    }
+
+    await pool.query(`
+      ALTER TABLE truck_dispatches
+      ADD CONSTRAINT fk_dispatches_req
+      FOREIGN KEY (requirement_id) REFERENCES transport_requirements(id)
+      ON DELETE CASCADE
+    `).catch(() => {});
+
+    await pool.query(`
+      ALTER TABLE truck_dispatches
+      ADD CONSTRAINT fk_dispatches_transporter
+      FOREIGN KEY (transporter_id) REFERENCES transporters(id)
+      ON DELETE CASCADE
+    `).catch(() => {});
+
+    isTruckDispatchesTableEnsured = true;
+  } catch (err) {
+    console.warn('truck_dispatches table creation notice:', err.message);
+  }
+}
+
+// Concurrency-safe LR Number Generator
+async function generateUniqueLrNumber(clientOrPool, customYear) {
+  const year = customYear || new Date().getFullYear();
+  const prefix = `LR-SNPL-${year}`;
+
+  await clientOrPool.query(
+    `INSERT INTO lr_sequences (prefix, last_seq) VALUES (?, 1)
+     ON DUPLICATE KEY UPDATE last_seq = last_seq + 1`,
+    [prefix]
+  );
+
+  const [rows] = await clientOrPool.query(
+    `SELECT last_seq FROM lr_sequences WHERE prefix = ? FOR UPDATE`,
+    [prefix]
+  );
+
+  const seq = Number(rows[0]?.last_seq || 1);
+  const formattedSeq = String(seq).padStart(5, '0');
+  return `${prefix}-${formattedSeq}`;
+}
+
+// Server-side Authenticated Transporter Identity Resolver
+async function resolveAuthenticatedTransporter(req) {
+  if (!req.user) return null;
+  if (req.user.role !== 'transporter') return null;
+
+  if (req.user.transporter_id) {
+    const [rows] = await pool.query('SELECT * FROM transporters WHERE id = ? LIMIT 1', [req.user.transporter_id]);
+    if (rows.length > 0) return rows[0];
+  }
+
+  const searchKey = req.user.username || req.user.id;
+  if (searchKey) {
+    const [rows] = await pool.query(
+      'SELECT * FROM transporters WHERE id = ? OR username = ? OR code = ? LIMIT 1',
+      [searchKey, searchKey, searchKey]
+    );
+    if (rows.length > 0) return rows[0];
+  }
+
+  return null;
+}
+
 async function handleGetRequirements(req, res) {
   try {
     await ensureRequirementsTableExists();
@@ -655,7 +789,7 @@ async function handleGetRequirementRates(req, res) {
       });
     }
 
-    let ratesQuery = 'SELECT id, requirement_id, item_id, transporter_id, rate_per_mt, original_rate, counter_offer_rate, final_rate, bid_status, counter_offer_status, counter_offer_by, counter_message, counter_offer_at, finalized_at, quoted_quantity_mt, total_amount, remarks, submitted_at, updated_at FROM rate_submissions WHERE requirement_id = ?';
+    let ratesQuery = 'SELECT id, requirement_id, item_id, transporter_id, rate_per_mt, original_rate, counter_offer_rate, final_rate, finalized_rate, is_finalized, finalized_by, acceptance_status, transporter_accepted_at, transporter_accepted_by, bid_status, counter_offer_status, counter_offer_by, counter_message, counter_offer_at, finalized_at, quoted_quantity_mt, total_amount, remarks, submitted_at, updated_at FROM rate_submissions WHERE requirement_id = ?';
     let queryParams = [actualReqId];
 
     if (itemId) {
@@ -687,6 +821,7 @@ async function handleGetRequirementRates(req, res) {
       const rateVal = parseFloat(r.rate_per_mt || 0);
       const qtyVal = parseFloat(r.quoted_quantity_mt || 0) || totalCargoQty;
       const calcTotal = r.total_amount ? parseFloat(r.total_amount) : parseFloat((rateVal * qtyVal).toFixed(2));
+      const isFin = Boolean(r.is_finalized || ['FINALIZED', 'COUNTER_ACCEPTED'].includes(String(r.bid_status || '').toUpperCase()) || Number(r.final_rate) > 0);
       return {
         id: r.id,
         requirement_id: r.requirement_id,
@@ -714,8 +849,14 @@ async function handleGetRequirementRates(req, res) {
         counter_offer_at: r.counter_offer_at || null,
         counter_message: r.counter_message || null,
         final_rate: r.final_rate ? parseFloat(r.final_rate) : null,
+        finalized_rate: r.finalized_rate ? parseFloat(r.finalized_rate) : (r.final_rate ? parseFloat(r.final_rate) : null),
+        is_finalized: isFin,
         finalized_at: r.finalized_at || null,
-        is_frozen: ['FINALIZED', 'COUNTER_ACCEPTED'].includes(String(r.bid_status || '').toUpperCase()) || Boolean(Number(r.final_rate) > 0),
+        finalized_by: r.finalized_by || null,
+        acceptance_status: r.acceptance_status || (isFin ? 'PENDING' : null),
+        transporter_accepted_at: r.transporter_accepted_at || null,
+        transporter_accepted_by: r.transporter_accepted_by || null,
+        is_frozen: isFin,
         submitted_at: r.submitted_at
       };
     });
@@ -1455,6 +1596,10 @@ async function handleFinalizeBid(req, res) {
     await pool.query(
       `UPDATE rate_submissions
        SET final_rate = ?,
+           finalized_rate = ?,
+           is_finalized = 1,
+           finalized_by = ?,
+           acceptance_status = 'PENDING',
            rate_per_mt = ?,
            total_amount = ?,
            counter_offer_status = 'ACCEPTED',
@@ -1462,8 +1607,17 @@ async function handleFinalizeBid(req, res) {
            finalized_at = NOW(),
            updated_at = NOW()
        WHERE id = ?`,
-      [agreedRate, agreedRate, calcTotal, id]
+      [agreedRate, agreedRate, req.user.username || 'admin', agreedRate, calcTotal, id]
     );
+
+    // Update item dispatch status
+    await pool.query(
+      `UPDATE transport_requirement_items
+       SET dispatch_status = 'AWAITING_ACCEPTANCE',
+           updated_at = NOW()
+       WHERE requirement_id = ? AND id = ?`,
+      [sub.requirement_id, sub.item_id]
+    ).catch(() => {});
 
     const negId = `neg_${Date.now()}_${Math.random().toString(36).substring(2,7)}`;
     await pool.query(
@@ -1488,6 +1642,533 @@ async function handleFinalizeBid(req, res) {
     });
   } catch (err) {
     console.error('❌ POST /api/rate-submissions/:id/finalize Error:', err.message);
+    return res.status(500).json({ success: false, error: { code: 'DATABASE_ERROR', message: err.message } });
+  }
+}
+
+// -------------------------------------------------------------
+// TRANSPORTER ACCEPT FINALIZED RATE HANDLER 🤝
+// -------------------------------------------------------------
+async function handleAcceptFinalRate(req, res) {
+  try {
+    await ensureTruckDispatchesTableExists();
+    await ensureRateSubmissionsTableExists();
+    await ensureRequirementsTableExists();
+
+    if (!req.user) {
+      return res.status(401).json({ success: false, error: 'Authentication required' });
+    }
+
+    if (req.user.role !== 'transporter') {
+      return res.status(403).json({ success: false, error: 'Only transporters can accept finalized rates.' });
+    }
+
+    const authTransporter = await resolveAuthenticatedTransporter(req);
+    if (!authTransporter) {
+      return res.status(403).json({ success: false, error: 'Could not resolve authenticated transporter identity.' });
+    }
+
+    const { requirementId, itemId, id } = req.params;
+
+    let sub = null;
+    if (id) {
+      const [rows] = await pool.query('SELECT * FROM rate_submissions WHERE id = ? LIMIT 1', [id]);
+      if (rows.length > 0) sub = rows[0];
+    } else if (requirementId && itemId) {
+      const [rows] = await pool.query(
+        'SELECT * FROM rate_submissions WHERE requirement_id = ? AND item_id = ? AND (is_finalized = 1 OR UPPER(COALESCE(bid_status, "")) IN ("FINALIZED", "COUNTER_ACCEPTED") OR final_rate > 0) ORDER BY finalized_at DESC LIMIT 1',
+        [requirementId, itemId]
+      );
+      if (rows.length > 0) sub = rows[0];
+      else {
+        const [fallbackRows] = await pool.query(
+          'SELECT * FROM rate_submissions WHERE requirement_id = ? AND item_id = ? AND transporter_id = ? LIMIT 1',
+          [requirementId, itemId, authTransporter.id]
+        );
+        if (fallbackRows.length > 0) sub = fallbackRows[0];
+      }
+    }
+
+    if (!sub) {
+      return res.status(404).json({ success: false, error: 'Finalized quote not found for this requirement item.' });
+    }
+
+    const isFinalized = sub.is_finalized || ['FINALIZED', 'COUNTER_ACCEPTED'].includes(String(sub.bid_status || '').toUpperCase()) || Number(sub.final_rate || 0) > 0;
+    if (!isFinalized) {
+      return res.status(400).json({
+        success: false,
+        code: 'RATE_NOT_FINALIZED',
+        error: 'Cannot accept rate because this quote has not been finalized by Admin yet.'
+      });
+    }
+
+    // STRICT RBAC: Winning Transporter Check
+    if (String(sub.transporter_id) !== String(authTransporter.id) && String(sub.transporter_id) !== String(authTransporter.code) && String(sub.transporter_id) !== String(authTransporter.username)) {
+      return res.status(403).json({
+        success: false,
+        code: 'FORBIDDEN_NOT_WINNING_TRANSPORTER',
+        error: 'Only the finalized winning transporter can accept this rate.'
+      });
+    }
+
+    // Update acceptance
+    await pool.query(
+      `UPDATE rate_submissions
+       SET acceptance_status = 'ACCEPTED',
+           transporter_accepted_at = NOW(),
+           transporter_accepted_by = ?,
+           updated_at = NOW()
+       WHERE id = ?`,
+      [req.user.username || authTransporter.username || authTransporter.company_name, sub.id]
+    );
+
+    // Update item dispatch status
+    await pool.query(
+      `UPDATE transport_requirement_items
+       SET dispatch_status = 'ACCEPTED',
+           updated_at = NOW()
+       WHERE requirement_id = ? AND id = ?`,
+      [sub.requirement_id, sub.item_id]
+    ).catch(() => {});
+
+    // Audit logs
+    try {
+      await pool.query(
+        `INSERT INTO security_audit_logs (id, action, username, role, ip, status, timestamp)
+         VALUES (?, ?, ?, ?, ?, ?, NOW())`,
+        [
+          `sec_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+          `FINAL_RATE_ACCEPTED (Rate: ₹${sub.final_rate || sub.rate_per_mt}/MT for ${sub.requirement_id}/${sub.item_id})`,
+          req.user.username || authTransporter.username,
+          'transporter',
+          req.ip || '127.0.0.1',
+          'RATE_ACCEPTED 🤝'
+        ]
+      );
+    } catch (e) {}
+
+    const [updatedSub] = await pool.query('SELECT * FROM rate_submissions WHERE id = ?', [sub.id]);
+
+    return res.json({
+      success: true,
+      message: 'Final rate accepted successfully. You can now dispatch trucks.',
+      submission: updatedSub[0]
+    });
+  } catch (err) {
+    console.error('❌ accept-final-rate Error:', err.message);
+    return res.status(500).json({ success: false, error: { code: 'DATABASE_ERROR', message: err.message } });
+  }
+}
+
+// -------------------------------------------------------------
+// CREATE TRUCK DISPATCH & CONCURRENCY-SAFE LR GENERATION 🚚📄
+// -------------------------------------------------------------
+async function handleCreateTruckDispatch(req, res) {
+  const conn = await pool.getConnection();
+  try {
+    await ensureTruckDispatchesTableExists();
+    await ensureRateSubmissionsTableExists();
+    await ensureRequirementsTableExists();
+
+    if (!req.user) {
+      conn.release();
+      return res.status(401).json({ success: false, error: 'Authentication required' });
+    }
+
+    if (req.user.role !== 'transporter') {
+      conn.release();
+      return res.status(403).json({ success: false, error: 'Only transporters can dispatch trucks.' });
+    }
+
+    const authTransporter = await resolveAuthenticatedTransporter(req);
+    if (!authTransporter) {
+      conn.release();
+      return res.status(403).json({ success: false, error: 'Could not resolve authenticated transporter identity.' });
+    }
+
+    const { requirementId, itemId } = req.params;
+    const {
+      truck_number,
+      loaded_quantity_mt,
+      driver_name,
+      driver_mobile,
+      driver_license
+    } = req.body;
+
+    // Field Validations
+    const cleanTruckNo = (truck_number || '').toUpperCase().replace(/\s+/g, '').trim();
+    if (!cleanTruckNo || cleanTruckNo.length < 5) {
+      conn.release();
+      return res.status(400).json({ success: false, error: 'Valid truck vehicle number is required (e.g. MH31FC4512).' });
+    }
+
+    const loadedQty = parseFloat(loaded_quantity_mt);
+    if (isNaN(loadedQty) || loadedQty <= 0) {
+      conn.release();
+      return res.status(400).json({ success: false, error: 'Loaded quantity must be a positive number greater than 0.' });
+    }
+
+    const cleanDriverName = (driver_name || '').trim();
+    if (!cleanDriverName) {
+      conn.release();
+      return res.status(400).json({ success: false, error: 'Driver name is required.' });
+    }
+
+    const cleanDriverMobile = (driver_mobile || '').trim();
+    if (!cleanDriverMobile || cleanDriverMobile.length < 8) {
+      conn.release();
+      return res.status(400).json({ success: false, error: 'Valid driver mobile number is required.' });
+    }
+
+    const cleanDriverLicense = (driver_license || '').toUpperCase().trim();
+    if (!cleanDriverLicense) {
+      conn.release();
+      return res.status(400).json({ success: false, error: 'Driver license number (DL) is required.' });
+    }
+
+    await conn.beginTransaction();
+
+    // 1. Find & Lock the Winning Rate Submission for this requirement item
+    const [subRows] = await conn.query(
+      `SELECT * FROM rate_submissions 
+       WHERE requirement_id = ? AND item_id = ? 
+       AND (is_finalized = 1 OR UPPER(COALESCE(bid_status, '')) IN ('FINALIZED', 'COUNTER_ACCEPTED') OR final_rate > 0)
+       ORDER BY finalized_at DESC LIMIT 1
+       FOR UPDATE`,
+      [requirementId, itemId]
+    );
+
+    if (subRows.length === 0) {
+      await conn.rollback();
+      conn.release();
+      return res.status(400).json({
+        success: false,
+        code: 'RATE_NOT_FINALIZED',
+        error: 'Cannot dispatch truck: freight rate is not yet finalized by Admin for this item.'
+      });
+    }
+
+    const winningSub = subRows[0];
+
+    // 2. Strict Transporter Identity Verification
+    if (String(winningSub.transporter_id) !== String(authTransporter.id) &&
+        String(winningSub.transporter_id) !== String(authTransporter.code) &&
+        String(winningSub.transporter_id) !== String(authTransporter.username)) {
+      await conn.rollback();
+      conn.release();
+      return res.status(403).json({
+        success: false,
+        code: 'FORBIDDEN_NOT_WINNING_TRANSPORTER',
+        error: 'Access denied. You are not the finalized winning transporter for this requirement.'
+      });
+    }
+
+    // 3. Acceptance Gate Check
+    if (String(winningSub.acceptance_status).toUpperCase() !== 'ACCEPTED') {
+      await conn.rollback();
+      conn.release();
+      return res.status(400).json({
+        success: false,
+        code: 'AWAITING_TRANSPORTER_ACCEPTANCE',
+        error: 'Finalized rate must be accepted by the transporter before dispatching trucks.'
+      });
+    }
+
+    // 4. Lock Requirement Item and Compute Item Required Quantity
+    let totalItemQty = 0;
+    const [itemRows] = await conn.query(
+      `SELECT * FROM transport_requirement_items WHERE requirement_id = ? AND id = ? FOR UPDATE`,
+      [requirementId, itemId]
+    );
+
+    if (itemRows.length > 0) {
+      totalItemQty = parseFloat(itemRows[0].quantity_mt || itemRows[0].required_qty || 0);
+    } else {
+      const [parentRows] = await conn.query(
+        `SELECT * FROM transport_requirements WHERE id = ? FOR UPDATE`,
+        [requirementId]
+      );
+      if (parentRows.length > 0) {
+        totalItemQty = parseFloat(parentRows[0].quantity_mt || parentRows[0].total_quantity_mt || 0);
+      }
+    }
+
+    if (totalItemQty <= 0) {
+      totalItemQty = parseFloat(winningSub.quoted_quantity_mt || 100);
+    }
+
+    // 5. Lock and calculate total already dispatched quantity for this requirement item
+    const [dispatchedSumRows] = await conn.query(
+      `SELECT COALESCE(SUM(loaded_quantity_mt), 0) AS total_dispatched 
+       FROM truck_dispatches 
+       WHERE requirement_id = ? AND requirement_item_id = ? 
+       FOR UPDATE`,
+      [requirementId, itemId]
+    );
+
+    const alreadyDispatched = parseFloat(dispatchedSumRows[0]?.total_dispatched || 0);
+    const remainingQty = parseFloat(Math.max(0, totalItemQty - alreadyDispatched).toFixed(3));
+
+    // 6. Enforce Tonnage Capacity Gate
+    if (loadedQty > remainingQty) {
+      await conn.rollback();
+      conn.release();
+      return res.status(400).json({
+        success: false,
+        code: 'EXCEEDS_REMAINING_QUANTITY',
+        error: `Loaded quantity (${loadedQty} MT) cannot exceed remaining balance (${remainingQty} MT).`,
+        required_quantity_mt: totalItemQty,
+        already_dispatched_mt: alreadyDispatched,
+        remaining_quantity_mt: remainingQty
+      });
+    }
+
+    // 7. Concurrency-Safe LR Number Generation
+    const lrNumber = await generateUniqueLrNumber(conn, new Date().getFullYear());
+    const dispatchId = `disp_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const finalRateVal = parseFloat(winningSub.final_rate || winningSub.rate_per_mt || 0);
+
+    // 8. Insert into truck_dispatches
+    await conn.query(
+      `INSERT INTO truck_dispatches (
+        id, requirement_id, requirement_item_id, transporter_id,
+        finalized_rate, truck_number, loaded_quantity_mt, driver_name,
+        driver_mobile, driver_license, lr_number, dispatch_reference,
+        dispatch_status, dispatched_at, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Dispatched', NOW(), NOW(), NOW())`,
+      [
+        dispatchId,
+        requirementId,
+        itemId,
+        authTransporter.id,
+        finalRateVal,
+        cleanTruckNo,
+        loadedQty,
+        cleanDriverName,
+        cleanDriverMobile,
+        cleanDriverLicense,
+        lrNumber,
+        lrNumber
+      ]
+    );
+
+    // 9. Update Item-Level and Parent-Level Status
+    const newTotalDispatched = parseFloat((alreadyDispatched + loadedQty).toFixed(3));
+    const newRemaining = parseFloat(Math.max(0, totalItemQty - newTotalDispatched).toFixed(3));
+    const itemStatus = (newRemaining <= 0) ? 'FULLY_DISPATCHED' : 'PARTIALLY_DISPATCHED';
+
+    await conn.query(
+      `UPDATE transport_requirement_items
+       SET dispatched_quantity_mt = ?,
+           remaining_quantity_mt = ?,
+           dispatch_status = ?,
+           updated_at = NOW()
+       WHERE requirement_id = ? AND id = ?`,
+      [newTotalDispatched, newRemaining, itemStatus, requirementId, itemId]
+    );
+
+    // Update parent status based on child items
+    const [allChildItems] = await conn.query(
+      `SELECT id, dispatch_status FROM transport_requirement_items WHERE requirement_id = ?`,
+      [requirementId]
+    );
+    if (allChildItems.length > 0) {
+      const allFullyDispatched = allChildItems.every(i => i.id === itemId ? itemStatus === 'FULLY_DISPATCHED' : i.dispatch_status === 'FULLY_DISPATCHED');
+      const parentStatus = allFullyDispatched ? 'COMPLETED' : 'PARTIALLY_DISPATCHED';
+      await conn.query(
+        `UPDATE transport_requirements SET status = ?, updated_at = NOW() WHERE id = ?`,
+        [parentStatus, requirementId]
+      );
+    }
+
+    // 10. Audit Logging
+    await conn.query(
+      `INSERT INTO security_audit_logs (id, action, username, role, ip, status, timestamp)
+       VALUES (?, ?, ?, ?, ?, ?, NOW())`,
+      [
+        `sec_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+        `TRUCK_DISPATCHED (${cleanTruckNo} - ${loadedQty} MT, LR: ${lrNumber})`,
+        req.user.username || authTransporter.username,
+        'transporter',
+        req.ip || '127.0.0.1',
+        'DISPATCHED 🚛'
+      ]
+    );
+
+    await conn.commit();
+    conn.release();
+
+    const [dispatchRecord] = await pool.query('SELECT * FROM truck_dispatches WHERE id = ?', [dispatchId]);
+
+    return res.json({
+      success: true,
+      message: `Truck ${cleanTruckNo} dispatched successfully! LR No: ${lrNumber}. ${newRemaining <= 0 ? '🎉 Requirement item is 100% Fully Dispatched!' : ''}`,
+      dispatch: dispatchRecord[0],
+      lr_number: lrNumber,
+      loaded_quantity_mt: loadedQty,
+      remaining_quantity_mt: newRemaining,
+      dispatch_status: itemStatus
+    });
+  } catch (err) {
+    await conn.rollback();
+    conn.release();
+    console.error('❌ dispatch Error:', err.message);
+    return res.status(500).json({ success: false, error: { code: 'DATABASE_ERROR', message: err.message } });
+  }
+}
+
+// -------------------------------------------------------------
+// GET DISPATCHES FOR A REQUIREMENT ITEM 📜
+// -------------------------------------------------------------
+async function handleGetRequirementItemDispatches(req, res) {
+  try {
+    await ensureTruckDispatchesTableExists();
+    const { requirementId, itemId } = req.params;
+
+    if (!req.user) {
+      return res.status(401).json({ success: false, error: 'Authentication required' });
+    }
+
+    if (req.user.role === 'admin') {
+      const [rows] = await pool.query(
+        `SELECT td.*, t.company_name AS transporter_name, t.code AS transporter_code
+         FROM truck_dispatches td
+         LEFT JOIN transporters t ON t.id = td.transporter_id
+         WHERE td.requirement_id = ? AND td.requirement_item_id = ?
+         ORDER BY td.dispatched_at DESC`,
+        [requirementId, itemId]
+      );
+      return res.json({ success: true, dispatches: rows });
+    }
+
+    if (req.user.role === 'transporter') {
+      const authTransporter = await resolveAuthenticatedTransporter(req);
+      if (!authTransporter) {
+        return res.status(403).json({ success: false, error: 'Could not resolve authenticated transporter.' });
+      }
+
+      // Check if winning transporter
+      const [subRows] = await pool.query(
+        `SELECT transporter_id FROM rate_submissions 
+         WHERE requirement_id = ? AND item_id = ? AND (is_finalized = 1 OR final_rate > 0) 
+         LIMIT 1`,
+        [requirementId, itemId]
+      );
+
+      if (subRows.length > 0 && String(subRows[0].transporter_id) !== String(authTransporter.id) &&
+          String(subRows[0].transporter_id) !== String(authTransporter.code) &&
+          String(subRows[0].transporter_id) !== String(authTransporter.username)) {
+        return res.status(403).json({
+          success: false,
+          code: 'FORBIDDEN_DISPATCH_ACCESS',
+          error: 'Access denied. You can only view your own dispatches.'
+        });
+      }
+
+      const [rows] = await pool.query(
+        `SELECT td.*, t.company_name AS transporter_name, t.code AS transporter_code
+         FROM truck_dispatches td
+         LEFT JOIN transporters t ON t.id = td.transporter_id
+         WHERE td.requirement_id = ? AND td.requirement_item_id = ? AND td.transporter_id = ?
+         ORDER BY td.dispatched_at DESC`,
+        [requirementId, itemId, authTransporter.id]
+      );
+      return res.json({ success: true, dispatches: rows });
+    }
+
+    return res.status(403).json({ success: false, error: 'Access denied' });
+  } catch (err) {
+    console.error('❌ Get Dispatches Error:', err.message);
+    return res.status(500).json({ success: false, error: { code: 'DATABASE_ERROR', message: err.message } });
+  }
+}
+
+// -------------------------------------------------------------
+// GET ALL DISPATCHES (ADMIN / TRANSPORTER FILTERED) 🚚
+// -------------------------------------------------------------
+async function handleGetDispatches(req, res) {
+  try {
+    await ensureTruckDispatchesTableExists();
+    if (!req.user) {
+      return res.status(401).json({ success: false, error: 'Authentication required' });
+    }
+
+    if (req.user.role === 'admin') {
+      const [rows] = await pool.query(
+        `SELECT td.*, t.company_name AS transporter_name, t.code AS transporter_code,
+                tr.req_no, tr.pickup_origin, tr.drop_location, tri.product_name, tri.sub_indent_no
+         FROM truck_dispatches td
+         LEFT JOIN transporters t ON t.id = td.transporter_id
+         LEFT JOIN transport_requirements tr ON tr.id = td.requirement_id
+         LEFT JOIN transport_requirement_items tri ON tri.id = td.requirement_item_id
+         ORDER BY td.dispatched_at DESC LIMIT 200`
+      );
+      return res.json({ success: true, dispatches: rows, truck_dispatches: rows });
+    }
+
+    if (req.user.role === 'transporter') {
+      const authTransporter = await resolveAuthenticatedTransporter(req);
+      if (!authTransporter) {
+        return res.status(403).json({ success: false, error: 'Could not resolve authenticated transporter.' });
+      }
+
+      const [rows] = await pool.query(
+        `SELECT td.*, t.company_name AS transporter_name, t.code AS transporter_code,
+                tr.req_no, tr.pickup_origin, tr.drop_location, tri.product_name, tri.sub_indent_no
+         FROM truck_dispatches td
+         LEFT JOIN transporters t ON t.id = td.transporter_id
+         LEFT JOIN transport_requirements tr ON tr.id = td.requirement_id
+         LEFT JOIN transport_requirement_items tri ON tri.id = td.requirement_item_id
+         WHERE td.transporter_id = ?
+         ORDER BY td.dispatched_at DESC LIMIT 200`,
+        [authTransporter.id]
+      );
+      return res.json({ success: true, dispatches: rows, truck_dispatches: rows });
+    }
+
+    return res.status(403).json({ success: false, error: 'Access denied' });
+  } catch (err) {
+    console.error('❌ Get All Dispatches Error:', err.message);
+    return res.status(500).json({ success: false, error: { code: 'DATABASE_ERROR', message: err.message } });
+  }
+}
+
+// -------------------------------------------------------------
+// GET SINGLE DISPATCH BY ID (FOR LR CHALLAN DOCUMENT) 📄
+// -------------------------------------------------------------
+async function handleGetDispatchById(req, res) {
+  try {
+    await ensureTruckDispatchesTableExists();
+    const { id } = req.params;
+
+    const [rows] = await pool.query(
+      `SELECT td.*, t.company_name AS transporter_name, t.code AS transporter_code, t.gst_pan,
+              tr.req_no, tr.pickup_origin, tr.drop_location, tri.product_name, tri.sub_indent_no
+       FROM truck_dispatches td
+       LEFT JOIN transporters t ON t.id = td.transporter_id
+       LEFT JOIN transport_requirements tr ON tr.id = td.requirement_id
+       LEFT JOIN transport_requirement_items tri ON tri.id = td.requirement_item_id
+       WHERE td.id = ? OR td.lr_number = ? LIMIT 1`,
+      [id, id]
+    );
+
+    if (rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Dispatch record not found' });
+    }
+
+    const disp = rows[0];
+
+    // Transporter RBAC check
+    if (req.user && req.user.role === 'transporter') {
+      const authTransporter = await resolveAuthenticatedTransporter(req);
+      if (!authTransporter || (String(disp.transporter_id) !== String(authTransporter.id) && String(disp.transporter_id) !== String(authTransporter.code))) {
+        return res.status(403).json({ success: false, error: 'Access denied to this dispatch record.' });
+      }
+    }
+
+    return res.json({ success: true, dispatch: disp });
+  } catch (err) {
+    console.error('❌ Get Dispatch By ID Error:', err.message);
     return res.status(500).json({ success: false, error: { code: 'DATABASE_ERROR', message: err.message } });
   }
 }
@@ -1602,6 +2283,12 @@ router.post('/rate-submissions/:id/admin-counter', authenticateToken, handleAdmi
 router.post('/rate-submissions/:id/respond-counter', authenticateToken, handleTransporterResponse);
 router.post('/rate-submissions/:id/transporter-response', authenticateToken, handleTransporterResponse);
 router.post('/rate-submissions/:id/finalize', authenticateToken, handleFinalizeBid);
+router.post('/requirements/:requirementId/items/:itemId/accept-final-rate', authenticateToken, handleAcceptFinalRate);
+router.post('/rate-submissions/:id/accept-final-rate', authenticateToken, handleAcceptFinalRate);
+router.post('/requirements/:requirementId/items/:itemId/dispatch', authenticateToken, handleCreateTruckDispatch);
+router.get('/requirements/:requirementId/items/:itemId/dispatches', authenticateToken, handleGetRequirementItemDispatches);
+router.get('/dispatches', authenticateToken, handleGetDispatches);
+router.get('/dispatches/:id', authenticateToken, handleGetDispatchById);
 router.get('/rate-submissions/:id/negotiation-history', authenticateToken, handleGetNegotiationHistory);
 router.get('/rate-submissions/:id/history', authenticateToken, handleGetNegotiationHistory);
 router.post('/rate-submissions', authenticateToken, handleCreateRateSubmission);

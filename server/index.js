@@ -1,4 +1,4 @@
-// Hostinger Passenger Process Reload Signal v1.8.9 - Minimalist Single Delete Action UI
+// Hostinger Passenger Process Reload Signal v1.9.0 - Winning Transporter Acceptance, Dispatch & Auto LR
 import express from 'express';
 import cors from 'cors';
 import path from 'path';

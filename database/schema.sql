@@ -169,23 +169,37 @@ CREATE TABLE IF NOT EXISTS `contracts` (
   CONSTRAINT `fk_contracts_transporter` FOREIGN KEY (`transporter_id`) REFERENCES `transporters` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- 9. TRUCK DISPATCHES TABLE
+-- 8. LR NUMBER CONCURRENCY-SAFE SEQUENCES TABLE
+CREATE TABLE IF NOT EXISTS `lr_sequences` (
+  `prefix` VARCHAR(50) NOT NULL PRIMARY KEY,
+  `last_seq` INT NOT NULL DEFAULT 0,
+  `updated_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 9. TRUCK DISPATCHES TABLE (ITEM-LEVEL & CANONICAL LR)
 CREATE TABLE IF NOT EXISTS `truck_dispatches` (
-  `id` VARCHAR(64) NOT NULL,
-  `allocation_id` VARCHAR(64) DEFAULT NULL,
-  `request_id` VARCHAR(64) DEFAULT NULL,
-  `transporter_id` VARCHAR(64) NOT NULL,
-  `truck_no` VARCHAR(50) NOT NULL,
-  `driver_name` VARCHAR(150) DEFAULT NULL,
-  `driver_phone` VARCHAR(50) DEFAULT NULL,
-  `driver_license` VARCHAR(100) DEFAULT NULL,
-  `lr_no` VARCHAR(100) DEFAULT NULL,
-  `lr_date` DATE DEFAULT NULL,
-  `loaded_qty` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
-  `status` ENUM('Dispatched', 'In-Transit', 'Delivered') NOT NULL DEFAULT 'Dispatched',
+  `id` VARCHAR(100) NOT NULL,
+  `requirement_id` VARCHAR(100) NOT NULL,
+  `requirement_item_id` VARCHAR(100) NOT NULL,
+  `transporter_id` VARCHAR(100) NOT NULL,
+  `finalized_rate` DECIMAL(12,2) NOT NULL,
+  `truck_number` VARCHAR(50) NOT NULL,
+  `loaded_quantity_mt` DECIMAL(12,3) NOT NULL,
+  `driver_name` VARCHAR(150) NOT NULL,
+  `driver_mobile` VARCHAR(50) NOT NULL,
+  `driver_license` VARCHAR(100) NOT NULL,
+  `lr_number` VARCHAR(100) NOT NULL,
+  `dispatch_reference` VARCHAR(100) DEFAULT NULL,
+  `dispatch_status` VARCHAR(50) NOT NULL DEFAULT 'Dispatched',
   `dispatched_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
+  UNIQUE KEY `unique_lr_number` (`lr_number`),
+  KEY `idx_dispatches_req_item` (`requirement_id`, `requirement_item_id`),
   KEY `idx_dispatches_transporter` (`transporter_id`),
+  CONSTRAINT `fk_dispatches_req` FOREIGN KEY (`requirement_id`) REFERENCES `transport_requirements` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_dispatches_req_item` FOREIGN KEY (`requirement_item_id`) REFERENCES `transport_requirement_items` (`id`) ON DELETE CASCADE,
   CONSTRAINT `fk_dispatches_transporter` FOREIGN KEY (`transporter_id`) REFERENCES `transporters` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 

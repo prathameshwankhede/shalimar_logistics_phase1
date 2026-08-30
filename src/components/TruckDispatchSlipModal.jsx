@@ -15,7 +15,7 @@ export const TruckDispatchSlipModal = ({ dispatch, onClose }) => {
   const allocation = (db.allocations || []).find((a) => a.id === dispatch.allocation_id);
   const rateRequest = allocation
     ? (db.rate_requests || []).find((r) => r.id === allocation.rate_request_id)
-    : (db.rate_requests || []).find((r) => r.id === dispatch.rate_request_id);
+    : (db.rate_requests || []).find((r) => r.id === (dispatch.requirement_id || dispatch.rate_request_id));
   const transporter = (db.transporters || []).find((t) => t.id === dispatch.transporter_id);
   const contract = allocation
     ? (db.contracts || []).find((c) => c.allocation_id === allocation.id)
@@ -39,6 +39,21 @@ export const TruckDispatchSlipModal = ({ dispatch, onClose }) => {
   };
 
   const orderDateStr = formatDate(dispatch.dispatched_at || Date.now());
+  const lrNumber = dispatch.lr_number || dispatch.lr_no || dispatch.id || 'LR-SNPL-PENDING';
+  const truckNumber = dispatch.truck_number || dispatch.truck_no || 'N/A';
+  const driverName = dispatch.driver_name || 'Driver';
+  const driverLicense = dispatch.driver_license || 'N/A';
+  const driverMobile = dispatch.driver_mobile || dispatch.driver_phone || 'N/A';
+  const loadedQty = dispatch.loaded_quantity_mt || dispatch.dispatched_qty || dispatch.loaded_qty || 0;
+  const freightRate = dispatch.finalized_rate || dispatch.freight_rate || (allocation ? allocation.agreed_rate : 450);
+  const routeLocation = (dispatch.pickup_origin && dispatch.drop_location)
+    ? `${dispatch.pickup_origin} ➔ ${dispatch.drop_location}`
+    : (rateRequest ? `${rateRequest.origin_city || rateRequest.pickup_origin || 'Nagpur'} ➔ ${rateRequest.dest_city || rateRequest.drop_location || 'Destination'}` : 'MIDC Processing Plant');
+  const cargoName = dispatch.product_name || (rateRequest ? (rateRequest.product_name || rateRequest.material_type) : 'Agri-Commodities / Bulk Cargo');
+  const transporterName = dispatch.transporter_name || (transporter ? transporter.company_name : 'Assigned Logistics Vendor');
+  const transporterCode = dispatch.transporter_code || (transporter ? transporter.code : 'TR001');
+  const transporterGst = dispatch.gst_pan || (transporter ? transporter.gst_pan : '27AAPCS1419M1ZV');
+  const reqNoStr = dispatch.sub_indent_no || dispatch.req_no || (rateRequest ? (rateRequest.sub_indent_no || rateRequest.request_no) : 'SNPL/26-27/REQ-01');
 
   // Print PDF Slip
   const handlePrint = () => {
@@ -108,9 +123,9 @@ export const TruckDispatchSlipModal = ({ dispatch, onClose }) => {
             </div>
 
             <div style={{ textAlign: 'right', border: '1.5px solid #000000', padding: '6px 12px', borderRadius: '4px' }}>
-              <div style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#000000' }}>DISPATCH REF</div>
+              <div style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#000000' }}>DISPATCH REF / LR NO</div>
               <div style={{ fontSize: '0.9rem', fontWeight: '900', color: '#000000', fontFamily: 'monospace' }}>
-                {dispatch.lr_number}
+                {lrNumber}
               </div>
             </div>
           </div>
@@ -131,7 +146,7 @@ export const TruckDispatchSlipModal = ({ dispatch, onClose }) => {
               {/* Row 2: Sr. No. / LR No. & Plant Entry Sr. No. */}
               <tr style={{ borderBottom: '1px solid #000000' }}>
                 <td style={{ padding: '8px 12px', borderRight: '1px solid #000000' }}>
-                  <strong>Sr. No. / LR No.:</strong> <span style={{ fontFamily: 'monospace', fontWeight: 'bold' }}>{dispatch.lr_number}</span>
+                  <strong>Sr. No. / LR No.:</strong> <span style={{ fontFamily: 'monospace', fontWeight: 'bold' }}>{lrNumber}</span>
                 </td>
                 <td style={{ padding: '8px 12px' }}>
                   <strong>Sr. No. (Plant Entry):</strong> ______________________
@@ -141,44 +156,44 @@ export const TruckDispatchSlipModal = ({ dispatch, onClose }) => {
               {/* Row 3: Truck/Vehicle No. */}
               <tr style={{ borderBottom: '1px solid #000000' }}>
                 <td colSpan="2" style={{ padding: '8px 12px' }}>
-                  <strong>Truck / Vehicle No.:</strong> <span style={{ fontFamily: 'monospace', fontSize: '14px', fontWeight: '900' }}>{dispatch.truck_number}</span>
+                  <strong>Truck / Vehicle No.:</strong> <span style={{ fontFamily: 'monospace', fontSize: '14px', fontWeight: '900' }}>{truckNumber}</span>
                 </td>
               </tr>
 
               {/* Row 4: Driver Name */}
               <tr style={{ borderBottom: '1px solid #000000' }}>
                 <td colSpan="2" style={{ padding: '8px 12px' }}>
-                  <strong>Driver Name:</strong> <span style={{ fontWeight: 'bold', fontSize: '13px' }}>{dispatch.driver_name}</span>
+                  <strong>Driver Name:</strong> <span style={{ fontWeight: 'bold', fontSize: '13px' }}>{driverName}</span>
                 </td>
               </tr>
 
               {/* Row 5: License No. & Mobile No. */}
               <tr style={{ borderBottom: '1px solid #000000' }}>
                 <td style={{ padding: '8px 12px', borderRight: '1px solid #000000' }}>
-                  <strong>License No.:</strong> <span style={{ fontFamily: 'monospace', fontWeight: 'bold' }}>{dispatch.driver_license || 'MH31 20210012345'}</span>
+                  <strong>License No.:</strong> <span style={{ fontFamily: 'monospace', fontWeight: 'bold' }}>{driverLicense}</span>
                 </td>
                 <td style={{ padding: '8px 12px' }}>
-                  <strong>Mobile No.:</strong> <span style={{ fontFamily: 'monospace', fontWeight: 'bold' }}>{dispatch.driver_phone}</span>
+                  <strong>Mobile No.:</strong> <span style={{ fontFamily: 'monospace', fontWeight: 'bold' }}>{driverMobile}</span>
                 </td>
               </tr>
 
               {/* Row 6: Location & Qty */}
               <tr style={{ borderBottom: '1px solid #000000' }}>
                 <td style={{ padding: '8px 12px', borderRight: '1px solid #000000' }}>
-                  <strong>Location:</strong> <span style={{ fontWeight: 'bold' }}>{rateRequest ? `${rateRequest.origin_city} ➔ ${rateRequest.dest_city}` : 'MIDC Processing Plant'}</span>
+                  <strong>Location:</strong> <span style={{ fontWeight: 'bold' }}>{routeLocation}</span>
                 </td>
                 <td style={{ padding: '8px 12px' }}>
-                  <strong>Qty:</strong> <span style={{ fontWeight: '900', fontSize: '14px' }}>{dispatch.dispatched_qty} MT</span>
+                  <strong>Qty:</strong> <span style={{ fontWeight: '900', fontSize: '14px' }}>{loadedQty} MT</span>
                 </td>
               </tr>
 
               {/* Row 7: Freight & Atom Name / Material Item */}
               <tr>
                 <td style={{ padding: '8px 12px', borderRight: '1px solid #000000' }}>
-                  <strong>Freight Rate:</strong> <span style={{ fontWeight: 'bold' }}>₹{allocation ? allocation.agreed_rate : 450} / MT</span>
+                  <strong>Freight Rate:</strong> <span style={{ fontWeight: 'bold' }}>₹{freightRate} / MT</span>
                 </td>
                 <td style={{ padding: '8px 12px' }}>
-                  <strong>Atom Name / Cargo:</strong> <span style={{ fontWeight: 'bold' }}>{rateRequest ? rateRequest.material_type : 'Soybean Meal De-Oiled Cake (DOC)'}</span>
+                  <strong>Atom Name / Cargo:</strong> <span style={{ fontWeight: 'bold' }}>{cargoName}</span>
                 </td>
               </tr>
             </tbody>
@@ -187,12 +202,12 @@ export const TruckDispatchSlipModal = ({ dispatch, onClose }) => {
           {/* Transporter & ERP PO Footer Details */}
           <div style={{ marginTop: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', fontSize: '11px', borderTop: '1px solid #000000', paddingTop: '10px' }}>
             <div>
-              <strong>Transporter Company:</strong> {transporter ? transporter.company_name : 'Assigned Logistics Vendor'}<br />
-              <strong>Transporter Code:</strong> {transporter ? transporter.code : 'TR001'} | <strong>GST:</strong> {transporter ? transporter.gst_pan : '27AAPCS1419M1ZV'}
+              <strong>Transporter Company:</strong> {transporterName}<br />
+              <strong>Transporter Code:</strong> {transporterCode} | <strong>GST:</strong> {transporterGst}
             </div>
             <div style={{ textAlign: 'right' }}>
               <strong>ERP Contract PO:</strong> {contract ? contract.erp_po_number : 'SAP-PO-459821'}<br />
-              <strong>Indent Ref Code:</strong> {rateRequest ? rateRequest.request_no : 'SNPL/26-27/REQ-01'}
+              <strong>Indent Ref Code:</strong> {reqNoStr}
             </div>
           </div>
 

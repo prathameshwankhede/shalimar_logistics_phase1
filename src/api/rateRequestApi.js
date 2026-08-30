@@ -60,3 +60,35 @@ export async function restoreRequirement(id) {
     method: 'POST'
   });
 }
+
+export async function acceptFinalRate(requirementId, itemId) {
+  return apiClient(`/api/requirements/${requirementId}/items/${itemId}/accept-final-rate`, {
+    method: 'POST'
+  });
+}
+
+export async function createTruckDispatch(requirementId, itemId, payload) {
+  return apiClient(`/api/requirements/${requirementId}/items/${itemId}/dispatch`, {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function getRequirementItemDispatches(requirementId, itemId) {
+  return apiClient(`/api/requirements/${requirementId}/items/${itemId}/dispatches`, {
+    method: 'GET'
+  });
+}
+
+export async function getAllDispatches() {
+  return apiClient('/api/dispatches', {
+    method: 'GET'
+  });
+}
+
+export async function getDispatchById(id) {
+  return apiClient(`/api/dispatches/${id}`, {
+    method: 'GET'
+  });
+}
+

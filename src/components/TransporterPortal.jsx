@@ -4,6 +4,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { submitBid, submitTransporterResponse, fetchTransporterDashboardSummary } from '../api/rateSubmissionApi';
+import { acceptFinalRate, createTruckDispatch } from '../api/rateRequestApi';
 import { NegotiationHistoryModal } from './NegotiationHistoryModal';
 import { ContractModal } from './ContractModal';
 import { ERPPaymentModal } from './ERPPaymentModal';
@@ -501,10 +502,128 @@ export const TransporterPortal = () => {
     document.body.removeChild(link);
   };
 
-  // 🤝 Negotiation State
+  // 🤝 Negotiation & Dispatch State
   const [activeTransporterCounterSubId, setActiveTransporterCounterSubId] = useState(null);
   const [transporterCounterRateInput, setTransporterCounterRateInput] = useState('');
   const [selectedHistorySub, setSelectedHistorySub] = useState(null);
+
+  // 🚚 Truck Dispatch Modal State
+  const [dispatchingReqItem, setDispatchingReqItem] = useState(null);
+  const [dispatchFormData, setDispatchFormData] = useState({
+    truck_number: '',
+    loaded_quantity_mt: '',
+    driver_name: '',
+    driver_mobile: '',
+    driver_license: ''
+  });
+  const [isSubmittingDispatch, setIsSubmittingDispatch] = useState(false);
+
+  const handleOpenDispatchModal = (req, myBid) => {
+    const totalQty = Number(req.quantity_mt || req.required_qty || 0);
+    const dispatchedQty = Number(req.dispatched_quantity_mt || 0);
+    const remainingQty = req.remaining_quantity_mt !== undefined && req.remaining_quantity_mt !== null
+      ? Number(req.remaining_quantity_mt)
+      : Math.max(0, totalQty - dispatchedQty);
+
+    setDispatchingReqItem({
+      req,
+      myBid,
+      totalQty,
+      dispatchedQty,
+      remainingQty
+    });
+    setDispatchFormData({
+      truck_number: '',
+      loaded_quantity_mt: remainingQty > 0 ? String(remainingQty) : '',
+      driver_name: '',
+      driver_mobile: '',
+      driver_license: ''
+    });
+  };
+
+  const handleAcceptFinalRateClick = async (req, myBid) => {
+    try {
+      const subId = myBid.id;
+      setSubmittingItems(prev => ({ ...prev, [`accept_${subId}`]: true }));
+      const reqId = req.requirement_id || req.id;
+      const itemId = req.item_id || req.sub_indent_id || 'MAIN';
+      const res = await acceptFinalRate(reqId, itemId);
+      if (res && res.success) {
+        setSuccessNotice(`🤝 Successfully accepted finalized rate of ₹${myBid.final_rate || myBid.rate_per_mt}/MT for ${req.sub_indent_no || req.request_no || req.id}. You can now dispatch trucks!`);
+        setTimeout(() => setSuccessNotice(''), 6000);
+        await safeRefreshRequirements();
+      }
+    } catch (err) {
+      alert(err.message || 'Failed to accept final rate.');
+    } finally {
+      setSubmittingItems(prev => ({ ...prev, [`accept_${myBid.id}`]: false }));
+    }
+  };
+
+  const handleDispatchTruckSubmit = async (e) => {
+    if (e) e.preventDefault();
+    if (!dispatchingReqItem) return;
+
+    const { req, myBid, remainingQty } = dispatchingReqItem;
+    const loadedQty = parseFloat(dispatchFormData.loaded_quantity_mt);
+
+    if (isNaN(loadedQty) || loadedQty <= 0) {
+      alert('Please enter a valid loaded quantity in MT.');
+      return;
+    }
+
+    if (loadedQty > remainingQty) {
+      alert(`Loaded quantity (${loadedQty} MT) cannot exceed remaining balance (${remainingQty} MT).`);
+      return;
+    }
+
+    if (!dispatchFormData.truck_number.trim()) {
+      alert('Please enter a valid truck vehicle number.');
+      return;
+    }
+
+    if (!dispatchFormData.driver_name.trim()) {
+      alert('Please enter driver name.');
+      return;
+    }
+
+    if (!dispatchFormData.driver_mobile.trim()) {
+      alert('Please enter driver mobile number.');
+      return;
+    }
+
+    if (!dispatchFormData.driver_license.trim()) {
+      alert('Please enter driver license number (DL).');
+      return;
+    }
+
+    try {
+      setIsSubmittingDispatch(true);
+      const reqId = req.requirement_id || req.id;
+      const itemId = req.item_id || req.sub_indent_id || 'MAIN';
+
+      const payload = {
+        truck_number: dispatchFormData.truck_number.trim().toUpperCase(),
+        loaded_quantity_mt: loadedQty,
+        driver_name: dispatchFormData.driver_name.trim(),
+        driver_mobile: dispatchFormData.driver_mobile.trim(),
+        driver_license: dispatchFormData.driver_license.trim().toUpperCase()
+      };
+
+      const res = await createTruckDispatch(reqId, itemId, payload);
+      if (res && res.success) {
+        setSuccessNotice(`✓ Truck ${payload.truck_number} dispatched successfully! LR No: ${res.lr_number}`);
+        setTimeout(() => setSuccessNotice(''), 6000);
+        setDispatchingReqItem(null);
+        setSelectedDispatchSlip(res.dispatch || { ...payload, lr_number: res.lr_number, requirement_id: reqId, item_id: itemId, finalized_rate: myBid.final_rate });
+        await safeRefreshRequirements();
+      }
+    } catch (err) {
+      alert(err.message || 'Failed to dispatch truck.');
+    } finally {
+      setIsSubmittingDispatch(false);
+    }
+  };
 
   // ♿ ACCESSIBILITY FOCUS MANAGEMENT: Auto-advance focus to the next unsubmitted item input
   const focusNextUnsubmittedItem = (currentItemId) => {
@@ -548,7 +667,8 @@ export const TransporterPortal = () => {
     const currentRate = myExistingBid.final_rate || myExistingBid.rate_per_mt || myExistingBid.rate_per_unit || origRate;
     const adminCounter = myExistingBid.counter_offer_rate;
 
-    const isFinalized = isBidFrozen(myExistingBid) || counterOfferStatus === 'ACCEPTED' || bidStatusUpper === 'COUNTER_ACCEPTED' || bidStatusUpper === 'FINALIZED' || Number(myExistingBid.final_rate) > 0;
+    const isFinalized = Boolean(myExistingBid.is_finalized) || isBidFrozen(myExistingBid) || counterOfferStatus === 'ACCEPTED' || bidStatusUpper === 'COUNTER_ACCEPTED' || bidStatusUpper === 'FINALIZED' || Number(myExistingBid.final_rate) > 0;
+    const isAccepted = String(myExistingBid.acceptance_status || '').toUpperCase() === 'ACCEPTED';
     
     const isCounteredByAdmin = !isFinalized && (
       (counterOfferBy === 'ADMIN' && counterOfferStatus === 'PENDING') ||
@@ -564,6 +684,7 @@ export const TransporterPortal = () => {
     const isRejected = !isFinalized && (counterOfferStatus === 'REJECTED' || bidStatusUpper === 'COUNTER_REJECTED');
 
     const isResponding = submittingItems[`resp_${myExistingBid.id}`];
+    const isAccepting = submittingItems[`accept_${myExistingBid.id}`];
     const showCounterInput = activeTransporterCounterSubId === myExistingBid.id;
 
     const handleAcceptAdminCounter = async () => {
@@ -616,15 +737,61 @@ export const TransporterPortal = () => {
       }
     };
 
-    // CASE C — TRANSPORTER COUNTER ACCEPTED / FINALIZED
+    // CASE C — FINALIZED RATE FLOW (WINNING TRANSPORTER)
     if (isFinalized) {
-      return (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-          <div style={{ background: '#dcfce7', border: '1.5px solid #16a34a', padding: '8px 14px', borderRadius: '10px', color: '#064e3b', fontSize: '0.92rem', fontWeight: '900', display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
-            ✓ COUNTER OFFER ACCEPTED — Final Agreed Rate: ₹{myExistingBid.final_rate || currentRate}/MT
+      const remainingQty = req.remaining_quantity_mt !== undefined && req.remaining_quantity_mt !== null
+        ? Number(req.remaining_quantity_mt)
+        : Math.max(0, Number(req.quantity_mt || req.required_qty || 0) - Number(req.dispatched_quantity_mt || 0));
+      const dispatchedQty = Number(req.dispatched_quantity_mt || 0);
+      const isFullyDispatched = remainingQty <= 0 && dispatchedQty > 0;
+
+      if (!isAccepted) {
+        return (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', background: '#fffbeb', border: '1.5px solid #f59e0b', padding: '10px 14px', borderRadius: '12px', minWidth: '260px' }}>
+            <div style={{ fontSize: '0.92rem', fontWeight: '900', color: '#b45309', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              🏆 Rate Finalized — Final Agreed Rate: <span style={{ background: '#fef3c7', padding: '2px 8px', borderRadius: '6px', border: '1px solid #f59e0b', color: '#92400e' }}>₹{myExistingBid.final_rate || currentRate}/MT</span>
+            </div>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                disabled={isAccepting}
+                onClick={() => handleAcceptFinalRateClick(req, myExistingBid)}
+                className="btn btn-success"
+                style={{ padding: '7px 16px', fontSize: '0.84rem', fontWeight: '900', borderRadius: '8px', background: '#16a34a', color: '#ffffff', border: 'none', cursor: isAccepting ? 'not-allowed' : 'pointer', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+              >
+                {isAccepting ? '⏳ Accepting...' : '🤝 Accept Final Rate'}
+              </button>
+              <button type="button" onClick={() => setSelectedHistorySub(myExistingBid)} style={{ background: 'none', border: 'none', color: '#0284c7', cursor: 'pointer', fontSize: '0.78rem', fontWeight: '700', textDecoration: 'underline' }}>
+                📜 History
+              </button>
+            </div>
           </div>
-          <div style={{ color: '#047857', fontSize: '0.8rem', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span>Status: Finalized / Accepted</span>
+        );
+      }
+
+      return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', background: '#dcfce7', border: '1.5px solid #16a34a', padding: '10px 14px', borderRadius: '12px', minWidth: '260px' }}>
+          <div style={{ fontSize: '0.92rem', fontWeight: '900', color: '#064e3b', display: 'flex', alignItems: 'center', gap: '6px' }}>
+            ✅ Rate Accepted (₹{myExistingBid.final_rate || currentRate}/MT)
+          </div>
+          <div style={{ fontSize: '0.78rem', color: '#047857', fontWeight: '700' }}>
+            Dispatched: <strong>{dispatchedQty} MT</strong> | Remaining: <strong>{remainingQty} MT</strong>
+          </div>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', marginTop: '2px' }}>
+            {isFullyDispatched ? (
+              <span style={{ background: '#059669', color: '#ffffff', padding: '5px 12px', borderRadius: '6px', fontSize: '0.8rem', fontWeight: '900' }}>
+                🎉 100% Fully Dispatched
+              </span>
+            ) : (
+              <button
+                type="button"
+                onClick={() => handleOpenDispatchModal(req, myExistingBid)}
+                className="btn btn-primary"
+                style={{ padding: '7px 16px', fontSize: '0.84rem', fontWeight: '900', borderRadius: '8px', background: '#0284c7', color: '#ffffff', border: 'none', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+              >
+                🚚 Dispatch New Truck
+              </button>
+            )}
             <button type="button" onClick={() => setSelectedHistorySub(myExistingBid)} style={{ background: 'none', border: 'none', color: '#0284c7', cursor: 'pointer', fontSize: '0.78rem', fontWeight: '700', textDecoration: 'underline' }}>
               📜 History
             </button>
@@ -1085,7 +1252,7 @@ export const TransporterPortal = () => {
   };
 
   // TRUCK DISPATCH + NEWEST DISPATCH FIRST + AUTO COMPLETION TRACKING!
-  const handleDispatchTruckSubmit = (e, alloc) => {
+  const handleLegacyAllocationDispatchSubmit = (e, alloc) => {
     e.preventDefault();
     const allocForm = dispatchForm[alloc.id] || {};
     const qtyVal = parseFloat(allocForm.dispatched_qty);
@@ -2095,7 +2262,7 @@ export const TransporterPortal = () => {
                             <Truck size={18} /> Dispatch New Truck (LR Creation & Auto-Rebroadcast of Unfulfilled Tonnage)
                           </h5>
 
-                          <form onSubmit={(e) => handleDispatchTruckSubmit(e, alloc)} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px', alignItems: 'flex-end' }}>
+                          <form onSubmit={(e) => handleLegacyAllocationDispatchSubmit(e, alloc)} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px', alignItems: 'flex-end' }}>
                             <div>
                               <label className="form-label" style={{ fontSize: '0.78rem' }}>Truck Number (e.g. MH31FC4512)</label>
                               <input
@@ -2570,6 +2737,158 @@ export const TransporterPortal = () => {
                 </button>
                 <button type="submit" className="btn btn-primary">
                   <Send size={15} /> Submit Quote
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* 🚚 Truck Dispatch Input Form Modal */}
+      {dispatchingReqItem && (
+        <div className="modal-overlay" style={{ background: 'rgba(15, 23, 42, 0.88)', zIndex: 9998, backdropFilter: 'blur(6px)' }}>
+          <div className="modal-content" style={{ maxWidth: '640px', width: '95%', background: '#ffffff', color: '#0f172a', borderRadius: '16px', padding: '28px', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.35)', border: '1px solid #cbd5e1' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px', borderBottom: '1.5px solid #e2e8f0', paddingBottom: '12px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div style={{ background: '#e0f2fe', color: '#0284c7', padding: '10px', borderRadius: '10px' }}>
+                  <Truck size={24} />
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: '900', color: '#0f172a' }}>🚚 Dispatch Truck & Generate LR</h3>
+                  <span style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: '700' }}>
+                    Ref: {dispatchingReqItem.req.sub_indent_no || dispatchingReqItem.req.request_no || dispatchingReqItem.req.id}
+                  </span>
+                </div>
+              </div>
+              <button type="button" onClick={() => setDispatchingReqItem(null)} style={{ background: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '6px 10px', cursor: 'pointer' }}>
+                ✕
+              </button>
+            </div>
+
+            {/* Read-Only Context Summary */}
+            <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '14px 18px', marginBottom: '18px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', fontSize: '0.82rem' }}>
+              <div>
+                <span style={{ color: '#64748b', fontWeight: '600' }}>Route:</span>{' '}
+                <strong>{dispatchingReqItem.req.origin_city || dispatchingReqItem.req.pickup_origin || 'Origin'} ➔ {dispatchingReqItem.req.dest_city || dispatchingReqItem.req.drop_location || 'Destination'}</strong>
+              </div>
+              <div>
+                <span style={{ color: '#64748b', fontWeight: '600' }}>Cargo:</span>{' '}
+                <strong>{dispatchingReqItem.req.product_name || dispatchingReqItem.req.material_type || 'Bulk Goods'}</strong>
+              </div>
+              <div>
+                <span style={{ color: '#64748b', fontWeight: '600' }}>Finalized Rate:</span>{' '}
+                <strong style={{ color: '#059669', fontSize: '0.95rem' }}>₹{dispatchingReqItem.myBid.final_rate || dispatchingReqItem.myBid.rate_per_mt}/MT</strong>
+              </div>
+              <div>
+                <span style={{ color: '#64748b', fontWeight: '600' }}>Remaining Balance:</span>{' '}
+                <strong style={{ color: '#d97706', fontSize: '0.95rem' }}>
+                  {dispatchingReqItem.remainingQty} MT
+                </strong>{' '}
+                <span style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                  (of {dispatchingReqItem.totalQty} MT)
+                </span>
+              </div>
+            </div>
+
+            {/* Transporter Input Form */}
+            <form onSubmit={handleDispatchTruckSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: '800', color: '#334155', marginBottom: '4px' }}>
+                    Truck Number (e.g. MH31FC4512) *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="MH31FC4512"
+                    className="form-control"
+                    value={dispatchFormData.truck_number}
+                    onChange={(e) => setDispatchFormData({ ...dispatchFormData, truck_number: e.target.value.toUpperCase() })}
+                    style={{ fontWeight: '800', fontFamily: 'monospace', textTransform: 'uppercase' }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: '800', color: '#334155', marginBottom: '4px' }}>
+                    Loaded Quantity (MT) *
+                  </label>
+                  <input
+                    type="number"
+                    required
+                    min="0.01"
+                    max={dispatchingReqItem.remainingQty}
+                    step="0.001"
+                    placeholder={`Max ${dispatchingReqItem.remainingQty} MT`}
+                    className="form-control"
+                    value={dispatchFormData.loaded_quantity_mt}
+                    onChange={(e) => setDispatchFormData({ ...dispatchFormData, loaded_quantity_mt: e.target.value })}
+                    style={{ fontWeight: '800' }}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: '800', color: '#334155', marginBottom: '4px' }}>
+                  Driver Name *
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Ramesh Kumar"
+                  className="form-control"
+                  value={dispatchFormData.driver_name}
+                  onChange={(e) => setDispatchFormData({ ...dispatchFormData, driver_name: e.target.value })}
+                  style={{ fontWeight: '700' }}
+                />
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: '800', color: '#334155', marginBottom: '4px' }}>
+                    Driver Mobile Number *
+                  </label>
+                  <input
+                    type="tel"
+                    required
+                    placeholder="98XXXXXXXX"
+                    className="form-control"
+                    value={dispatchFormData.driver_mobile}
+                    onChange={(e) => setDispatchFormData({ ...dispatchFormData, driver_mobile: e.target.value })}
+                    style={{ fontWeight: '700' }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: '800', color: '#334155', marginBottom: '4px' }}>
+                    Driver License Number (DL) *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="MH31 20210012345"
+                    className="form-control"
+                    value={dispatchFormData.driver_license}
+                    onChange={(e) => setDispatchFormData({ ...dispatchFormData, driver_license: e.target.value.toUpperCase() })}
+                    style={{ fontWeight: '700', fontFamily: 'monospace', textTransform: 'uppercase' }}
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '10px', borderTop: '1px solid #e2e8f0', paddingTop: '14px' }}>
+                <button
+                  type="button"
+                  disabled={isSubmittingDispatch}
+                  onClick={() => setDispatchingReqItem(null)}
+                  className="btn"
+                  style={{ background: '#cbd5e1', color: '#1e293b', border: 'none', padding: '9px 18px', borderRadius: '8px', fontWeight: '800' }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmittingDispatch}
+                  className="btn btn-primary"
+                  style={{ padding: '9px 24px', fontSize: '0.9rem', fontWeight: '900', borderRadius: '8px', background: '#0284c7', color: '#ffffff', border: 'none', display: 'inline-flex', alignItems: 'center', gap: '8px', boxShadow: '0 4px 14px rgba(2, 132, 199, 0.35)' }}
+                >
+                  {isSubmittingDispatch ? '⏳ Dispatching & Generating LR...' : '✈ Dispatch & Generate LR'}
                 </button>
               </div>
             </form>

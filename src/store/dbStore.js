@@ -178,6 +178,17 @@ export async function fetchMasterData() {
   }
 }
 
+export async function fetchTruckDispatchesList() {
+  try {
+    const res = await fetch(`${getApiBaseUrl()}/api/dispatches`, { headers: getAuthHeaders() });
+    if (!res.ok) return [];
+    const json = await res.json();
+    return json.dispatches || json.truck_dispatches || [];
+  } catch (e) {
+    return [];
+  }
+}
+
 export async function fetchAuditLogs() {
   try {
     const res = await fetch(`${getApiBaseUrl()}/api/security/audit-logs`, { headers: getAuthHeaders() });
@@ -251,13 +262,14 @@ export function resetDB() {
 export async function loadDBFromSupabase() {
   try {
     // ⚡ HIGH-PERFORMANCE PARALLEL FETCH: All independent endpoints fetched concurrently in a single round-trip
-    const [stateRes, transporters, companyUnits, products, requirements, rateSubmissions] = await Promise.all([
+    const [stateRes, transporters, companyUnits, products, requirements, rateSubmissions, dispatches] = await Promise.all([
       fetch(`${getApiBaseUrl()}/api/state`, { headers: getAuthHeaders() }).then(r => r.ok ? r.json() : null).catch(() => null),
       fetchTransportersList().catch(() => []),
       fetchCompanyUnitsList().catch(() => []),
       fetchProductsList().catch(() => []),
       fetchRequirementsList().catch(() => []),
-      fetchRateSubmissions().catch(() => [])
+      fetchRateSubmissions().catch(() => []),
+      fetchTruckDispatchesList().catch(() => [])
     ]);
 
     let data = stateRes && stateRes.data ? stateRes.data : { ...EMPTY_STATE };
@@ -281,6 +293,10 @@ export async function loadDBFromSupabase() {
     }
     if (Array.isArray(rateSubmissions)) {
       data.rate_submissions = rateSubmissions;
+    }
+    if (Array.isArray(dispatches)) {
+      data.dispatches = dispatches;
+      data.truck_dispatches = dispatches;
     }
 
     return data;
