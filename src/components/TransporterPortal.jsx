@@ -2763,20 +2763,12 @@ export const TransporterPortal = () => {
                     }}>
                       <div>
                         <div style={{ color: '#38bdf8', fontWeight: '800', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <CheckCircle2 size={16} color="#34d399" /> Rate Finalized & Active — Ready for Truck Dispatch
+                          <CheckCircle2 size={16} color="#34d399" /> Rate Finalized & Active Contract
                         </div>
-                        <div style={{ color: 'var(--text-sub)', fontSize: '0.8rem' }}>
-                          Remaining capacity to dispatch: <strong style={{ color: '#fbbf24' }}>{remainingBalance} MT</strong> of {totalQty} MT
+                        <div style={{ color: 'var(--text-sub)', fontSize: '0.8rem', marginTop: '2px' }}>
+                          Dispatched: <strong style={{ color: '#38bdf8' }}>{totalDispatched} MT</strong> | Remaining Balance: <strong style={{ color: '#fbbf24' }}>{remainingBalance} MT</strong> of {totalQty} MT
                         </div>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => handleOpenDispatchModal(item, myBid, parentReq)}
-                        className="btn btn-primary"
-                        style={{ padding: '8px 20px', fontWeight: '800', fontSize: '0.88rem', display: 'flex', alignItems: 'center', gap: '6px' }}
-                      >
-                        <Truck size={16} /> Dispatch New Truck
-                      </button>
                     </div>
                   ) : (
                     <div style={{
@@ -2868,7 +2860,7 @@ export const TransporterPortal = () => {
                       </div>
                     ) : (
                       <div style={{ padding: '14px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.82rem', background: 'rgba(255,255,255,0.02)', borderRadius: '8px' }}>
-                        🚚 No trucks dispatched yet. Click <strong>"Dispatch New Truck"</strong> above to record your first dispatch and generate an LR slip.
+                        📋 No trucks dispatched yet. Dispatched trucks and LR records will appear here after dispatch.
                       </div>
                     )}
                   </div>
