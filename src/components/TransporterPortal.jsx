@@ -2927,13 +2927,18 @@ export const TransporterPortal = () => {
               </thead>
               <tbody>
                 {mySubmissions.map((sub) => {
-                  const req = (db.rate_requests || []).find((r) => r.id === sub.rate_request_id || r.id === sub.requirement_id || r.req_no === sub.requirement_id);
-                  const childItem = req?.items?.find((i) => i.id === sub.item_id || i.sub_indent_no === sub.item_id);
-                  const targetItem = childItem || req;
+                  const req = (db.rate_requests || []).find((r) => r.id === sub.rate_request_id || r.id === sub.requirement_id || r.req_no === sub.requirement_id || r.req_no === sub.request_no);
+                  const childItem = req?.items?.find((i) => i.id === sub.item_id || i.sub_indent_no === sub.item_id || i.sub_indent_no === sub.sub_indent_no);
+                  const targetItem = childItem || (req?.items && req.items.length === 1 ? req.items[0] : req);
 
                   const isNegotiating = sub.counter_offer_status === 'PENDING' || sub.bid_status === 'COUNTER_OFFERED';
                   const isFrozen = isBidFrozen(sub);
-                  const isReqDeleted = !req;
+                  // A requirement is only deleted/cancelled if explicitly marked cancelled by admin
+                  const isReqDeleted = Boolean(
+                    req?.status === 'Cancelled' ||
+                    req?.status === 'CANCELLED' ||
+                    sub?.bid_status === 'CANCELLED'
+                  );
 
                   const bidStatusUpper = String(sub.bid_status || sub.status || '').toUpperCase();
                   const counterOfferStatus = String(sub.counter_offer_status || '').toUpperCase();
@@ -2949,11 +2954,11 @@ export const TransporterPortal = () => {
                   );
 
                   const submittedRate = Number(sub.rate_per_mt || sub.rate_per_unit || sub.original_rate || 0);
-                  const reqNo = req?.req_no || req?.request_no || sub.requirement_id || 'REQ';
-                  const subIndentNo = targetItem?.sub_indent_no || (childItem ? `${reqNo}/${childItem.id}` : reqNo);
-                  const originCity = targetItem?.pickup_origin || req?.pickup_origin || req?.origin_city || '-';
-                  const destCity = targetItem?.drop_location || req?.drop_location || req?.dest_city || '-';
-                  const cargo = targetItem?.product_name || req?.product_name || req?.material_type || 'Cargo';
+                  const reqNo = req?.req_no || req?.request_no || sub.request_no || sub.requirement_id || 'REQ';
+                  const subIndentNo = targetItem?.sub_indent_no || sub.sub_indent_no || (childItem ? `${reqNo}/${childItem.id}` : reqNo);
+                  const originCity = targetItem?.pickup_origin || req?.pickup_origin || req?.origin_city || sub.origin_city || sub.pickup_origin || '-';
+                  const destCity = targetItem?.drop_location || req?.drop_location || req?.dest_city || sub.dest_city || sub.drop_location || '-';
+                  const cargo = targetItem?.product_name || req?.product_name || req?.material_type || sub.material_type || sub.product_name || 'Cargo';
                   const qtyMt = Number(targetItem?.quantity_mt || targetItem?.required_qty || req?.quantity_mt || req?.required_qty || sub.quoted_quantity_mt || 0);
 
                   return (

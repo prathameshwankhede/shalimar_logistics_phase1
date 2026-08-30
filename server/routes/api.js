@@ -746,7 +746,7 @@ async function handleGetRequirements(req, res) {
 
     let reqQuery = 'SELECT * FROM transport_requirements';
     if (req.user && req.user.role === 'transporter') {
-      reqQuery += " WHERE UPPER(COALESCE(status, 'ACTIVE')) IN ('ACTIVE', 'DRAFT', 'OPEN')";
+      reqQuery += " WHERE UPPER(COALESCE(status, 'ACTIVE')) NOT IN ('ARCHIVED', 'DELETED')";
     }
     reqQuery += ' ORDER BY created_at DESC LIMIT 300';
 

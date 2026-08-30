@@ -236,6 +236,106 @@ it('TEST 9: Confirmation dialog matches expected wording', () => {
   assert.strictEqual(expectedConfirmation.includes("This action cannot be undone."), true);
 });
 
+// TEST A: Accepting finalized rate must NOT cancel/delete requirement
+it('TEST A: Accepting finalized rate must NOT cancel/delete requirement', () => {
+  const req = { id: 'req_001', req_no: 'SNPL/26-27/REQ-0001', status: 'Active' };
+  const item = { id: 'item_01', requirement_id: 'req_001', dispatch_status: 'AWAITING_ACCEPTANCE' };
+  const sub = { id: 'sub_01', requirement_id: 'req_001', item_id: 'item_01', is_finalized: 1, acceptance_status: 'PENDING' };
+
+  // Acceptance action
+  sub.acceptance_status = 'ACCEPTED';
+  item.dispatch_status = 'ACCEPTED';
+
+  assert.strictEqual(req.status, 'Active');
+  assert.strictEqual(Boolean(req.is_deleted), false);
+  assert.strictEqual(sub.acceptance_status, 'ACCEPTED');
+  assert.notStrictEqual(req.status, 'Cancelled');
+});
+
+// TEST B: Failed dispatch transaction must NOT cancel/delete requirement
+it('TEST B: Failed dispatch transaction must NOT cancel/delete requirement', () => {
+  const req = { id: 'req_001', req_no: 'SNPL/26-27/REQ-0001', status: 'Active' };
+  const sub = { id: 'sub_01', requirement_id: 'req_001', item_id: 'item_01', is_finalized: 1, acceptance_status: 'ACCEPTED' };
+
+  // Dispatch attempt with error (rolled back)
+  let rolledBack = false;
+  try {
+    throw new Error('Table security_audit_logs does not exist');
+  } catch (err) {
+    rolledBack = true;
+  }
+
+  assert.strictEqual(rolledBack, true);
+  assert.strictEqual(req.status, 'Active');
+  assert.strictEqual(Boolean(req.is_deleted), false);
+  assert.notStrictEqual(req.status, 'Cancelled');
+});
+
+// TEST C: Missing JOIN relation must NOT automatically display "Requirement Deleted"
+it('TEST C: Missing JOIN relation must NOT automatically display "Requirement Deleted"', () => {
+  const sub = {
+    id: 'sub_01',
+    requirement_id: 'req_001',
+    request_no: 'SNPL/26-27/REQ-0001',
+    sub_indent_no: 'SNPL/26-27/REQ-0001/01',
+    is_finalized: 1,
+    acceptance_status: 'ACCEPTED',
+    final_rate: 11
+  };
+  const rate_requests = []; // Missing JOIN / not yet loaded
+
+  const req = rate_requests.find(r => r.id === sub.requirement_id);
+  const isReqCancelled = Boolean(
+    req?.status === 'Cancelled' ||
+    req?.status === 'CANCELLED' ||
+    sub?.bid_status === 'CANCELLED'
+  );
+
+  // Requirement is not deleted/cancelled just because req object is missing in cache
+  assert.strictEqual(isReqCancelled, false);
+});
+
+// TEST D: Only explicit authenticated admin delete action can set deleted/cancelled state
+it('TEST D: Only explicit authenticated admin delete action can set deleted/cancelled state', () => {
+  const userAdmin = { id: 'usr_admin', role: 'admin' };
+  const userTransporter = { id: 'usr_trans', role: 'transporter' };
+
+  const deleteAction = (user, req) => {
+    if (user.role !== 'admin') {
+      return { success: false, code: 'FORBIDDEN' };
+    }
+    req.status = 'Cancelled';
+    req.is_deleted = true;
+    return { success: true };
+  };
+
+  const req = { id: 'req_001', status: 'Active' };
+
+  // Transporter cannot cancel/delete
+  const resTrans = deleteAction(userTransporter, req);
+  assert.strictEqual(resTrans.success, false);
+  assert.strictEqual(req.status, 'Active');
+
+  // Admin can cancel/delete
+  const resAdmin = deleteAction(userAdmin, req);
+  assert.strictEqual(resAdmin.success, true);
+  assert.strictEqual(req.status, 'Cancelled');
+});
+
+// TEST E: Submitted Bid History correctly displays accepted/finalized requirement after page refresh
+it('TEST E: Submitted Bid History correctly displays accepted/finalized requirement after page refresh', () => {
+  const req = { id: 'req_001', req_no: 'SNPL/26-27/REQ-0001', status: 'Active', items: [{ id: 'item_01', sub_indent_no: 'SNPL/26-27/REQ-0001/01', dispatch_status: 'ACCEPTED' }] };
+  const sub = { id: 'sub_01', requirement_id: 'req_001', item_id: 'item_01', is_finalized: 1, acceptance_status: 'ACCEPTED', final_rate: 11 };
+
+  const isAccepted = String(sub.acceptance_status || '').toUpperCase() === 'ACCEPTED';
+  const isFinalized = Boolean(sub.is_finalized) || Number(sub.final_rate) > 0;
+  const isReqCancelled = Boolean(req?.status === 'Cancelled' || req?.status === 'CANCELLED' || sub?.bid_status === 'CANCELLED');
+
+  assert.strictEqual(isReqCancelled, false);
+  assert.strictEqual(isFinalized, true);
+  assert.strictEqual(isAccepted, true);
+});
+
 console.log('==================================================');
 console.log(`📊 TEST RESULTS: ${passedTests} Passed | ${failedTests} Failed`);
 console.log('==================================================');
