@@ -1895,19 +1895,48 @@ export const AdminDashboard = () => {
       {/* Top Admin Summary Stats - Ultra-Attractive Glowing KPI Cards 💎 */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: '18px', marginBottom: '28px' }}>
         {/* CARD 1: RATE REQUESTS */}
-        <div
-          className="glass-panel"
+        <button
+          type="button"
+          onClick={() => {
+            setActiveTab('requirements');
+            setSelectedRequestForComparison(null);
+            setReqFilterTab('open');
+          }}
+          className="glass-panel stat-card-btn"
+          aria-label="View Active Rate Requests Directory"
           style={{
             padding: '20px',
             display: 'flex',
             alignItems: 'center',
             gap: '16px',
-            background: 'linear-gradient(135deg, rgba(56, 189, 248, 0.1) 0%, rgba(15, 23, 42, 0.6) 100%)',
-            border: '1px solid rgba(56, 189, 248, 0.35)',
-            boxShadow: '0 8px 32px 0 rgba(0, 0, 0, 0.36), 0 0 12px 0 rgba(56, 189, 248, 0.15)',
+            background: (activeTab === 'requirements' && reqFilterTab === 'open')
+              ? 'linear-gradient(135deg, rgba(56, 189, 248, 0.22) 0%, rgba(15, 23, 42, 0.85) 100%)'
+              : 'linear-gradient(135deg, rgba(56, 189, 248, 0.1) 0%, rgba(15, 23, 42, 0.6) 100%)',
+            border: (activeTab === 'requirements' && reqFilterTab === 'open')
+              ? '2px solid #38bdf8'
+              : '1px solid rgba(56, 189, 248, 0.35)',
+            boxShadow: (activeTab === 'requirements' && reqFilterTab === 'open')
+              ? '0 8px 32px 0 rgba(0, 0, 0, 0.45), 0 0 20px 0 rgba(56, 189, 248, 0.35)'
+              : '0 8px 32px 0 rgba(0, 0, 0, 0.36), 0 0 12px 0 rgba(56, 189, 248, 0.15)',
             borderRadius: '16px',
             position: 'relative',
-            overflow: 'hidden'
+            overflow: 'hidden',
+            cursor: 'pointer',
+            textAlign: 'left',
+            width: '100%',
+            transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+            transform: 'translateY(0)',
+            outline: 'none'
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.transform = 'translateY(-3px)';
+            e.currentTarget.style.boxShadow = '0 12px 36px 0 rgba(0, 0, 0, 0.45), 0 0 22px 0 rgba(56, 189, 248, 0.4)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.transform = 'translateY(0)';
+            e.currentTarget.style.boxShadow = (activeTab === 'requirements' && reqFilterTab === 'open')
+              ? '0 8px 32px 0 rgba(0, 0, 0, 0.45), 0 0 20px 0 rgba(56, 189, 248, 0.35)'
+              : '0 8px 32px 0 rgba(0, 0, 0, 0.36), 0 0 12px 0 rgba(56, 189, 248, 0.15)';
           }}
         >
           <div style={{
@@ -1917,11 +1946,12 @@ export const AdminDashboard = () => {
             boxShadow: '0 0 15px rgba(56, 189, 248, 0.4)',
             display: 'flex',
             alignItems: 'center',
-            justifyContent: 'center'
+            justifyContent: 'center',
+            flexShrink: 0
           }}>
             <Layers size={26} color="#ffffff" />
           </div>
-          <div style={{ flex: 1 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2px' }}>
               <span style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: '800', letterSpacing: '0.05em' }}>RATE REQUESTS</span>
               <span style={{ fontSize: '0.65rem', background: 'rgba(56, 189, 248, 0.2)', color: '#38bdf8', border: '1px solid rgba(56, 189, 248, 0.4)', padding: '1px 6px', borderRadius: '10px', fontWeight: '800' }}>
@@ -1932,22 +1962,51 @@ export const AdminDashboard = () => {
               {summaryRequirementsCount} <span style={{ fontSize: '0.9rem', color: '#38bdf8', fontWeight: '700' }}>Active</span>
             </div>
           </div>
-        </div>
+        </button>
 
         {/* CARD 2: SUBMITTED BIDS */}
-        <div
-          className="glass-panel"
+        <button
+          type="button"
+          onClick={() => {
+            setActiveTab('requirements');
+            setSelectedRequestForComparison(null);
+            setReqFilterTab('all');
+          }}
+          className="glass-panel stat-card-btn"
+          aria-label="View Submitted Bids and Quotes"
           style={{
             padding: '20px',
             display: 'flex',
             alignItems: 'center',
             gap: '16px',
-            background: 'linear-gradient(135deg, rgba(52, 211, 153, 0.1) 0%, rgba(15, 23, 42, 0.6) 100%)',
-            border: '1px solid rgba(52, 211, 153, 0.35)',
-            boxShadow: '0 8px 32px 0 rgba(0, 0, 0, 0.36), 0 0 12px 0 rgba(52, 211, 153, 0.15)',
+            background: (activeTab === 'requirements' && reqFilterTab === 'all')
+              ? 'linear-gradient(135deg, rgba(52, 211, 153, 0.22) 0%, rgba(15, 23, 42, 0.85) 100%)'
+              : 'linear-gradient(135deg, rgba(52, 211, 153, 0.1) 0%, rgba(15, 23, 42, 0.6) 100%)',
+            border: (activeTab === 'requirements' && reqFilterTab === 'all')
+              ? '2px solid #34d399'
+              : '1px solid rgba(52, 211, 153, 0.35)',
+            boxShadow: (activeTab === 'requirements' && reqFilterTab === 'all')
+              ? '0 8px 32px 0 rgba(0, 0, 0, 0.45), 0 0 20px 0 rgba(52, 211, 153, 0.35)'
+              : '0 8px 32px 0 rgba(0, 0, 0, 0.36), 0 0 12px 0 rgba(52, 211, 153, 0.15)',
             borderRadius: '16px',
             position: 'relative',
-            overflow: 'hidden'
+            overflow: 'hidden',
+            cursor: 'pointer',
+            textAlign: 'left',
+            width: '100%',
+            transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+            transform: 'translateY(0)',
+            outline: 'none'
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.transform = 'translateY(-3px)';
+            e.currentTarget.style.boxShadow = '0 12px 36px 0 rgba(0, 0, 0, 0.45), 0 0 22px 0 rgba(52, 211, 153, 0.4)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.transform = 'translateY(0)';
+            e.currentTarget.style.boxShadow = (activeTab === 'requirements' && reqFilterTab === 'all')
+              ? '0 8px 32px 0 rgba(0, 0, 0, 0.45), 0 0 20px 0 rgba(52, 211, 153, 0.35)'
+              : '0 8px 32px 0 rgba(0, 0, 0, 0.36), 0 0 12px 0 rgba(52, 211, 153, 0.15)';
           }}
         >
           <div style={{
@@ -1957,11 +2016,12 @@ export const AdminDashboard = () => {
             boxShadow: '0 0 15px rgba(52, 211, 153, 0.4)',
             display: 'flex',
             alignItems: 'center',
-            justifyContent: 'center'
+            justifyContent: 'center',
+            flexShrink: 0
           }}>
             <TrendingDown size={26} color="#ffffff" />
           </div>
-          <div style={{ flex: 1 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2px' }}>
               <span style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: '800', letterSpacing: '0.05em' }}>SUBMITTED BIDS</span>
               <span style={{ fontSize: '0.65rem', background: 'rgba(52, 211, 153, 0.2)', color: '#34d399', border: '1px solid rgba(52, 211, 153, 0.4)', padding: '1px 6px', borderRadius: '10px', fontWeight: '800' }}>
@@ -1972,22 +2032,51 @@ export const AdminDashboard = () => {
               {summarySubmissionsCount} <span style={{ fontSize: '0.9rem', color: '#34d399', fontWeight: '700' }}>Offers</span>
             </div>
           </div>
-        </div>
+        </button>
 
         {/* CARD 3: REGISTERED TRANSPORTERS */}
-        <div
-          className="glass-panel"
+        <button
+          type="button"
+          onClick={() => {
+            setSelectedRequestForComparison(null);
+            setActiveTab('title_masters');
+            setMasterFilterTab('transporters');
+          }}
+          className="glass-panel stat-card-btn"
+          aria-label="View Transporters and Logistics Vendors Directory"
           style={{
             padding: '20px',
             display: 'flex',
             alignItems: 'center',
             gap: '16px',
-            background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.1) 0%, rgba(15, 23, 42, 0.6) 100%)',
-            border: '1px solid rgba(245, 158, 11, 0.35)',
-            boxShadow: '0 8px 32px 0 rgba(0, 0, 0, 0.36), 0 0 12px 0 rgba(245, 158, 11, 0.15)',
+            background: ((activeTab === 'title_masters' || activeTab === 'transporters') && masterFilterTab === 'transporters')
+              ? 'linear-gradient(135deg, rgba(245, 158, 11, 0.22) 0%, rgba(15, 23, 42, 0.85) 100%)'
+              : 'linear-gradient(135deg, rgba(245, 158, 11, 0.1) 0%, rgba(15, 23, 42, 0.6) 100%)',
+            border: ((activeTab === 'title_masters' || activeTab === 'transporters') && masterFilterTab === 'transporters')
+              ? '2px solid #fbbf24'
+              : '1px solid rgba(245, 158, 11, 0.35)',
+            boxShadow: ((activeTab === 'title_masters' || activeTab === 'transporters') && masterFilterTab === 'transporters')
+              ? '0 8px 32px 0 rgba(0, 0, 0, 0.45), 0 0 20px 0 rgba(245, 158, 11, 0.35)'
+              : '0 8px 32px 0 rgba(0, 0, 0, 0.36), 0 0 12px 0 rgba(245, 158, 11, 0.15)',
             borderRadius: '16px',
             position: 'relative',
-            overflow: 'hidden'
+            overflow: 'hidden',
+            cursor: 'pointer',
+            textAlign: 'left',
+            width: '100%',
+            transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+            transform: 'translateY(0)',
+            outline: 'none'
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.transform = 'translateY(-3px)';
+            e.currentTarget.style.boxShadow = '0 12px 36px 0 rgba(0, 0, 0, 0.45), 0 0 22px 0 rgba(245, 158, 11, 0.4)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.transform = 'translateY(0)';
+            e.currentTarget.style.boxShadow = ((activeTab === 'title_masters' || activeTab === 'transporters') && masterFilterTab === 'transporters')
+              ? '0 8px 32px 0 rgba(0, 0, 0, 0.45), 0 0 20px 0 rgba(245, 158, 11, 0.35)'
+              : '0 8px 32px 0 rgba(0, 0, 0, 0.36), 0 0 12px 0 rgba(245, 158, 11, 0.15)';
           }}
         >
           <div style={{
@@ -1997,11 +2086,12 @@ export const AdminDashboard = () => {
             boxShadow: '0 0 15px rgba(245, 158, 11, 0.4)',
             display: 'flex',
             alignItems: 'center',
-            justifyContent: 'center'
+            justifyContent: 'center',
+            flexShrink: 0
           }}>
             <Building2 size={26} color="#ffffff" />
           </div>
-          <div style={{ flex: 1 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2px' }}>
               <span style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: '800', letterSpacing: '0.05em' }}>TRANSPORTERS</span>
               <span style={{ fontSize: '0.65rem', background: 'rgba(245, 158, 11, 0.2)', color: '#fbbf24', border: '1px solid rgba(245, 158, 11, 0.4)', padding: '1px 6px', borderRadius: '10px', fontWeight: '800' }}>
@@ -2012,7 +2102,7 @@ export const AdminDashboard = () => {
               {summaryTransportersCount} <span style={{ fontSize: '0.9rem', color: '#fbbf24', fontWeight: '700' }}>Vendors</span>
             </div>
           </div>
-        </div>
+        </button>
       </div>
 
       {archiveNotice && (
