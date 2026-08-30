@@ -100,8 +100,14 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ error: 'Invalid Username or Password' });
     }
 
+    const rawRole = foundUser.role || foundUser.user_type || foundUser.account_type || 'transporter';
+    const userRole = String(rawRole).trim().toLowerCase();
+    foundUser.role = userRole;
+    if (userRole === 'transporter' || userRole === 'vendor') {
+      foundUser.transporter_id = foundUser.transporter_id || foundUser.id;
+    }
+
     const token = generateToken(foundUser);
-    const userRole = foundUser.role || 'transporter';
     const permissions = ROLE_PERMISSIONS[userRole] || ROLE_PERMISSIONS.transporter;
 
     // Minimal Safe User DTO (No passwords, hashes, or unrelated organization tables)

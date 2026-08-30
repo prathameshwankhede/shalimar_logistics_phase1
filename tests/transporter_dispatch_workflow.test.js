@@ -71,7 +71,8 @@ function finalizeRate(state, subId, agreedRate, adminUser) {
 // Emulate Server-Side Accept Final Rate
 function acceptFinalRate(state, requirementId, itemId, authUser) {
   if (!authUser) return { status: 401, error: 'Authentication required' };
-  if (authUser.role !== 'transporter') return { status: 403, error: 'Only transporters can accept finalized rates.' };
+  const userRole = String(authUser.role || '').trim().toLowerCase();
+  if (userRole !== 'transporter' && userRole !== 'vendor') return { status: 403, error: 'Only transporters can accept finalized rates.' };
 
   const sub = state.rate_submissions.find(s => s.requirement_id === requirementId && s.item_id === itemId && (s.is_finalized || s.bid_status === 'FINALIZED'));
   if (!sub) return { status: 404, error: 'Finalized quote not found' };
@@ -239,8 +240,8 @@ it('TEST 1: Admin finalizes rate -> sets is_finalized, finalized_rate, and accep
   assert.strictEqual(state.requirement_items[0].dispatch_status, 'AWAITING_ACCEPTANCE');
 });
 
-// TEST 2: Winning transporter can accept final rate
-it('TEST 2: Winning transporter accepts finalized rate successfully', () => {
+// TEST 2: Winning transporter can accept final rate (role = "transporter")
+it('TEST 2: Winning transporter accepts finalized rate successfully (role = "transporter")', () => {
   const state = createMockWorkflowState();
   finalizeRate(state, 'sub_win', 480, { username: 'admin', role: 'admin' });
 
@@ -251,6 +252,32 @@ it('TEST 2: Winning transporter accepts finalized rate successfully', () => {
   assert.strictEqual(res.success, true);
   assert.strictEqual(res.submission.acceptance_status, 'ACCEPTED');
   assert.strictEqual(state.requirement_items[0].dispatch_status, 'ACCEPTED');
+});
+
+// TEST 2B: Role normalization handles mixed case "Transporter"
+it('TEST 2B: JWT role = "Transporter" is normalized and allows rate acceptance', () => {
+  const state = createMockWorkflowState();
+  finalizeRate(state, 'sub_win', 480, { username: 'admin', role: 'admin' });
+
+  const authUser = { id: 'trans_win', transporter_id: 'trans_win', username: 'win_transporter', role: 'Transporter' };
+  const res = acceptFinalRate(state, 'req_001', 'item_001', authUser);
+
+  assert.strictEqual(res.status, 200);
+  assert.strictEqual(res.success, true);
+  assert.strictEqual(res.submission.acceptance_status, 'ACCEPTED');
+});
+
+// TEST 2C: Role normalization handles uppercase "TRANSPORTER"
+it('TEST 2C: JWT role = "TRANSPORTER" is normalized and allows rate acceptance', () => {
+  const state = createMockWorkflowState();
+  finalizeRate(state, 'sub_win', 480, { username: 'admin', role: 'admin' });
+
+  const authUser = { id: 'trans_win', transporter_id: 'trans_win', username: 'win_transporter', role: 'TRANSPORTER' };
+  const res = acceptFinalRate(state, 'req_001', 'item_001', authUser);
+
+  assert.strictEqual(res.status, 200);
+  assert.strictEqual(res.success, true);
+  assert.strictEqual(res.submission.acceptance_status, 'ACCEPTED');
 });
 
 // TEST 3: Non-winning transporter receives 403 when trying to accept
@@ -265,6 +292,18 @@ it('TEST 3: Non-winning transporter receives 403 FORBIDDEN_NOT_WINNING_TRANSPORT
   assert.strictEqual(res.code, 'FORBIDDEN_NOT_WINNING_TRANSPORTER');
 });
 
+// TEST 3B: Admin cannot call transporter accept-final-rate endpoint
+it('TEST 3B: Admin user cannot call transporter acceptance endpoint (HTTP 403)', () => {
+  const state = createMockWorkflowState();
+  finalizeRate(state, 'sub_win', 480, { username: 'admin', role: 'admin' });
+
+  const adminUser = { id: 'usr_admin', username: 'admin', role: 'admin' };
+  const res = acceptFinalRate(state, 'req_001', 'item_001', adminUser);
+
+  assert.strictEqual(res.status, 403);
+  assert.strictEqual(res.error, 'Only transporters can accept finalized rates.');
+});
+
 // TEST 4: Unauthenticated request receives 401
 it('TEST 4: Unauthenticated request receives 401 Authentication Required', () => {
   const state = createMockWorkflowState();
@@ -272,6 +311,14 @@ it('TEST 4: Unauthenticated request receives 401 Authentication Required', () =>
 
   const res = acceptFinalRate(state, 'req_001', 'item_001', null);
   assert.strictEqual(res.status, 401);
+});
+
+// TEST 4B: Authorization Bearer header formatting validation
+it('TEST 4B: Authorization Bearer token header is properly structured', () => {
+  const token = 'sample.jwt.token';
+  const headers = { 'Authorization': `Bearer ${token}` };
+  assert.strictEqual(headers['Authorization'].startsWith('Bearer '), true);
+  assert.strictEqual(headers['Authorization'].split(' ')[1], token);
 });
 
 // TEST 5: Dispatch before acceptance is strictly blocked

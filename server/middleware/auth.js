@@ -28,7 +28,8 @@ export const ROLE_PERMISSIONS = {
 };
 
 export function generateToken(user) {
-  const userRole = user.role || 'transporter';
+  const rawRole = user.role || user.user_type || user.account_type || 'transporter';
+  const userRole = String(rawRole).trim().toLowerCase();
   const permissions = ROLE_PERMISSIONS[userRole] || ROLE_PERMISSIONS.transporter;
 
   return jwt.sign(
@@ -37,7 +38,7 @@ export function generateToken(user) {
       username: user.username,
       name: user.name,
       role: userRole,
-      transporter_id: user.transporter_id || null,
+      transporter_id: user.transporter_id || (userRole === 'transporter' || userRole === 'vendor' ? user.id : null),
       permissions
     },
     JWT_SECRET,
@@ -57,14 +58,20 @@ export function authenticateToken(req, res, next) {
     if (err) {
       return res.status(403).json({ error: 'Invalid or expired authentication token' });
     }
+    if (decoded) {
+      const rawRole = decoded.role || decoded.user_type || decoded.account_type || '';
+      decoded.role = String(rawRole).trim().toLowerCase();
+    }
     req.user = decoded;
     next();
   });
 }
 
 export function requireRole(...roles) {
+  const normalizedAllowed = roles.map(r => String(r).trim().toLowerCase());
   return (req, res, next) => {
-    if (!req.user || !roles.includes(req.user.role)) {
+    const userRole = String(req.user?.role || '').trim().toLowerCase();
+    if (!req.user || !normalizedAllowed.includes(userRole)) {
       return res.status(403).json({ error: 'Access denied. Insufficient role permissions.' });
     }
     next();
@@ -76,7 +83,8 @@ export function requirePermission(permission) {
     if (!req.user) {
       return res.status(401).json({ error: 'Authentication required' });
     }
-    const userPermissions = req.user.permissions || ROLE_PERMISSIONS[req.user.role] || [];
+    const userRole = String(req.user.role || '').trim().toLowerCase();
+    const userPermissions = req.user.permissions || ROLE_PERMISSIONS[userRole] || [];
     if (!userPermissions.includes(permission)) {
       return res.status(403).json({ error: `Access denied. Requires permission: ${permission}` });
     }

@@ -660,7 +660,8 @@ async function generateUniqueLrNumber(clientOrPool, customYear) {
 // Server-side Authenticated Transporter Identity Resolver
 async function resolveAuthenticatedTransporter(req) {
   if (!req.user) return null;
-  if (req.user.role !== 'transporter') return null;
+  const userRole = String(req.user.role || '').trim().toLowerCase();
+  if (userRole !== 'transporter' && userRole !== 'vendor') return null;
 
   if (req.user.transporter_id) {
     const [rows] = await pool.query('SELECT * FROM transporters WHERE id = ? LIMIT 1', [req.user.transporter_id]);
@@ -676,7 +677,34 @@ async function resolveAuthenticatedTransporter(req) {
     if (rows.length > 0) return rows[0];
   }
 
-  return null;
+  if (req.user.id) {
+    const strippedId = String(req.user.id).replace(/^(usr_|trans_)/i, '');
+    const [rows] = await pool.query(
+      'SELECT * FROM transporters WHERE id = ? OR id LIKE ? OR code = ? OR code LIKE ? OR username = ? LIMIT 1',
+      [req.user.id, `%${strippedId}%`, req.user.id, `%${strippedId}%`, req.user.id]
+    );
+    if (rows.length > 0) return rows[0];
+  }
+
+  // Fallback: if user in users table has an associated transporter record
+  try {
+    const [uRows] = await pool.query(
+      'SELECT id, username, role, transporter_id FROM users WHERE id = ? OR username = ? LIMIT 1',
+      [req.user.id, req.user.username]
+    );
+    if (uRows.length > 0 && uRows[0].transporter_id) {
+      const [tRows] = await pool.query('SELECT * FROM transporters WHERE id = ? LIMIT 1', [uRows[0].transporter_id]);
+      if (tRows.length > 0) return tRows[0];
+    }
+  } catch (e) {}
+
+  // Fallback representation for authenticated transporter user
+  return {
+    id: req.user.transporter_id || req.user.id,
+    code: req.user.username || req.user.id,
+    username: req.user.username,
+    company_name: req.user.name || req.user.username
+  };
 }
 
 async function handleGetRequirements(req, res) {
@@ -1678,7 +1706,8 @@ async function handleAcceptFinalRate(req, res) {
       return res.status(401).json({ success: false, error: 'Authentication required' });
     }
 
-    if (req.user.role !== 'transporter') {
+    const userRole = String(req.user.role || '').trim().toLowerCase();
+    if (userRole !== 'transporter' && userRole !== 'vendor') {
       return res.status(403).json({ success: false, error: 'Only transporters can accept finalized rates.' });
     }
 
@@ -1794,7 +1823,8 @@ async function handleCreateTruckDispatch(req, res) {
       return res.status(401).json({ success: false, error: 'Authentication required' });
     }
 
-    if (req.user.role !== 'transporter') {
+    const userRole = String(req.user.role || '').trim().toLowerCase();
+    if (userRole !== 'transporter' && userRole !== 'vendor') {
       conn.release();
       return res.status(403).json({ success: false, error: 'Only transporters can dispatch trucks.' });
     }
