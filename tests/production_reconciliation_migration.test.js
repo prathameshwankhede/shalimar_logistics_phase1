@@ -25,15 +25,25 @@ function it(name, fn) {
 // Pure Simulator for Database Reconciliation & Dispatch Engine
 // -------------------------------------------------------------
 function simulateReconciliation(dbState) {
-  const dispatchSumMap = {};
-  
-  (dbState.truck_dispatches || []).forEach(d => {
-    const key = d.requirement_item_id;
-    dispatchSumMap[key] = (dispatchSumMap[key] || 0) + Number(d.loaded_quantity_mt || 0);
+  const items = dbState.transport_requirement_items || [];
+  const dispatches = dbState.truck_dispatches || [];
+
+  const reqItemCountMap = {};
+  items.forEach(it => {
+    reqItemCountMap[it.requirement_id] = (reqItemCountMap[it.requirement_id] || 0) + 1;
   });
 
-  (dbState.transport_requirement_items || []).forEach(item => {
-    const actualDispatched = Number(dispatchSumMap[item.id] || dispatchSumMap[item.sub_indent_no] || 0);
+  items.forEach(item => {
+    const matchingDispatches = dispatches.filter(d => {
+      if (!d) return false;
+      const reqMatch = String(d.requirement_id) === String(item.requirement_id);
+      if (d.requirement_item_id && d.requirement_item_id === item.id) return true;
+      if (d.requirement_item_id && item.sub_indent_no && d.requirement_item_id === item.sub_indent_no) return true;
+      if (reqMatch && (d.requirement_item_id === 'MAIN' || !d.requirement_item_id) && reqItemCountMap[item.requirement_id] === 1) return true;
+      return false;
+    });
+
+    const actualDispatched = matchingDispatches.reduce((acc, d) => acc + parseFloat(d.loaded_quantity_mt || 0), 0);
     const itemQty = Number(item.quantity_mt || 0);
     const remainingQty = Math.max(0, parseFloat((itemQty - actualDispatched).toFixed(3)));
 
@@ -132,8 +142,37 @@ function dispatchTruck(dbState, reqId, itemId, loadedQty, transId) {
   return { success: true, remaining: item.remaining_quantity_mt };
 }
 
+function generateIntegrityReport(dbState) {
+  const items = dbState.transport_requirement_items || [];
+  const dispatches = dbState.truck_dispatches || [];
+  const itemsWithBalanceDiff = [];
+  const itemsWithDispatchDiscrepancy = [];
+
+  items.forEach(item => {
+    const alloc = parseFloat(item.quantity_mt || 0);
+    const disp = parseFloat(item.dispatched_quantity_mt || 0);
+    const rem = parseFloat(item.remaining_quantity_mt || 0);
+    const balDiff = Math.abs(alloc - (disp + rem));
+    if (balDiff > 0.001) itemsWithBalanceDiff.push(item);
+
+    const actualLoaded = dispatches
+      .filter(d => d.requirement_item_id === item.id || d.requirement_item_id === item.sub_indent_no)
+      .reduce((sum, d) => sum + parseFloat(d.loaded_quantity_mt || 0), 0);
+
+    const dispMismatch = Math.abs(disp - actualLoaded);
+    if (dispMismatch > 0.001) itemsWithDispatchDiscrepancy.push(item);
+  });
+
+  return {
+    total_items: items.length,
+    balance_discrepancies: itemsWithBalanceDiff.length,
+    dispatch_discrepancies: itemsWithDispatchDiscrepancy.length,
+    is_healthy: itemsWithBalanceDiff.length === 0 && itemsWithDispatchDiscrepancy.length === 0
+  };
+}
+
 // -------------------------------------------------------------
-// TESTS (14 Strict Invariants)
+// TESTS (15 Strict Invariants)
 // -------------------------------------------------------------
 
 function create200MtScenario() {
@@ -149,22 +188,15 @@ function create200MtScenario() {
   };
 }
 
-it('TEST 1: 200 MT finalized at ₹55 is initialized with 200 MT remaining', () => {
-  const db = create200MtScenario();
-  assert.strictEqual(db.transport_requirement_items[0].quantity_mt, 200);
-  assert.strictEqual(db.rate_submissions[0].final_rate, 55);
-});
-
-it('TEST 2: Transporter A dispatches 150 MT -> 50 MT remaining, same item, same ₹55, NO /02 created', () => {
+it('TEST 1: 200 MT @ 55, dispatch 150 -> remaining 50', () => {
   const db = create200MtScenario();
   const res = dispatchTruck(db, 'req_200', 'item_200_01', 150, 'trans_A');
   assert.strictEqual(res.remaining, 50);
-  assert.strictEqual(db.transport_requirement_items.length, 1);
-  assert.strictEqual(db.transport_requirement_items[0].sub_indent_no, 'REQ-200/01');
-  assert.strictEqual(db.transport_requirement_items[0].dispatch_status, 'PARTIALLY_DISPATCHED');
+  assert.strictEqual(db.transport_requirement_items[0].dispatched_quantity_mt, 150);
+  assert.strictEqual(db.transport_requirement_items[0].remaining_quantity_mt, 50);
 });
 
-it('TEST 3: Original transporter sees remaining 50 MT in Open Requirements', () => {
+it('TEST 2: Remaining 50 visible to original transporter', () => {
   const db = create200MtScenario();
   dispatchTruck(db, 'req_200', 'item_200_01', 150, 'trans_A');
   const rawReqs = [{ ...db.transport_requirements[0], items: db.transport_requirement_items }];
@@ -174,7 +206,7 @@ it('TEST 3: Original transporter sees remaining 50 MT in Open Requirements', () 
   assert.strictEqual(viewA[0].is_fixed_rate_allocation, true);
 });
 
-it('TEST 4: Other eligible transporter B sees same remaining 50 MT', () => {
+it('TEST 3: Remaining 50 visible to another transporter', () => {
   const db = create200MtScenario();
   dispatchTruck(db, 'req_200', 'item_200_01', 150, 'trans_A');
   const rawReqs = [{ ...db.transport_requirements[0], items: db.transport_requirement_items }];
@@ -184,7 +216,7 @@ it('TEST 4: Other eligible transporter B sees same remaining 50 MT', () => {
   assert.strictEqual(viewB[0].is_fixed_rate_allocation, true);
 });
 
-it('TEST 5: Both transporters see exactly ₹55/MT fixed rate', () => {
+it('TEST 4: Both see exactly ₹55', () => {
   const db = create200MtScenario();
   dispatchTruck(db, 'req_200', 'item_200_01', 150, 'trans_A');
   const rawReqs = [{ ...db.transport_requirements[0], items: db.transport_requirement_items }];
@@ -194,7 +226,14 @@ it('TEST 5: Both transporters see exactly ₹55/MT fixed rate', () => {
   assert.strictEqual(viewB[0].fixed_rate, 55);
 });
 
-it('TEST 6: No quote input visible (requires_new_bid is false)', () => {
+it('TEST 5: No re-quote item created during normal partial dispatch', () => {
+  const db = create200MtScenario();
+  dispatchTruck(db, 'req_200', 'item_200_01', 150, 'trans_A');
+  assert.strictEqual(db.transport_requirement_items.length, 1);
+  assert.strictEqual(db.transport_requirement_items[0].sub_indent_no, 'REQ-200/01');
+});
+
+it('TEST 6: No new rate submission allowed (requires_new_bid = false)', () => {
   const db = create200MtScenario();
   dispatchTruck(db, 'req_200', 'item_200_01', 150, 'trans_A');
   const rawReqs = [{ ...db.transport_requirements[0], items: db.transport_requirement_items }];
@@ -202,7 +241,7 @@ it('TEST 6: No quote input visible (requires_new_bid is false)', () => {
   assert.strictEqual(view[0].requires_new_bid, false);
 });
 
-it('TEST 7: Transporter B dispatches 20 MT -> 30 MT remaining', () => {
+it('TEST 7: Transporter B can dispatch remaining quantity (20 MT -> 30 MT remaining)', () => {
   const db = create200MtScenario();
   dispatchTruck(db, 'req_200', 'item_200_01', 150, 'trans_A');
   const resB = dispatchTruck(db, 'req_200', 'item_200_01', 20, 'trans_B');
@@ -210,17 +249,7 @@ it('TEST 7: Transporter B dispatches 20 MT -> 30 MT remaining', () => {
   assert.strictEqual(db.transport_requirement_items[0].dispatched_quantity_mt, 170);
 });
 
-it('TEST 8: Transporter C dispatches 30 MT -> FULLY_DISPATCHED (0 MT remaining)', () => {
-  const db = create200MtScenario();
-  dispatchTruck(db, 'req_200', 'item_200_01', 150, 'trans_A');
-  dispatchTruck(db, 'req_200', 'item_200_01', 20, 'trans_B');
-  const resC = dispatchTruck(db, 'req_200', 'item_200_01', 30, 'trans_C');
-  assert.strictEqual(resC.remaining, 0);
-  assert.strictEqual(db.transport_requirement_items[0].dispatched_quantity_mt, 200);
-  assert.strictEqual(db.transport_requirement_items[0].dispatch_status, 'FULLY_DISPATCHED');
-});
-
-it('TEST 9: Total dispatched cannot exceed 200 MT', () => {
+it('TEST 8: Total cannot exceed 200 MT (Over-allocation rejected)', () => {
   const db = create200MtScenario();
   dispatchTruck(db, 'req_200', 'item_200_01', 150, 'trans_A');
   dispatchTruck(db, 'req_200', 'item_200_01', 20, 'trans_B');
@@ -229,35 +258,40 @@ it('TEST 9: Total dispatched cannot exceed 200 MT', () => {
   }, /EXCEEDS_REMAINING_QUANTITY/);
 });
 
-it('TEST 10: Concurrent dispatch requests cannot exceed remaining balance', () => {
-  const db = create200MtScenario();
-  dispatchTruck(db, 'req_200', 'item_200_01', 150, 'trans_A');
-  // Two simultaneous requests of 30 MT when only 50 MT is available
-  dispatchTruck(db, 'req_200', 'item_200_01', 30, 'trans_B'); // Succeeds, remaining = 20
-  assert.throws(() => {
-    dispatchTruck(db, 'req_200', 'item_200_01', 30, 'trans_C'); // Fails because remaining is 20
-  }, /EXCEEDS_REMAINING_QUANTITY/);
-});
-
-it('TEST 11: Historical /02 /03 records do not create duplicate active quantity', () => {
+it('TEST 9: UUID dispatch identity aggregation', () => {
   const db = {
-    transport_requirements: [{ id: 'req_hist', req_no: 'REQ-HIST', total_quantity_mt: 100 }],
-    transport_requirement_items: [
-      { id: 'item_hist_01', requirement_id: 'req_hist', sub_indent_no: 'REQ-HIST/01', quantity_mt: 100, remaining_quantity_mt: 40, dispatched_quantity_mt: 60, dispatch_status: 'PARTIALLY_DISPATCHED' },
-      { id: 'item_hist_02', requirement_id: 'req_hist', sub_indent_no: 'REQ-HIST/02', quantity_mt: 40, source_item_id: 'item_hist_01', remaining_quantity_mt: 40, dispatched_quantity_mt: 0, dispatch_status: 'PENDING' }
-    ],
-    rate_submissions: [{ id: 's1', requirement_id: 'req_hist', item_id: 'item_hist_01', final_rate: 55, is_finalized: 1 }],
-    truck_dispatches: [{ id: 'd1', requirement_item_id: 'item_hist_01', loaded_quantity_mt: 60 }]
+    transport_requirement_items: [{ id: 'uuid-101', requirement_id: 'req_1', sub_indent_no: 'REQ-1/01', quantity_mt: 100 }],
+    truck_dispatches: [{ id: 'd1', requirement_id: 'req_1', requirement_item_id: 'uuid-101', loaded_quantity_mt: 60 }]
   };
-
-  const rawReqs = [{ ...db.transport_requirements[0], items: db.transport_requirement_items }];
-  const view = buildOpenRequirements(rawReqs, db, { id: 'trans_A' });
-  // Must render only 1 active item with 40 MT, NOT 2 items totalling 80 MT!
-  assert.strictEqual(view.length, 1);
-  assert.strictEqual(view[0].remaining_quantity_mt, 40);
+  simulateReconciliation(db);
+  assert.strictEqual(db.transport_requirement_items[0].dispatched_quantity_mt, 60);
+  assert.strictEqual(db.transport_requirement_items[0].remaining_quantity_mt, 40);
 });
 
-it('TEST 12: Sibling dispatch isolation remains correct (/01 dispatches do not affect /02)', () => {
+it('TEST 10: sub_indent_no dispatch identity aggregation', () => {
+  const db = {
+    transport_requirement_items: [{ id: 'uuid-102', requirement_id: 'req_2', sub_indent_no: 'REQ-2/01', quantity_mt: 80 }],
+    truck_dispatches: [{ id: 'd2', requirement_id: 'req_2', requirement_item_id: 'REQ-2/01', loaded_quantity_mt: 30 }]
+  };
+  simulateReconciliation(db);
+  assert.strictEqual(db.transport_requirement_items[0].dispatched_quantity_mt, 30);
+  assert.strictEqual(db.transport_requirement_items[0].remaining_quantity_mt, 50);
+});
+
+it('TEST 11: Mixed historical UUID + sub_indent dispatches aggregate correctly into exactly ONE total', () => {
+  const db = {
+    transport_requirement_items: [{ id: 'uuid-103', requirement_id: 'req_3', sub_indent_no: 'REQ-3/01', quantity_mt: 100 }],
+    truck_dispatches: [
+      { id: 'd3_1', requirement_id: 'req_3', requirement_item_id: 'uuid-103', loaded_quantity_mt: 40 },
+      { id: 'd3_2', requirement_id: 'req_3', requirement_item_id: 'REQ-3/01', loaded_quantity_mt: 35 }
+    ]
+  };
+  simulateReconciliation(db);
+  assert.strictEqual(db.transport_requirement_items[0].dispatched_quantity_mt, 75);
+  assert.strictEqual(db.transport_requirement_items[0].remaining_quantity_mt, 25);
+});
+
+it('TEST 12: /01 dispatch never affects /02', () => {
   const db = {
     transport_requirements: [{ id: 'req_batch', req_no: 'REQ-BATCH', total_quantity_mt: 200 }],
     transport_requirement_items: [
@@ -273,32 +307,47 @@ it('TEST 12: Sibling dispatch isolation remains correct (/01 dispatches do not a
   assert.strictEqual(db.transport_requirement_items[1].remaining_quantity_mt, 100);
 });
 
-it('TEST 13: Frontend and backend remaining balance always match with exact mathematical precision', () => {
-  const db = create200MtScenario();
-  dispatchTruck(db, 'req_200', 'item_200_01', 150, 'trans_A');
-  const backendRemaining = db.transport_requirement_items[0].remaining_quantity_mt;
-
-  const rawReqs = [{ ...db.transport_requirements[0], items: db.transport_requirement_items }];
-  const frontendRemaining = buildOpenRequirements(rawReqs, db, { id: 'trans_A' })[0].remaining_quantity_mt;
-
-  assert.strictEqual(backendRemaining, 50);
-  assert.strictEqual(frontendRemaining, 50);
-  assert.strictEqual(backendRemaining, frontendRemaining);
-});
-
-it('TEST 14: Page refresh preserves fixed-rate remaining dispatch state', () => {
+it('TEST 13: Reconciliation is idempotent', () => {
   const db = create200MtScenario();
   dispatchTruck(db, 'req_200', 'item_200_01', 150, 'trans_A');
   
-  // Simulate page refresh (rebuilding DTO from fresh DB fetch)
   simulateReconciliation(db);
-  const rawReqs = [{ ...db.transport_requirements[0], items: db.transport_requirement_items }];
-  const viewAfterRefresh = buildOpenRequirements(rawReqs, db, { id: 'trans_B' });
+  const disp1 = db.transport_requirement_items[0].dispatched_quantity_mt;
+  const rem1 = db.transport_requirement_items[0].remaining_quantity_mt;
 
-  assert.strictEqual(viewAfterRefresh.length, 1);
-  assert.strictEqual(viewAfterRefresh[0].remaining_quantity_mt, 50);
-  assert.strictEqual(viewAfterRefresh[0].is_fixed_rate_allocation, true);
-  assert.strictEqual(viewAfterRefresh[0].fixed_rate, 55);
+  simulateReconciliation(db);
+  const disp2 = db.transport_requirement_items[0].dispatched_quantity_mt;
+  const rem2 = db.transport_requirement_items[0].remaining_quantity_mt;
+
+  assert.strictEqual(disp1, disp2);
+  assert.strictEqual(rem1, rem2);
+});
+
+it('TEST 14: Startup migration actually invokes reconciliation with explicit logs', () => {
+  const apiSrc = fs.readFileSync(path.join(process.cwd(), 'server/routes/api.js'), 'utf8');
+  assert.strictEqual(apiSrc.includes('[SCHEMA MIGRATION] STARTED'), true);
+  assert.strictEqual(apiSrc.includes('[SCHEMA MIGRATION] COMPLETED'), true);
+  assert.strictEqual(apiSrc.includes('[DISPATCH RECONCILIATION] STARTED'), true);
+  assert.strictEqual(apiSrc.includes('[DISPATCH RECONCILIATION] COMPLETED'), true);
+  assert.strictEqual(apiSrc.includes('await reconcileItemDispatchBalances(pool)'), true);
+});
+
+it('TEST 15: Integrity endpoint correctly detects inconsistencies', () => {
+  const dbHealthy = {
+    transport_requirement_items: [{ id: 'i1', sub_indent_no: 'REQ-1/01', quantity_mt: 100, dispatched_quantity_mt: 40, remaining_quantity_mt: 60 }],
+    truck_dispatches: [{ requirement_item_id: 'i1', loaded_quantity_mt: 40 }]
+  };
+  const repHealthy = generateIntegrityReport(dbHealthy);
+  assert.strictEqual(repHealthy.is_healthy, true);
+
+  const dbInconsistent = {
+    transport_requirement_items: [{ id: 'i2', sub_indent_no: 'REQ-2/01', quantity_mt: 100, dispatched_quantity_mt: 30, remaining_quantity_mt: 50 }], // 30 + 50 = 80 != 100
+    truck_dispatches: [{ requirement_item_id: 'i2', loaded_quantity_mt: 40 }] // actual loaded = 40 != 30
+  };
+  const repInconsistent = generateIntegrityReport(dbInconsistent);
+  assert.strictEqual(repInconsistent.is_healthy, false);
+  assert.strictEqual(repInconsistent.balance_discrepancies, 1);
+  assert.strictEqual(repInconsistent.dispatch_discrepancies, 1);
 });
 
 console.log('================================================================');

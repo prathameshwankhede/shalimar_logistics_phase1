@@ -57,11 +57,12 @@ async function ensureColumnExists(tableName, columnName, columnDefinition) {
 }
 
 // -------------------------------------------------------------
+// -------------------------------------------------------------
 // Production-Safe Dispatch Balance Reconciliation Engine 🚛📊
 // -------------------------------------------------------------
 export async function reconcileItemDispatchBalances(targetPool = pool) {
   try {
-    console.log('🔄 [RECONCILIATION] Starting transport_requirement_items dispatch balance reconciliation...');
+    console.log('[DISPATCH RECONCILIATION] STARTED');
     
     // Fetch all items and all dispatches for deterministic mapping & reconciliation
     const [items] = await targetPool.query('SELECT id, requirement_id, sub_indent_no, quantity_mt, allocation_status FROM transport_requirement_items');
@@ -78,12 +79,14 @@ export async function reconcileItemDispatchBalances(targetPool = pool) {
       // Find all matching dispatches without duplicate counting
       const matchingDispatches = (dispatches || []).filter(d => {
         if (!d) return false;
+        // Check requirement match or item-level direct match
+        const reqMatch = String(d.requirement_id) === String(item.requirement_id);
         // Exact UUID match
         if (d.requirement_item_id && d.requirement_item_id === item.id) return true;
         // Exact sub_indent_no match
         if (d.requirement_item_id && item.sub_indent_no && d.requirement_item_id === item.sub_indent_no) return true;
         // Single child legacy match
-        if ((d.requirement_item_id === 'MAIN' || !d.requirement_item_id) && d.requirement_id === item.requirement_id && reqItemCountMap[item.requirement_id] === 1) return true;
+        if (reqMatch && (d.requirement_item_id === 'MAIN' || !d.requirement_item_id) && reqItemCountMap[item.requirement_id] === 1) return true;
         return false;
       });
 
@@ -125,7 +128,7 @@ export async function reconcileItemDispatchBalances(targetPool = pool) {
       WHERE tr.status NOT IN ('ARCHIVED', 'CANCELLED', 'DELETED');
     `).catch(() => {});
 
-    console.log(`✅ [RECONCILIATION] Completed transport_requirement_items dispatch balance reconciliation. Reconciled items: ${updatedCount}`);
+    console.log(`[DISPATCH RECONCILIATION] COMPLETED - Reconciled ${updatedCount} items.`);
     return { success: true, affectedRows: updatedCount };
   } catch (err) {
     console.error('❌ [RECONCILIATION ERROR] Failed to reconcile dispatch balances:', err.message);
@@ -140,6 +143,7 @@ export async function reconcileItemDispatchBalances(targetPool = pool) {
 let isRequirementsTableEnsured = false;
 export async function ensureRequirementsTableExists() {
   if (isRequirementsTableEnsured) return;
+  console.log('[SCHEMA MIGRATION] STARTED');
   try {
     await pool.query(`
       CREATE TABLE IF NOT EXISTS transport_requirements (
@@ -209,6 +213,8 @@ export async function ensureRequirementsTableExists() {
     for (const { name, def } of childCols) {
       await ensureColumnExists('transport_requirement_items', name, def);
     }
+
+    console.log('[SCHEMA MIGRATION] COMPLETED');
 
     // Run safe reconciliation on startup to synchronize actual dispatch totals
     await reconcileItemDispatchBalances(pool);
@@ -3057,6 +3063,109 @@ router.post('/admin/reconcile-dispatch-balances', authenticateToken, requireRole
     return res.status(500).json({
       success: false,
       error: { code: 'RECONCILIATION_FAILED', message: err.message }
+    });
+  }
+});
+
+router.get('/admin/dispatch-integrity-report', authenticateToken, requireRole('admin'), async (req, res) => {
+  try {
+    const [items] = await pool.query('SELECT * FROM transport_requirement_items');
+    const [dispatches] = await pool.query('SELECT * FROM truck_dispatches');
+
+    const totalItems = items.length;
+    const itemsWithBalanceDiff = [];
+    const itemsWithDispatchDiscrepancy = [];
+    
+    let uuidIdentityCount = 0;
+    let subIndentIdentityCount = 0;
+    let mainIdentityCount = 0;
+    const orphanDispatches = [];
+
+    const itemMap = new Map();
+    const subIndentMap = new Map();
+    (items || []).forEach(it => {
+      itemMap.set(it.id, it);
+      if (it.sub_indent_no) subIndentMap.set(it.sub_indent_no, it);
+    });
+
+    (dispatches || []).forEach(d => {
+      const idStr = String(d.requirement_item_id || '');
+      if (idStr === 'MAIN' || !idStr) {
+        mainIdentityCount++;
+      } else if (itemMap.has(idStr)) {
+        uuidIdentityCount++;
+      } else if (subIndentMap.has(idStr)) {
+        subIndentIdentityCount++;
+      } else {
+        orphanDispatches.push(d);
+      }
+    });
+
+    (items || []).forEach(item => {
+      const alloc = parseFloat(item.quantity_mt || 0);
+      const disp = parseFloat(item.dispatched_quantity_mt || 0);
+      const rem = parseFloat(item.remaining_quantity_mt || 0);
+      const balDiff = Math.abs(alloc - (disp + rem));
+      if (balDiff > 0.001) {
+        itemsWithBalanceDiff.push({
+          id: item.id,
+          sub_indent_no: item.sub_indent_no,
+          quantity_mt: alloc,
+          dispatched_quantity_mt: disp,
+          remaining_quantity_mt: rem,
+          balance_difference: parseFloat(balDiff.toFixed(3))
+        });
+      }
+
+      // Match actual dispatches
+      const actualLoaded = (dispatches || [])
+        .filter(d => d.requirement_item_id === item.id || d.requirement_item_id === item.sub_indent_no)
+        .reduce((sum, d) => sum + parseFloat(d.loaded_quantity_mt || 0), 0);
+
+      const dispMismatch = Math.abs(disp - actualLoaded);
+      if (dispMismatch > 0.001) {
+        itemsWithDispatchDiscrepancy.push({
+          id: item.id,
+          sub_indent_no: item.sub_indent_no,
+          stored_dispatched_mt: disp,
+          actual_dispatches_sum_mt: actualLoaded,
+          discrepancy: parseFloat(dispMismatch.toFixed(3))
+        });
+      }
+    });
+
+    const inconsistentItemsCount = new Set([
+      ...itemsWithBalanceDiff.map(i => i.id),
+      ...itemsWithDispatchDiscrepancy.map(i => i.id)
+    ]).size;
+
+    return res.json({
+      success: true,
+      timestamp: new Date().toISOString(),
+      summary: {
+        total_items: totalItems,
+        inconsistent_items: inconsistentItemsCount,
+        is_healthy: inconsistentItemsCount === 0 && orphanDispatches.length === 0,
+        balance_discrepancies_count: itemsWithBalanceDiff.length,
+        dispatch_discrepancies_count: itemsWithDispatchDiscrepancy.length,
+        orphan_dispatches_count: orphanDispatches.length
+      },
+      identity_breakdown: {
+        uuid_identity_dispatches: uuidIdentityCount,
+        sub_indent_identity_dispatches: subIndentIdentityCount,
+        main_identity_dispatches: mainIdentityCount,
+        orphan_dispatches: orphanDispatches.length
+      },
+      details: {
+        items_with_balance_diff: itemsWithBalanceDiff,
+        items_with_dispatch_discrepancy: itemsWithDispatchDiscrepancy,
+        orphan_dispatches: orphanDispatches
+      }
+    });
+  } catch (err) {
+    return res.status(500).json({
+      success: false,
+      error: { code: 'INTEGRITY_REPORT_FAILED', message: err.message }
     });
   }
 });
