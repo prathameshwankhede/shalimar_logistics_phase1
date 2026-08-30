@@ -193,37 +193,23 @@ export const TransporterPortal = () => {
     }));
   };
 
+  // 🤝 Negotiation & Dispatch State
+  const [activeTransporterCounterSubId, setActiveTransporterCounterSubId] = useState(null);
+  const [transporterCounterRateInput, setTransporterCounterRateInput] = useState('');
+  const [selectedHistorySub, setSelectedHistorySub] = useState(null);
+
+  // 🚚 Truck Dispatch Modal State
+  const [dispatchingReqItem, setDispatchingReqItem] = useState(null);
+  const [dispatchFormData, setDispatchFormData] = useState({
+    truck_number: '',
+    loaded_quantity_mt: '',
+    driver_name: '',
+    driver_mobile: '',
+    driver_license: ''
+  });
+  const [isSubmittingDispatch, setIsSubmittingDispatch] = useState(false);
   const [selectedContractModal, setSelectedContractModal] = useState(null);
   const [successNotice, setSuccessNotice] = useState('');
-
-  if (!currentTransporter) {
-    return (
-      <div className="glass-panel" style={{ padding: '40px', textAlign: 'center', maxWidth: '500px', margin: '40px auto' }}>
-        <Building2 size={48} color="#38bdf8" style={{ margin: '0 auto 16px auto' }} />
-        <h2 style={{ fontSize: '1.3rem', fontWeight: '800', color: '#ffffff', marginBottom: '6px' }}>Select Transporter Account</h2>
-        <p style={{ color: 'var(--text-sub)', fontSize: '0.88rem', marginBottom: '20px' }}>
-          Please select a Transporter account below to access your dedicated portal:
-        </p>
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-          {(db.transporters || []).map((t) => (
-            <button
-              key={t.id}
-              onClick={() => quickSwitchUser(t.username || t.code)}
-              className="btn btn-secondary"
-              style={{ padding: '12px 16px', textAlign: 'left', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
-            >
-              <div>
-                <strong style={{ color: 'var(--text-main, #0f172a)' }}>{t.company_name}</strong>
-                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Code: {t.code} | GST: {t.gst_pan}</div>
-              </div>
-              <span className="badge badge-open">Login as {t.code} ➔</span>
-            </button>
-          ))}
-        </div>
-      </div>
-    );
-  }
 
   // 🔧 Universal Normalized Key Helper
   const normalizeKey = (value) =>
@@ -606,27 +592,11 @@ export const TransporterPortal = () => {
     const encodedUri = encodeURI(csv);
     const link = document.createElement('a');
     link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `MonthEnd_Statement_${currentTransporter.code}_${selectedMonth}.csv`);
+    link.setAttribute('download', `MonthEnd_Statement_${currentTransporter?.code || 'transporter'}_${selectedMonth}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
   };
-
-  // 🤝 Negotiation & Dispatch State
-  const [activeTransporterCounterSubId, setActiveTransporterCounterSubId] = useState(null);
-  const [transporterCounterRateInput, setTransporterCounterRateInput] = useState('');
-  const [selectedHistorySub, setSelectedHistorySub] = useState(null);
-
-  // 🚚 Truck Dispatch Modal State
-  const [dispatchingReqItem, setDispatchingReqItem] = useState(null);
-  const [dispatchFormData, setDispatchFormData] = useState({
-    truck_number: '',
-    loaded_quantity_mt: '',
-    driver_name: '',
-    driver_mobile: '',
-    driver_license: ''
-  });
-  const [isSubmittingDispatch, setIsSubmittingDispatch] = useState(false);
 
   const handleOpenDispatchModal = (req, myBid, parentReq = null) => {
     const parent = parentReq || (db.rate_requests || []).find(r => r.id === (req.requirement_id || req.id)) || req;
@@ -1537,6 +1507,35 @@ export const TransporterPortal = () => {
     setSuccessNotice(`Truck ${newDispatch.truck_number} dispatched! LR No: ${lrNo}. ${unfulfilledBalance <= 0 ? '🎉 Contract 100% Dispatched & Completed!' : ''}`);
     setTimeout(() => setSuccessNotice(''), 4000);
   };
+
+  if (!currentTransporter) {
+    return (
+      <div className="glass-panel" style={{ padding: '40px', textAlign: 'center', maxWidth: '500px', margin: '40px auto' }}>
+        <Building2 size={48} color="#38bdf8" style={{ margin: '0 auto 16px auto' }} />
+        <h2 style={{ fontSize: '1.3rem', fontWeight: '800', color: '#ffffff', marginBottom: '6px' }}>Select Transporter Account</h2>
+        <p style={{ color: 'var(--text-sub)', fontSize: '0.88rem', marginBottom: '20px' }}>
+          Please select a Transporter account below to access your dedicated portal:
+        </p>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          {(db.transporters || []).map((t) => (
+            <button
+              key={t.id}
+              onClick={() => quickSwitchUser(t.username || t.code)}
+              className="btn btn-secondary"
+              style={{ padding: '12px 16px', textAlign: 'left', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+            >
+              <div>
+                <strong style={{ color: 'var(--text-main, #0f172a)' }}>{t.company_name}</strong>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Code: {t.code} | GST: {t.gst_pan}</div>
+              </div>
+              <span className="badge badge-open">Login as {t.code} ➔</span>
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div>
