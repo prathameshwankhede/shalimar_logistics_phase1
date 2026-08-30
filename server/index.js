@@ -1,4 +1,4 @@
-// Hostinger Passenger Process Reload Signal v1.8.4 - Canonical SUBMITTED Status & Immutable Original Rate Integrity
+// Hostinger Passenger Process Reload Signal v1.8.5 - Production Security Hardening (Protected Diagnostics, Anti-Spoofing & Logout Session Cleanup)
 import express from 'express';
 import cors from 'cors';
 import path from 'path';

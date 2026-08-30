@@ -290,6 +290,7 @@ const updateDB = async (newDb) => {
       );
       updateDB(updatedWithLog);
     }
+    setAuthToken(null);
     setCurrentUser(null);
     sessionStorage.removeItem(USER_SESSION_KEY);
     localStorage.removeItem(USER_SESSION_KEY);

@@ -626,14 +626,20 @@ async function handleCreateRateSubmission(req, res) {
     } = req.body;
 
     // 🛡️ Resolve authenticated transporter identity from token and transporters table
-    const candidateTransIds = [
-      transporter_id,
-      req.user.transporter_id,
-      req.user.username,
-      req.user.id,
-      req.body.transporter_code,
-      req.body.transporter_name
-    ].filter(Boolean);
+    const candidateTransIds = req.user.role === 'transporter'
+      ? [
+          req.user.transporter_id,
+          req.user.username,
+          req.user.id
+        ].filter(Boolean)
+      : [
+          transporter_id,
+          req.user.transporter_id,
+          req.user.username,
+          req.user.id,
+          req.body.transporter_code,
+          req.body.transporter_name
+        ].filter(Boolean);
 
     candidateTransIds.forEach(idStr => {
       const clean = String(idStr).replace(/^(usr_|trans_)/i, '');
@@ -1456,7 +1462,7 @@ router.post('/bids', authenticateToken, handleCreateRateSubmission);
 router.get('/rate-submissions', authenticateToken, handleGetRateSubmissions);
 router.get('/transporters', authenticateToken, handleGetTransporters);
 router.get('/master-data', authenticateToken, handleGetMasterData);
-router.get('/diag/schema', async (req, res) => {
+router.get('/diag/schema', authenticateToken, requireRole('admin'), async (req, res) => {
   try {
     // 1. All tables
     const [tablesRows] = await pool.query('SHOW TABLES');
