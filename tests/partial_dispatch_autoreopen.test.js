@@ -127,6 +127,7 @@ function executeDispatchTransaction(state, { user, reqId, itemId, loadedQty, tru
 
   // Insert truck dispatch
   const dispatchId = `disp_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+  const lrNumber = `LR-SNPL-2026-${String(state.truck_dispatches.length + 1).padStart(5, '0')}`;
   state.truck_dispatches.push({
     id: dispatchId,
     requirement_id: parentReq.id,
@@ -134,7 +135,7 @@ function executeDispatchTransaction(state, { user, reqId, itemId, loadedQty, tru
     transporter_id: user.id || user.transporter_id,
     loaded_quantity_mt: loadedQty,
     truck_number: truckNumber,
-    lr_number: `LR-SNPL-2026-${String(state.truck_dispatches.length + 1).padStart(5, '0')}`,
+    lr_number: lrNumber,
     dispatched_at: new Date().toISOString()
   });
 
@@ -205,8 +206,11 @@ function executeDispatchTransaction(state, { user, reqId, itemId, loadedQty, tru
   return {
     success: true,
     dispatch_id: dispatchId,
+    lr_number: lrNumber,
     dispatched_quantity_mt: newTotalDispatched,
     remaining_quantity_mt: newRemaining,
+    dispatch_status: newRemaining > 0 ? 'RELEASED_FOR_REQUOTE' : 'FULLY_DISPATCHED',
+    is_partial: newRemaining > 0,
     reopened_sub_indent_no: newSubIndentNo,
     reopened_item_id: replacementItemId
   };
@@ -519,6 +523,44 @@ it('TEST 12: Concurrent requests cannot create multiple active cycles for same r
   assert.strictEqual(activeRebidItems.length, 1);
 });
 
+// TEST 13: Full dispatch works without ReferenceError or undefined parentReq
+it('TEST 13: Full dispatch works without ReferenceError or undefined parentReq', () => {
+  const state = createTestState();
+  const userA = { id: 'trans_A', transporter_id: 'trans_A', role: 'transporter' };
+
+  const res = executeDispatchTransaction(state, {
+    user: userA,
+    reqId: 'req_004',
+    itemId: 'item_004_01',
+    loadedQty: 10
+  });
+
+  assert.strictEqual(res.success, true);
+  assert.ok(res.lr_number.startsWith('LR-SNPL-'));
+  assert.strictEqual(res.dispatch_status, 'FULLY_DISPATCHED');
+  assert.strictEqual(res.is_partial, false);
+});
+
+// TEST 14: Partial dispatch creates valid sub-indent and LR metadata without parentReq is not defined
+it('TEST 14: Partial dispatch creates valid sub-indent and LR metadata without parentReq is not defined', () => {
+  const state = createTestState();
+  const userA = { id: 'trans_A', transporter_id: 'trans_A', role: 'transporter' };
+
+  const res = executeDispatchTransaction(state, {
+    user: userA,
+    reqId: 'req_004',
+    itemId: 'item_004_01',
+    loadedQty: 5
+  });
+
+  assert.strictEqual(res.success, true);
+  assert.ok(res.lr_number.startsWith('LR-SNPL-'));
+  assert.strictEqual(res.dispatch_status, 'RELEASED_FOR_REQUOTE');
+  assert.strictEqual(res.is_partial, true);
+  assert.strictEqual(res.reopened_sub_indent_no, 'SNPL/26-27/REQ-0004/02');
+  assert.ok(res.reopened_item_id);
+});
+
 console.log('================================================================');
 console.log(`📊 TEST RESULTS: ${passedTests} Passed | ${failedTests} Failed`);
 console.log('================================================================');
@@ -526,3 +568,4 @@ console.log('================================================================');
 if (failedTests > 0) {
   process.exit(1);
 }
+

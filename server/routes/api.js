@@ -1982,35 +1982,62 @@ async function handleCreateTruckDispatch(req, res) {
 
     await conn.beginTransaction();
 
-    // Smart ID Resolution across UUIDs, formatted req_no, and sub_indent_no
+    // 0. Explicitly Resolve and Lock Parent Requirement from database
+    let parentReq = null;
+    let actualReqId = requirementId;
     let resolvedReqIds = [requirementId].filter(Boolean);
-    let resolvedItemIds = [itemId].filter(Boolean);
 
     if (requirementId) {
-      try {
-        const [reqRows] = await conn.query(
-          'SELECT id, req_no FROM transport_requirements WHERE id = ? OR req_no = ? LIMIT 1',
-          [requirementId, requirementId]
-        );
-        if (reqRows.length > 0) {
-          resolvedReqIds.push(reqRows[0].id, reqRows[0].req_no);
-        }
-      } catch (e) {}
+      const [pRows] = await conn.query(
+        'SELECT * FROM transport_requirements WHERE id = ? OR req_no = ? LIMIT 1 FOR UPDATE',
+        [requirementId, requirementId]
+      );
+      if (pRows.length > 0) {
+        parentReq = pRows[0];
+        actualReqId = parentReq.id;
+        resolvedReqIds.push(parentReq.id, parentReq.req_no);
+      }
     }
 
+    // 0.1. Explicitly Resolve and Lock Child Requirement Item
+    let resolvedItemIds = [itemId].filter(Boolean);
+    let originalItemRec = null;
+    let actualItemId = itemId;
+
     if (itemId && itemId !== 'MAIN') {
-      try {
-        const [itemRows] = await conn.query(
-          'SELECT id, requirement_id, sub_indent_no FROM transport_requirement_items WHERE (requirement_id IN (?) OR id = ?) AND (id = ? OR sub_indent_no = ? OR sub_indent_no LIKE ?) LIMIT 1',
-          [resolvedReqIds.length > 0 ? resolvedReqIds : [requirementId], itemId, itemId, itemId, `%${itemId}%`]
-        );
-        if (itemRows.length > 0) {
-          resolvedItemIds.push(itemRows[0].id, itemRows[0].sub_indent_no);
-          if (itemRows[0].requirement_id) {
-            resolvedReqIds.push(itemRows[0].requirement_id);
+      const [iRows] = await conn.query(
+        `SELECT * FROM transport_requirement_items 
+         WHERE (requirement_id = ? OR requirement_id IN (?)) 
+           AND (id = ? OR sub_indent_no = ? OR sub_indent_no LIKE ?) 
+         LIMIT 1 FOR UPDATE`,
+        [actualReqId, resolvedReqIds, itemId, itemId, `%/${itemId}`]
+      );
+      if (iRows.length > 0) {
+        originalItemRec = iRows[0];
+        actualItemId = originalItemRec.id;
+        resolvedItemIds.push(originalItemRec.id, originalItemRec.sub_indent_no);
+        if (originalItemRec.requirement_id && !parentReq) {
+          const [pRows] = await conn.query(
+            'SELECT * FROM transport_requirements WHERE id = ? LIMIT 1 FOR UPDATE',
+            [originalItemRec.requirement_id]
+          );
+          if (pRows.length > 0) {
+            parentReq = pRows[0];
+            actualReqId = parentReq.id;
+            resolvedReqIds.push(parentReq.id, parentReq.req_no);
           }
         }
-      } catch (e) {}
+      }
+    }
+
+    if (!parentReq) {
+      await conn.rollback();
+      conn.release();
+      return res.status(404).json({
+        success: false,
+        code: 'REQUIREMENT_NOT_FOUND',
+        error: 'Parent requirement not found.'
+      });
     }
 
     const transMatchIds = [authTransporter.id, authTransporter.code, authTransporter.username].filter(Boolean);
@@ -2079,18 +2106,12 @@ async function handleCreateTruckDispatch(req, res) {
       });
     }
 
-    // 4. Lock Requirement Item and Compute Item Required Quantity
+    // 4. Compute Item Required Quantity and check allocation status
     let totalItemQty = 0;
-    const [itemRows] = await conn.query(
-      `SELECT * FROM transport_requirement_items WHERE requirement_id = ? AND id = ? FOR UPDATE`,
-      [requirementId, itemId]
-    );
-
-    if (itemRows.length > 0) {
-      const itemRec = itemRows[0];
+    if (originalItemRec) {
       if (
-        String(itemRec.dispatch_status || '').toUpperCase() === 'RELEASED_FOR_REQUOTE' ||
-        String(itemRec.allocation_status || '').toUpperCase() === 'RELEASED_FOR_REQUOTE'
+        String(originalItemRec.dispatch_status || '').toUpperCase() === 'RELEASED_FOR_REQUOTE' ||
+        String(originalItemRec.allocation_status || '').toUpperCase() === 'RELEASED_FOR_REQUOTE'
       ) {
         await conn.rollback();
         conn.release();
@@ -2100,15 +2121,9 @@ async function handleCreateTruckDispatch(req, res) {
           message: 'Remaining quantity has been released for fresh quotation and cannot be dispatched under the previous contract.'
         });
       }
-      totalItemQty = parseFloat(itemRec.quantity_mt || itemRec.required_qty || 0);
+      totalItemQty = parseFloat(originalItemRec.quantity_mt || originalItemRec.required_qty || 0);
     } else {
-      const [parentRows] = await conn.query(
-        `SELECT * FROM transport_requirements WHERE id = ? FOR UPDATE`,
-        [requirementId]
-      );
-      if (parentRows.length > 0) {
-        totalItemQty = parseFloat(parentRows[0].quantity_mt || parentRows[0].total_quantity_mt || 0);
-      }
+      totalItemQty = parseFloat(parentReq.quantity_mt || parentReq.total_quantity_mt || 0);
     }
 
     if (totalItemQty <= 0) {
@@ -2119,9 +2134,10 @@ async function handleCreateTruckDispatch(req, res) {
     const [dispatchedSumRows] = await conn.query(
       `SELECT COALESCE(SUM(loaded_quantity_mt), 0) AS total_dispatched 
        FROM truck_dispatches 
-       WHERE requirement_id = ? AND requirement_item_id = ? 
+       WHERE (requirement_id = ? OR requirement_id = ?) 
+         AND (requirement_item_id = ? OR requirement_item_id = ? OR requirement_item_id IN (?)) 
        FOR UPDATE`,
-      [requirementId, itemId]
+      [actualReqId, requirementId, actualItemId, itemId, resolvedItemIds]
     );
 
     const alreadyDispatched = parseFloat(dispatchedSumRows[0]?.total_dispatched || 0);
@@ -2141,6 +2157,26 @@ async function handleCreateTruckDispatch(req, res) {
       });
     }
 
+    // Enforce Requirement Level Total Capacity Gate
+    const [totalParentDispatchedRows] = await conn.query(
+      `SELECT COALESCE(SUM(loaded_quantity_mt), 0) AS total_parent_dispatched 
+       FROM truck_dispatches 
+       WHERE requirement_id = ? OR requirement_id = ? 
+       FOR UPDATE`,
+      [actualReqId, requirementId]
+    );
+    const totalParentDispatched = parseFloat(totalParentDispatchedRows[0]?.total_parent_dispatched || 0);
+    const parentCap = parseFloat(parentReq.total_quantity_mt || parentReq.quantity_mt || 0);
+    if (parentCap > 0 && (totalParentDispatched + loadedQty) > parentCap) {
+      await conn.rollback();
+      conn.release();
+      return res.status(400).json({
+        success: false,
+        code: 'EXCEEDS_REQUIREMENT_TOTAL_CAPACITY',
+        error: `Loaded quantity exceeds the total parent requirement capacity (${parentCap} MT). Already dispatched: ${totalParentDispatched} MT.`
+      });
+    }
+
     // 7. Concurrency-Safe LR Number Generation
     const lrNumber = await generateUniqueLrNumber(conn, new Date().getFullYear());
     const dispatchId = `disp_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
@@ -2156,8 +2192,8 @@ async function handleCreateTruckDispatch(req, res) {
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Dispatched', NOW(), NOW(), NOW())`,
       [
         dispatchId,
-        requirementId,
-        itemId,
+        actualReqId,
+        actualItemId,
         authTransporter.id,
         finalRateVal,
         cleanTruckNo,
@@ -2181,7 +2217,7 @@ async function handleCreateTruckDispatch(req, res) {
       // Concurrency-Safe Next Sub-Indent Number Generation
       const [allItems] = await conn.query(
         `SELECT id, sub_indent_no FROM transport_requirement_items WHERE requirement_id = ? FOR UPDATE`,
-        [requirementId]
+        [actualReqId]
       );
 
       let maxSeq = 0;
@@ -2195,30 +2231,31 @@ async function handleCreateTruckDispatch(req, res) {
       if (maxSeq === 0) maxSeq = allItems.length;
       const nextSeq = maxSeq + 1;
       const nextSeqStr = String(nextSeq).padStart(2, '0');
-      const parentReqNo = parentReq ? (parentReq.req_no || parentReq.id) : requirementId;
+      const parentReqNo = parentReq.req_no || actualReqId;
       newSubIndentNo = `${parentReqNo}/${nextSeqStr}`;
-      replacementItemId = `item_${String(requirementId).replace(/[^a-zA-Z0-9_]/g, '')}_${nextSeqStr}_${Math.random().toString(36).substring(2, 6)}`;
+      replacementItemId = `item_${String(actualReqId).replace(/[^a-zA-Z0-9_]/g, '')}_${nextSeqStr}_${Math.random().toString(36).substring(2, 6)}`;
 
       // Mark original item: RELEASED_FOR_REQUOTE (closes old contract capacity, preserves dispatch history)
-      await conn.query(
-        `UPDATE transport_requirement_items
-         SET dispatched_quantity_mt = ?,
-             remaining_quantity_mt = 0,
-             dispatch_status = 'RELEASED_FOR_REQUOTE',
-             allocation_status = 'RELEASED_FOR_REQUOTE',
-             remaining_action = 'REQUOTE',
-             released_for_requote_at = NOW(),
-             released_for_requote_by = ?,
-             released_for_requote_reason = 'Auto-reopened for competitive quotation after partial dispatch',
-             replacement_item_id = ?,
-             updated_at = NOW()
-         WHERE requirement_id = ? AND id = ?`,
-        [newTotalDispatched, authTransporter.company_name || authTransporter.username || 'Auto-Dispatch Re-open', replacementItemId, requirementId, itemId]
-      );
+      if (originalItemRec) {
+        await conn.query(
+          `UPDATE transport_requirement_items
+           SET dispatched_quantity_mt = ?,
+               remaining_quantity_mt = 0,
+               dispatch_status = 'RELEASED_FOR_REQUOTE',
+               allocation_status = 'RELEASED_FOR_REQUOTE',
+               remaining_action = 'REQUOTE',
+               released_for_requote_at = NOW(),
+               released_for_requote_by = ?,
+               released_for_requote_reason = 'Auto-reopened for competitive quotation after partial dispatch',
+               replacement_item_id = ?,
+               updated_at = NOW()
+           WHERE requirement_id = ? AND id = ?`,
+          [newTotalDispatched, authTransporter.company_name || authTransporter.username || 'Auto-Dispatch Re-open', replacementItemId, actualReqId, actualItemId]
+        );
+      }
 
       // Insert Replacement Requirement Item for exact remaining quantity
-      const targetItemRec = itemRows[0] || {};
-      const targetDateVal = targetItemRec.target_date || (parentReq ? parentReq.target_date : null) || new Date();
+      const targetDateVal = (originalItemRec && originalItemRec.target_date) || parentReq.target_date || new Date();
       await conn.query(
         `INSERT INTO transport_requirement_items (
            id, requirement_id, sub_indent_no, product_name, quantity_mt, unit,
@@ -2233,24 +2270,24 @@ async function handleCreateTruckDispatch(req, res) {
          )`,
         [
           replacementItemId,
-          requirementId,
+          actualReqId,
           newSubIndentNo,
-          targetItemRec.product_name || (parentReq ? parentReq.product_name : 'Cargo'),
+          (originalItemRec && originalItemRec.product_name) || parentReq.product_name || 'Cargo',
           newRemaining,
-          targetItemRec.unit || 'MT',
-          targetItemRec.pickup_origin || (parentReq ? parentReq.pickup_origin : ''),
-          targetItemRec.drop_location || (parentReq ? parentReq.drop_location : ''),
-          targetItemRec.hsn_code || '',
+          (originalItemRec && originalItemRec.unit) || parentReq.unit || 'MT',
+          (originalItemRec && originalItemRec.pickup_origin) || parentReq.pickup_origin || '',
+          (originalItemRec && originalItemRec.drop_location) || parentReq.drop_location || '',
+          (originalItemRec && originalItemRec.hsn_code) || '',
           targetDateVal,
           newRemaining,
-          itemId
+          actualItemId
         ]
       );
 
       // Parent status is kept in PARTIALLY_DISPATCHED
       await conn.query(
         `UPDATE transport_requirements SET status = 'PARTIALLY_DISPATCHED', updated_at = NOW() WHERE id = ?`,
-        [requirementId]
+        [actualReqId]
       );
 
       // Log Reopen Audit
@@ -2268,27 +2305,29 @@ async function handleCreateTruckDispatch(req, res) {
       );
     } else {
       // FULLY DISPATCHED
-      await conn.query(
-        `UPDATE transport_requirement_items
-         SET dispatched_quantity_mt = ?,
-             remaining_quantity_mt = 0,
-             dispatch_status = 'FULLY_DISPATCHED',
-             allocation_status = 'COMPLETED',
-             updated_at = NOW()
-         WHERE requirement_id = ? AND id = ?`,
-        [newTotalDispatched, requirementId, itemId]
-      );
+      if (originalItemRec) {
+        await conn.query(
+          `UPDATE transport_requirement_items
+           SET dispatched_quantity_mt = ?,
+               remaining_quantity_mt = 0,
+               dispatch_status = 'FULLY_DISPATCHED',
+               allocation_status = 'COMPLETED',
+               updated_at = NOW()
+           WHERE requirement_id = ? AND id = ?`,
+          [newTotalDispatched, actualReqId, actualItemId]
+        );
+      }
 
       // Check if all items in parent requirement are FULLY_DISPATCHED (or completed through re-quote)
       const [allChildItems] = await conn.query(
         `SELECT id, dispatch_status FROM transport_requirement_items WHERE requirement_id = ?`,
-        [requirementId]
+        [actualReqId]
       );
-      const allFullyDispatched = allChildItems.length > 0 && allChildItems.every(i => i.id === itemId ? true : (i.dispatch_status === 'FULLY_DISPATCHED' || i.dispatch_status === 'RELEASED_FOR_REQUOTE'));
+      const allFullyDispatched = allChildItems.length > 0 && allChildItems.every(i => i.id === actualItemId ? true : (i.dispatch_status === 'FULLY_DISPATCHED' || i.dispatch_status === 'RELEASED_FOR_REQUOTE'));
       const parentStatus = allFullyDispatched ? 'COMPLETED' : 'PARTIALLY_DISPATCHED';
       await conn.query(
         `UPDATE transport_requirements SET status = ?, updated_at = NOW() WHERE id = ?`,
-        [parentStatus, requirementId]
+        [parentStatus, actualReqId]
       );
     }
 
@@ -2327,8 +2366,10 @@ async function handleCreateTruckDispatch(req, res) {
       reopened_item_id: replacementItemId
     });
   } catch (err) {
-    await conn.rollback();
-    conn.release();
+    if (conn) {
+      try { await conn.rollback(); } catch (e) {}
+      conn.release();
+    }
     console.error('❌ dispatch Error:', err.message);
     return res.status(500).json({ success: false, error: { code: 'DATABASE_ERROR', message: err.message } });
   }
