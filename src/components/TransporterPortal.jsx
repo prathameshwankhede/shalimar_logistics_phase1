@@ -1022,73 +1022,45 @@ export const TransporterPortal = () => {
       );
     }
 
-    // CASE A — ADMIN COUNTER OFFER
+    // CASE A — LOWER COMPETING RATE / COUNTER OFFER
     if (isCounteredByAdmin) {
       return (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', background: '#fffbeb', border: '1.5px solid #f59e0b', padding: '12px 16px', borderRadius: '12px', minWidth: '260px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', background: '#fffbeb', border: '1.5px solid #f59e0b', padding: '14px 18px', borderRadius: '12px', minWidth: '260px' }}>
           <div style={{ fontSize: '0.82rem', color: '#78350f', fontWeight: '700' }}>
             Your Original Bid: <strong style={{ color: '#92400e' }}>₹{origRate}/MT</strong>
           </div>
-          <div style={{ fontSize: '0.98rem', fontWeight: '900', color: '#b45309', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            ⚠ ADMIN COUNTER OFFER: <span style={{ background: '#fef3c7', padding: '4px 12px', borderRadius: '6px', border: '1.5px solid #f59e0b', fontSize: '1.1rem', color: '#92400e' }}>₹{adminCounter}/MT</span>
+          <div style={{ fontSize: '0.98rem', fontWeight: '900', color: '#b45309', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+            <span>🔥 LOWER COMPETING BID:</span>
+            <span style={{ background: '#fef3c7', padding: '4px 12px', borderRadius: '6px', border: '1.5px solid #f59e0b', fontSize: '1.1rem', color: '#92400e', fontWeight: '900' }}>
+              ₹{adminCounter}/MT
+            </span>
           </div>
 
-          {showCounterInput ? (
-            <form onSubmit={handleSendTransporterCounter} style={{ display: 'flex', gap: '6px', marginTop: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
-              <input
-                type="number"
-                min="1"
-                step="0.01"
-                placeholder="Your Rate"
-                className="form-control"
-                value={transporterCounterRateInput}
-                onChange={(e) => setTransporterCounterRateInput(e.target.value)}
-                style={{ width: '110px', height: '36px', fontSize: '0.9rem', fontWeight: '800' }}
-                required
-              />
-              <button type="submit" disabled={isResponding} className="btn btn-primary" style={{ padding: '6px 14px', fontSize: '0.82rem', height: '36px' }}>
-                {isResponding ? '⏳...' : 'Send Counter'}
-              </button>
-              <button type="button" onClick={() => setActiveTransporterCounterSubId(null)} className="btn" style={{ padding: '6px 12px', fontSize: '0.82rem', height: '36px', background: '#cbd5e1' }}>
-                Cancel
-              </button>
-            </form>
-          ) : (
-            <div style={{ display: 'flex', gap: '8px', marginTop: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
-              <button
-                type="button"
-                disabled={isResponding}
-                onClick={handleAcceptAdminCounter}
-                className="btn btn-success"
-                style={{ padding: '7px 16px', fontSize: '0.84rem', fontWeight: '900', borderRadius: '8px', background: '#16a34a', color: '#ffffff', border: 'none', cursor: isResponding ? 'not-allowed' : 'pointer' }}
-              >
-                {isResponding ? '⏳...' : `✓ Accept Counter Offer (₹${adminCounter})`}
-              </button>
-              <button
-                type="button"
-                disabled={isResponding}
-                onClick={handleRejectAdminCounter}
-                className="btn btn-danger"
-                style={{ padding: '7px 14px', fontSize: '0.82rem', fontWeight: '800', borderRadius: '8px', background: '#ef4444', color: '#ffffff', border: 'none', cursor: isResponding ? 'not-allowed' : 'pointer' }}
-              >
-                ✕ Reject Counter Offer
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveTransporterCounterSubId(myExistingBid.id);
-                  setTransporterCounterRateInput(String(Math.round((Number(origRate || 0) + Number(adminCounter || 0)) / 2)));
-                }}
-                className="btn btn-primary"
-                style={{ padding: '7px 14px', fontSize: '0.82rem', fontWeight: '800', borderRadius: '8px', background: '#0284c7', color: '#ffffff', border: 'none' }}
-              >
-                ↔ Counter Offer
-              </button>
-              <button type="button" onClick={() => setSelectedHistorySub(myExistingBid)} style={{ background: 'none', border: 'none', color: '#0284c7', cursor: 'pointer', fontSize: '0.8rem', fontWeight: '700', textDecoration: 'underline' }}>
-                📜 History
-              </button>
-            </div>
-          )}
+          <button
+            type="button"
+            disabled={isResponding}
+            onClick={handleAcceptAdminCounter}
+            className="btn btn-success"
+            style={{
+              padding: '10px 18px',
+              fontSize: '0.9rem',
+              fontWeight: '900',
+              borderRadius: '8px',
+              background: '#16a34a',
+              color: '#ffffff',
+              border: 'none',
+              cursor: isResponding ? 'not-allowed' : 'pointer',
+              width: '100%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '6px',
+              boxShadow: '0 2px 8px rgba(22, 163, 74, 0.3)',
+              marginTop: '4px'
+            }}
+          >
+            {isResponding ? '⏳ Accepting...' : `✓ Accept Counter Offer (₹${adminCounter})`}
+          </button>
         </div>
       );
     }
