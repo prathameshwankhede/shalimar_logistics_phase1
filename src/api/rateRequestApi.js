@@ -97,10 +97,13 @@ export async function getDispatchById(id) {
   });
 }
 
-export async function releaseRemainingForRequote(requirementId, itemId, reason = '') {
+export async function releaseRemainingForRequote(requirementId, itemId, reason = '', customQty = null) {
   return apiClient(`/api/requirements/${requirementId}/items/${itemId}/release-remaining`, {
     method: 'POST',
-    body: JSON.stringify({ reason })
+    body: JSON.stringify({
+      reason,
+      custom_quantity_mt: customQty !== null && customQty !== undefined ? parseFloat(customQty) : undefined
+    })
   });
 }
 

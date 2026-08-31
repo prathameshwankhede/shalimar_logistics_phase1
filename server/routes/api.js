@@ -2818,7 +2818,7 @@ async function handleReleaseRemainingForRequote(req, res) {
     }
 
     const { requirementId, itemId } = req.params;
-    const { reason = '' } = req.body || {};
+    const { reason = '', custom_quantity_mt, quantity_mt } = req.body || {};
 
     conn = await pool.getConnection();
     await conn.beginTransaction();
@@ -2882,14 +2882,20 @@ async function handleReleaseRemainingForRequote(req, res) {
     const totalDispatched = parseFloat(dispatchedRows[0]?.total_dispatched || 0);
     const remainingQty = parseFloat(Math.max(0, totalItemQty - totalDispatched).toFixed(3));
 
-    // 6. Enforce Remaining Quantity > 0
-    if (remainingQty <= 0) {
+    // Support custom/increased quantity requested by Admin
+    const requestedQty = parseFloat(custom_quantity_mt !== undefined ? custom_quantity_mt : quantity_mt);
+    const targetReleaseQty = (!isNaN(requestedQty) && requestedQty > 0)
+      ? parseFloat(requestedQty.toFixed(3))
+      : remainingQty;
+
+    // 6. Enforce Target Release Quantity > 0
+    if (targetReleaseQty <= 0) {
       await conn.rollback();
       conn.release();
       return res.status(400).json({
         success: false,
         code: 'NO_REMAINING_QUANTITY',
-        error: `Cannot release for re-quote: remaining quantity is 0 MT (Total: ${totalItemQty} MT, Dispatched: ${totalDispatched} MT).`
+        error: `Cannot release for re-quote: quantity is 0 MT (Total: ${totalItemQty} MT, Dispatched: ${totalDispatched} MT).`
       });
     }
 
@@ -2950,25 +2956,38 @@ async function handleReleaseRemainingForRequote(req, res) {
         actualReqId,
         newSubIndentNo,
         originalItem.product_name,
-        remainingQty,
+        targetReleaseQty,
         originalItem.unit || 'MT',
         originalItem.pickup_origin || parentReq.pickup_origin,
         originalItem.drop_location || parentReq.drop_location,
         originalItem.hsn_code || '',
         targetDateVal,
-        remainingQty,
+        targetReleaseQty,
         actualItemId
       ]
     );
 
-    // 10. Keep Parent Requirement in active in-progress state (NEVER mark COMPLETED)
-    await conn.query(
-      `UPDATE transport_requirements
-       SET status = 'PARTIALLY_DISPATCHED',
-           updated_at = NOW()
-       WHERE id = ?`,
-      [actualReqId]
-    );
+    // 10. Update Parent Requirement total quantity if increased
+    if (targetReleaseQty > remainingQty) {
+      const extraQty = targetReleaseQty - remainingQty;
+      await conn.query(
+        `UPDATE transport_requirements 
+         SET total_quantity_mt = total_quantity_mt + ?,
+             quantity_mt = quantity_mt + ?,
+             status = 'PARTIALLY_DISPATCHED',
+             updated_at = NOW()
+         WHERE id = ?`,
+        [extraQty, extraQty, actualReqId]
+      );
+    } else {
+      await conn.query(
+        `UPDATE transport_requirements
+         SET status = 'PARTIALLY_DISPATCHED',
+             updated_at = NOW()
+         WHERE id = ?`,
+        [actualReqId]
+      );
+    }
 
     // 11. Security Audit Log
     const auditId = `audit_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
@@ -2978,7 +2997,7 @@ async function handleReleaseRemainingForRequote(req, res) {
        VALUES (?, ?, ?, 'admin', ?, 'REQUOTE_RELEASED 🔄', NOW())`,
       [
         auditId,
-        `REMAINING_QUANTITY_RELEASED_FOR_REQUOTE (Orig: ${originalItem.sub_indent_no || actualItemId}, Released: ${remainingQty} MT -> New: ${newSubIndentNo})`,
+        `REMAINING_QUANTITY_RELEASED_FOR_REQUOTE (Orig: ${originalItem.sub_indent_no || actualItemId}, Released: ${targetReleaseQty} MT -> New: ${newSubIndentNo})`,
         req.user.username || 'admin',
         clientIp
       ]
@@ -2989,11 +3008,11 @@ async function handleReleaseRemainingForRequote(req, res) {
 
     return res.json({
       success: true,
-      message: `Successfully released ${remainingQty} MT for fresh quotation. New Sub-Indent ${newSubIndentNo} created.`,
+      message: `Successfully released ${targetReleaseQty} MT for fresh quotation. New Sub-Indent ${newSubIndentNo} created.`,
       original_item_id: actualItemId,
       original_sub_indent_no: originalItem.sub_indent_no,
       dispatched_quantity_mt: totalDispatched,
-      released_quantity_mt: remainingQty,
+      released_quantity_mt: targetReleaseQty,
       replacement_item_id: replacementItemId,
       replacement_sub_indent_no: newSubIndentNo
     });
@@ -3380,9 +3399,17 @@ router.post('/requirements/:requirementId/items/:itemId/accept-final-rate', auth
 router.post('/rate-submissions/:id/accept-final-rate', authenticateToken, handleAcceptFinalRate);
 router.post('/requirements/:requirementId/items/:itemId/dispatch', authenticateToken, handleCreateTruckDispatch);
 router.post('/requirements/:requirementId/items/:itemId/dispatches', authenticateToken, handleCreateTruckDispatch);
-router.post('/requirements/:requirementId/items/:itemId/release-remaining-for-requote', authenticateToken, requireRole('admin'), handleReleaseRemainingForRequote);
-router.post('/requirements/:requirementId/items/:itemId/release-for-requote', authenticateToken, requireRole('admin'), handleReleaseRemainingForRequote);
-router.post('/requirements/:requirementId/items/:itemId/reopen-for-quote', authenticateToken, requireRole('admin'), handleReleaseRemainingForRequote);
+router.post(
+  [
+    '/requirements/:requirementId/items/:itemId/release-remaining',
+    '/requirements/:requirementId/items/:itemId/release-remaining-for-requote',
+    '/requirements/:requirementId/items/:itemId/release-for-requote',
+    '/requirements/:requirementId/items/:itemId/reopen-for-quote'
+  ],
+  authenticateToken,
+  requireRole('admin'),
+  handleReleaseRemainingForRequote
+);
 router.get('/requirements/:requirementId/items/:itemId/dispatches', authenticateToken, handleGetRequirementItemDispatches);
 router.get('/dispatches', authenticateToken, handleGetDispatches);
 router.get('/dispatches/:id', authenticateToken, handleGetDispatchById);

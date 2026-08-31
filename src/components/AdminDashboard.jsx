@@ -385,6 +385,7 @@ export const AdminDashboard = () => {
     totalQty: 0,
     dispatchedQty: 0,
     remainingQty: 0,
+    customQty: 0,
     reason: '',
     isSubmitting: false
   });
@@ -397,22 +398,24 @@ export const AdminDashboard = () => {
       totalQty,
       dispatchedQty,
       remainingQty,
+      customQty: remainingQty,
       reason: '',
       isSubmitting: false
     });
   };
 
   const handleConfirmReleaseRequote = async () => {
-    const { req, item, remainingQty, reason } = releaseRequoteModal;
+    const { req, item, remainingQty, customQty, reason } = releaseRequoteModal;
     if (!req || !item) return;
+    const finalQty = parseFloat(customQty) > 0 ? parseFloat(customQty) : remainingQty;
     try {
       setReleaseRequoteModal(prev => ({ ...prev, isSubmitting: true }));
       const reqId = req.id || req.req_no;
       const itemId = item.id || item.sub_indent_no;
-      const res = await releaseRemainingForRequote(reqId, itemId, reason);
+      const res = await releaseRemainingForRequote(reqId, itemId, reason, finalQty);
       if (res && res.success) {
-        alert(`✅ Successfully released ${remainingQty} MT for fresh quotation. New Sub-Indent ${res.replacement_sub_indent_no} created.`);
-        setReleaseRequoteModal({ isOpen: false, req: null, item: null, totalQty: 0, dispatchedQty: 0, remainingQty: 0, reason: '', isSubmitting: false });
+        alert(`✅ Successfully released ${finalQty} MT for fresh quotation. New Sub-Indent ${res.replacement_sub_indent_no} created.`);
+        setReleaseRequoteModal({ isOpen: false, req: null, item: null, totalQty: 0, dispatchedQty: 0, remainingQty: 0, customQty: 0, reason: '', isSubmitting: false });
         if (typeof safeRefreshRequirements === 'function') {
           await safeRefreshRequirements();
         } else if (typeof refreshRequirements === 'function') {
@@ -5518,14 +5521,94 @@ export const AdminDashboard = () => {
               </button>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '16px', background: 'rgba(0,0,0,0.3)', padding: '14px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.08)' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '14px', background: 'rgba(0,0,0,0.3)', padding: '14px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.08)' }}>
               <div>
                 <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Already Dispatched</div>
                 <div style={{ fontSize: '1.2rem', fontWeight: '800', color: '#38bdf8' }}>{releaseRequoteModal.dispatchedQty} MT</div>
               </div>
               <div>
-                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Remaining Quantity</div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Remaining Balance</div>
                 <div style={{ fontSize: '1.2rem', fontWeight: '900', color: '#fbbf24' }}>{releaseRequoteModal.remainingQty} MT</div>
+              </div>
+            </div>
+
+            {/* Editable Re-Quote Quantity Section */}
+            <div style={{ background: 'rgba(15, 23, 42, 0.95)', border: '1.5px solid #38bdf8', borderRadius: '12px', padding: '14px', marginBottom: '16px', boxShadow: '0 4px 14px rgba(56, 189, 248, 0.15)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                <label style={{ fontSize: '0.86rem', color: '#38bdf8', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  ⚖️ Re-Quote Quantity (MT):
+                </label>
+                {Number(releaseRequoteModal.customQty !== undefined ? releaseRequoteModal.customQty : releaseRequoteModal.remainingQty) > Number(releaseRequoteModal.remainingQty) && (
+                  <span style={{ fontSize: '0.75rem', background: '#059669', color: '#ffffff', padding: '2px 8px', borderRadius: '12px', fontWeight: '800' }}>
+                    +{(Number(releaseRequoteModal.customQty) - Number(releaseRequoteModal.remainingQty)).toFixed(1)} MT Extra Added
+                  </span>
+                )}
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <input
+                  type="number"
+                  min="0.1"
+                  step="0.1"
+                  value={releaseRequoteModal.customQty !== undefined ? releaseRequoteModal.customQty : releaseRequoteModal.remainingQty}
+                  onChange={(e) => setReleaseRequoteModal(prev => ({ ...prev, customQty: e.target.value }))}
+                  style={{
+                    flex: 1,
+                    padding: '10px 14px',
+                    fontSize: '1.2rem',
+                    fontWeight: '900',
+                    background: '#020617',
+                    border: '1.5px solid #38bdf8',
+                    borderRadius: '8px',
+                    color: '#38bdf8',
+                    outline: 'none'
+                  }}
+                  placeholder="Enter quantity in MT"
+                />
+                <span style={{ fontWeight: '800', color: '#94a3b8', fontSize: '1rem' }}>MT</span>
+              </div>
+
+              {/* Quick Increase / Add Quantity Buttons */}
+              <div style={{ display: 'flex', gap: '6px', marginTop: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
+                <span style={{ fontSize: '0.74rem', color: '#94a3b8', marginRight: '4px' }}>Quantity Badhayein:</span>
+                {[5, 10, 20, 50].map((inc) => (
+                  <button
+                    key={inc}
+                    type="button"
+                    onClick={() => {
+                      const cur = Number(releaseRequoteModal.customQty !== undefined ? releaseRequoteModal.customQty : releaseRequoteModal.remainingQty || 0);
+                      setReleaseRequoteModal(prev => ({ ...prev, customQty: (cur + inc).toFixed(1) }));
+                    }}
+                    style={{
+                      background: 'rgba(56, 189, 248, 0.15)',
+                      border: '1px solid #38bdf8',
+                      color: '#38bdf8',
+                      padding: '4px 10px',
+                      borderRadius: '6px',
+                      fontSize: '0.78rem',
+                      fontWeight: '800',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    +{inc} MT
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => setReleaseRequoteModal(prev => ({ ...prev, customQty: releaseRequoteModal.remainingQty }))}
+                  style={{
+                    background: 'rgba(148, 163, 184, 0.15)',
+                    border: '1px solid #94a3b8',
+                    color: '#cbd5e1',
+                    padding: '4px 10px',
+                    borderRadius: '6px',
+                    fontSize: '0.78rem',
+                    cursor: 'pointer',
+                    marginLeft: 'auto'
+                  }}
+                >
+                  Reset ({releaseRequoteModal.remainingQty} MT)
+                </button>
               </div>
             </div>
 
@@ -5533,7 +5616,7 @@ export const AdminDashboard = () => {
               <div style={{ fontWeight: '800', color: '#fbbf24', marginBottom: '4px' }}>This will:</div>
               <div>✓ Close remaining allocation for current transporter</div>
               <div>✓ Preserve existing truck and LR history</div>
-              <div>✓ Create a new Sub-Indent for {releaseRequoteModal.remainingQty} MT</div>
+              <div>✓ Create a new Sub-Indent for <strong style={{ color: '#38bdf8' }}>{releaseRequoteModal.customQty !== undefined ? releaseRequoteModal.customQty : releaseRequoteModal.remainingQty} MT</strong></div>
               <div>✓ Open fresh bidding for eligible transporters</div>
               <div style={{ marginTop: '6px', fontSize: '0.75rem', color: '#fca5a5' }}>
                 ⚠️ This action cannot be undone automatically.
@@ -5547,7 +5630,7 @@ export const AdminDashboard = () => {
               <textarea
                 value={releaseRequoteModal.reason}
                 onChange={(e) => setReleaseRequoteModal(prev => ({ ...prev, reason: e.target.value }))}
-                placeholder="e.g. Transporter unable to fulfill remaining capacity; releasing for open re-quote"
+                placeholder="e.g. Transporter unable to fulfill remaining capacity; releasing for open re-quote with adjusted capacity"
                 style={{
                   width: '100%',
                   height: '70px',
