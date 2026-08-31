@@ -14,7 +14,6 @@ lerna-debug.log*
 
 # Dependencies and build outputs
 node_modules
-dist
 dist-ssr
 
 # Editor directories and files
