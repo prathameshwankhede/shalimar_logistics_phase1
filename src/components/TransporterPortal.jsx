@@ -1191,6 +1191,12 @@ export const TransporterPortal = () => {
   const renderTransporterNegotiationCell = (myExistingBid, req) => {
     if (!myExistingBid) return null;
 
+    const remainingQty = req.remaining_quantity_mt !== undefined && req.remaining_quantity_mt !== null
+      ? Number(req.remaining_quantity_mt)
+      : Math.max(0, Number(req.quantity_mt || req.required_qty || 0) - Number(req.dispatched_quantity_mt || 0));
+    const dispatchedQty = Number(req.dispatched_quantity_mt || 0);
+    const isFullyDispatched = remainingQty <= 0 && dispatchedQty > 0;
+
     const bidStatusUpper = String(myExistingBid.bid_status || myExistingBid.status || '').toUpperCase();
     const counterOfferStatus = String(myExistingBid.counter_offer_status || '').toUpperCase();
     const counterOfferBy = String(myExistingBid.counter_offer_by || '').toUpperCase();
@@ -1306,11 +1312,6 @@ export const TransporterPortal = () => {
 
     // CASE C — FINALIZED RATE FLOW (WINNING TRANSPORTER)
     if (isFinalized) {
-      const remainingQty = req.remaining_quantity_mt !== undefined && req.remaining_quantity_mt !== null
-        ? Number(req.remaining_quantity_mt)
-        : Math.max(0, Number(req.quantity_mt || req.required_qty || 0) - Number(req.dispatched_quantity_mt || 0));
-      const dispatchedQty = Number(req.dispatched_quantity_mt || 0);
-      const isFullyDispatched = remainingQty <= 0 && dispatchedQty > 0;
 
       if (!isAccepted) {
         return (
