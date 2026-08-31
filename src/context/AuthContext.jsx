@@ -7,7 +7,8 @@ import {
   loadDBFromSupabase,
   saveDB,
   resetDB as resetStoreDB,
-  setAuthToken
+  setAuthToken,
+  getAuthToken
 } from '../store/dbStore';
 
 function getApiBaseUrl() {
@@ -22,7 +23,10 @@ const AuthContext = createContext(null);
 
 export const AuthProvider = ({ children }) => {
   const [db, setDb] = useState(() => loadDB());
-  
+  const [authInitializing, setAuthInitializing] = useState(true);
+  const [isDataBootstrapping, setIsDataBootstrapping] = useState(true);
+  const [bootstrapError, setBootstrapError] = useState(null);
+
   // Restore current user session safely
   const [currentUser, setCurrentUser] = useState(() => {
     try {
@@ -30,23 +34,6 @@ export const AuthProvider = ({ children }) => {
       if (storedStr) {
         const parsed = JSON.parse(storedStr);
         if (parsed && (parsed.username || parsed.id)) {
-          const freshData = loadDB();
-          const found = freshData.users.find(
-            (u) => u.id === parsed.id || (u.username && parsed.username && u.username.toLowerCase() === parsed.username.toLowerCase())
-          );
-
-          if (found) {
-            // 🛑 Check if Transporter Account was suspended by Admin
-            if (found.role === 'transporter' || found.transporter_id) {
-              const transporter = freshData.transporters?.find((t) => t.id === found.transporter_id || t.username === found.username || t.code === found.username);
-              if (transporter && transporter.status === 'Inactive') {
-                sessionStorage.removeItem(USER_SESSION_KEY);
-                localStorage.removeItem(USER_SESSION_KEY);
-                return null;
-              }
-            }
-            return found;
-          }
           return parsed;
         }
       }
@@ -56,36 +43,89 @@ export const AuthProvider = ({ children }) => {
     return null;
   });
 
-  // Listen to Window Storage & BroadcastChannel for real-time cross-device sync
-  useEffect(() => {
-    let isMounted = true;
-    let debounceTimer = null;
-
-    const fetchSharedServerDb = async (signal) => {
-      try {
-        const sharedDb = await loadDBFromSupabase({ signal });
-        if (sharedDb && isMounted) {
-          setDb(sharedDb);
-        }
-      } catch (e) {
-        if (e.name !== 'AbortError') {
-          console.warn('API sync notice:', e.message);
+  // Centralized Application Data Bootstrap Function
+  const initializeApplicationData = async (options = {}) => {
+    try {
+      setIsDataBootstrapping(true);
+      setBootstrapError(null);
+      const freshDb = await loadDBFromSupabase(options);
+      if (freshDb) {
+        setDb(freshDb);
+        setBootstrapError(null);
+        console.log('🎉 [BOOTSTRAP] Complete');
+        if (typeof BroadcastChannel !== 'undefined') {
+          try {
+            const bc = new BroadcastChannel('transflow_live_sync_v1');
+            bc.postMessage({ type: 'SYNC_DB', timestamp: Date.now() });
+            bc.close();
+          } catch (e) {}
         }
       }
-    };
+      return freshDb;
+    } catch (e) {
+      if (e.name !== 'AbortError') {
+        console.error('❌ [BOOTSTRAP] Initialization error:', e.message);
+        setBootstrapError(e.message);
+      }
+      return null;
+    } finally {
+      setIsDataBootstrapping(false);
+    }
+  };
 
-    const controller = new AbortController();
-    fetchSharedServerDb(controller.signal);
+  // Structured Application Lifecycle Bootstrap Sequence
+  useEffect(() => {
+    let isMounted = true;
 
+    async function runBootstrapSequence() {
+      console.log('🚀 [BOOTSTRAP] Starting application initialization');
+      console.log('🔑 [AUTH] Restoring session');
+
+      let restoredUser = null;
+      try {
+        const storedStr = sessionStorage.getItem(USER_SESSION_KEY) || localStorage.getItem(USER_SESSION_KEY);
+        if (storedStr) {
+          restoredUser = JSON.parse(storedStr);
+        }
+      } catch (e) {
+        console.error('Session parsing error:', e);
+      }
+
+      const token = getAuthToken();
+
+      if (restoredUser && token) {
+        console.log(`✅ [AUTH] Session restored successfully: ${restoredUser.username} (${restoredUser.role})`);
+        if (isMounted) {
+          setCurrentUser(restoredUser);
+          setAuthInitializing(false);
+        }
+        await initializeApplicationData();
+      } else {
+        console.log('ℹ️ [AUTH] No active session found');
+        if (isMounted) {
+          setCurrentUser(null);
+          setAuthInitializing(false);
+          setIsDataBootstrapping(false);
+        }
+      }
+    }
+
+    runBootstrapSequence();
+
+    // Listen to Storage & BroadcastChannel for real-time background sync
+    let debounceTimer = null;
     const debouncedFetch = () => {
       if (debounceTimer) clearTimeout(debounceTimer);
       debounceTimer = setTimeout(() => {
-        if (isMounted) fetchSharedServerDb(controller.signal);
+        if (isMounted && getAuthToken()) {
+          loadDBFromSupabase().then((data) => {
+            if (data && isMounted) setDb(data);
+          }).catch(() => {});
+        }
       }, 1500);
     };
 
     const handleStorageChange = (e) => {
-      // Only react to relevant keys, ignore random storage changes
       if (!e.key || e.key.includes('transflow')) {
         debouncedFetch();
       }
@@ -103,18 +143,19 @@ export const AuthProvider = ({ children }) => {
       } catch (e) {}
     }
 
-    // 🔄 Conservative background sync interval (45s), pausing when tab is hidden
     const interval = setInterval(() => {
-      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
-        return;
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+      if (getAuthToken()) {
+        loadDBFromSupabase().then((data) => {
+          if (data && isMounted) setDb(data);
+        }).catch(() => {});
       }
-      fetchSharedServerDb(controller.signal);
     }, 45000);
 
     window.addEventListener('storage', handleStorageChange);
+
     return () => {
       isMounted = false;
-      controller.abort();
       if (debounceTimer) clearTimeout(debounceTimer);
       window.removeEventListener('storage', handleStorageChange);
       if (bc) bc.close();
@@ -127,38 +168,22 @@ export const AuthProvider = ({ children }) => {
     if (currentUser) {
       try {
         sessionStorage.setItem(USER_SESSION_KEY, JSON.stringify(currentUser));
+        localStorage.setItem(USER_SESSION_KEY, JSON.stringify(currentUser));
       } catch (e) {
         console.error('Failed to save session token', e);
       }
     } else {
       sessionStorage.removeItem(USER_SESSION_KEY);
+      localStorage.removeItem(USER_SESSION_KEY);
     }
   }, [currentUser]);
 
   const refreshRequirements = async (options = {}) => {
-    try {
-      const freshDb = await loadDBFromSupabase(options);
-
-      if (freshDb) {
-        setDb(freshDb);
-        if (typeof BroadcastChannel !== 'undefined') {
-          try {
-            const bc = new BroadcastChannel('transflow_live_sync_v1');
-            bc.postMessage({ type: 'SYNC_DB', timestamp: Date.now() });
-            bc.close();
-          } catch (e) {}
-        }
-      }
-      return freshDb;
-    } catch (e) {
-      if (e.name !== 'AbortError') {
-        console.warn('refreshRequirements notice:', e.message);
-      }
-    }
+    return await initializeApplicationData(options);
   };
 
   const refreshDB = async (options = {}) => {
-    return await refreshRequirements(options);
+    return await initializeApplicationData(options);
   };
 
   const addSecurityLog = (targetDb, action, username, role, status = 'AUTHENTICATED 🛡️') => {
@@ -406,6 +431,10 @@ const updateDB = async (newDb) => {
         db,
         currentUser,
         currentTransporter,
+        authInitializing,
+        isDataBootstrapping,
+        bootstrapError,
+        initializeApplicationData,
         login,
         quickSwitchUser,
         logout,

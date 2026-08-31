@@ -60,7 +60,7 @@ import {
 } from 'lucide-react';
 
 export const AdminDashboard = () => {
-  const { db, updateDB, currentUser, addSecurityLog } = useAuth();
+  const { db, updateDB, currentUser, addSecurityLog, isDataBootstrapping, refreshDB } = useAuth();
 
   // 🧭 TAB PERSISTENCE ENGINE: Read URL Hash or LocalStorage so browser refresh NEVER redirects to Home!
   const getInitialAdminTab = () => {
@@ -2718,6 +2718,10 @@ export const AdminDashboard = () => {
                                 ].map((val) => String(val).trim()).filter((val) => val.length > 0))
                               );
 
+                              if (isDataBootstrapping && dropList.length === 0) {
+                                return <option value="">⏳ Loading Locations from Master Directory...</option>;
+                              }
+
                               if (dropList.length === 0) {
                                 return <option value="">-- No Location in Master Directory (Add in Master Directory) --</option>;
                               }
@@ -2749,6 +2753,10 @@ export const AdminDashboard = () => {
                                   ...(db.product_masters || []).map((p) => p.name).filter(Boolean)
                                 ].map((val) => String(val).trim()).filter((val) => val.length > 0))
                               );
+
+                              if (isDataBootstrapping && prods.length === 0) {
+                                return <option value="">⏳ Loading Products from Master Directory...</option>;
+                              }
 
                               if (prods.length === 0) {
                                 return <option value="">-- No Product in Master Directory (Add in Master Directory) --</option>;
@@ -3614,7 +3622,15 @@ export const AdminDashboard = () => {
                           });
                         })()}
 
-                        {db.rate_requests.length === 0 && (
+                        {isDataBootstrapping && (!db.rate_requests || db.rate_requests.length === 0) && (
+                          <tr>
+                            <td colSpan="9" style={{ textAlign: 'center', padding: '40px', color: '#38bdf8', fontWeight: 600 }}>
+                              ⏳ Loading production requirements from database...
+                            </td>
+                          </tr>
+                        )}
+
+                        {!isDataBootstrapping && (!db.rate_requests || db.rate_requests.length === 0) && (
                           <tr>
                             <td colSpan="9" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>
                               No transport requirements created yet. Click 'Create Requirement' above.

@@ -88,11 +88,57 @@ function getAuthHeaders() {
 }
 
 /**
+ * ☁️ Robust HTTP Fetch with Transient Retry (Exponential Backoff)
+ * Retries network failures & 5xx server errors safely.
+ * Does NOT retry 401 (Unauthorized), 403 (Forbidden), or 404.
+ */
+async function fetchWithRetry(url, options = {}, retries = 2, delayMs = 800) {
+  let lastError = null;
+
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const res = await fetch(url, {
+        ...options,
+        headers: {
+          ...getAuthHeaders(),
+          ...(options.headers || {})
+        }
+      });
+
+      // Never retry client authentication errors
+      if (res.status === 401 || res.status === 403 || res.status === 404) {
+        return res;
+      }
+
+      // Retry on 5xx or server hiccups
+      if (res.status >= 500 && attempt < retries) {
+        console.warn(`⚠️ [API] ${url} returned ${res.status}, retrying in ${delayMs * Math.pow(2, attempt)}ms (attempt ${attempt + 1}/${retries})...`);
+        await new Promise(r => setTimeout(r, delayMs * Math.pow(2, attempt)));
+        continue;
+      }
+
+      return res;
+    } catch (err) {
+      lastError = err;
+      if (err.name === 'AbortError') {
+        throw err;
+      }
+      if (attempt < retries) {
+        console.warn(`⚠️ [API] Network error fetching ${url}, retrying in ${delayMs * Math.pow(2, attempt)}ms (attempt ${attempt + 1}/${retries}):`, err.message);
+        await new Promise(r => setTimeout(r, delayMs * Math.pow(2, attempt)));
+      }
+    }
+  }
+
+  throw lastError || new Error(`Failed to fetch ${url} after ${retries} retries`);
+}
+
+/**
  * ☁️ Modular Targeted API Fetch Functions (Minimal Data Footprint & Zero Stale Cache)
  */
 export async function fetchDashboardMetrics() {
   try {
-    const res = await fetch(`${getApiBaseUrl()}/api/dashboard?_t=${Date.now()}`, { cache: 'no-store', headers: getAuthHeaders() });
+    const res = await fetchWithRetry(`${getApiBaseUrl()}/api/dashboard?_t=${Date.now()}`);
     if (!res.ok) return null;
     const json = await res.json();
     return json.dashboard || null;
@@ -103,10 +149,7 @@ export async function fetchDashboardMetrics() {
 
 export async function fetchRateRequests(page = 1, limit = 20, options = {}) {
   try {
-    const res = await fetch(`${getApiBaseUrl()}/api/rate-requests?page=${page}&limit=${limit}`, {
-      headers: getAuthHeaders(),
-      signal: options.signal
-    });
+    const res = await fetchWithRetry(`${getApiBaseUrl()}/api/rate-requests?page=${page}&limit=${limit}`, options);
     if (!res.ok) return [];
     const json = await res.json();
     return json.rate_requests || [];
@@ -117,13 +160,10 @@ export async function fetchRateRequests(page = 1, limit = 20, options = {}) {
 
 export async function fetchRateSubmissions(options = {}) {
   try {
-    const res = await fetch(`${getApiBaseUrl()}/api/rate-submissions`, {
-      headers: getAuthHeaders(),
-      signal: options.signal
-    });
+    const res = await fetchWithRetry(`${getApiBaseUrl()}/api/rate-submissions`, options);
     if (!res.ok) return [];
     const json = await res.json();
-    return json.rate_submissions || [];
+    return json.rate_submissions || json.data || [];
   } catch (e) {
     return [];
   }
@@ -131,13 +171,10 @@ export async function fetchRateSubmissions(options = {}) {
 
 export async function fetchTransportersList(options = {}) {
   try {
-    const res = await fetch(`${getApiBaseUrl()}/api/transporters`, {
-      headers: getAuthHeaders(),
-      signal: options.signal
-    });
+    const res = await fetchWithRetry(`${getApiBaseUrl()}/api/transporters`, options);
     if (!res.ok) return [];
     const json = await res.json();
-    return json.transporters || [];
+    return json.transporters || json.data || [];
   } catch (e) {
     return [];
   }
@@ -145,10 +182,7 @@ export async function fetchTransportersList(options = {}) {
 
 export async function fetchCompanyUnitsList(options = {}) {
   try {
-    const res = await fetch(`${getApiBaseUrl()}/api/company-units`, {
-      headers: getAuthHeaders(),
-      signal: options.signal
-    });
+    const res = await fetchWithRetry(`${getApiBaseUrl()}/api/company-units`, options);
     if (!res.ok) return [];
     const json = await res.json();
     return json.data || json.company_units || [];
@@ -159,10 +193,7 @@ export async function fetchCompanyUnitsList(options = {}) {
 
 export async function fetchProductsList(options = {}) {
   try {
-    const res = await fetch(`${getApiBaseUrl()}/api/products`, {
-      headers: getAuthHeaders(),
-      signal: options.signal
-    });
+    const res = await fetchWithRetry(`${getApiBaseUrl()}/api/products`, options);
     if (!res.ok) return [];
     const json = await res.json();
     return json.data || json.products || json.product_masters || [];
@@ -173,10 +204,7 @@ export async function fetchProductsList(options = {}) {
 
 export async function fetchRequirementsList(options = {}) {
   try {
-    const res = await fetch(`${getApiBaseUrl()}/api/requirements`, {
-      headers: getAuthHeaders(),
-      signal: options.signal
-    });
+    const res = await fetchWithRetry(`${getApiBaseUrl()}/api/requirements`, options);
     if (!res.ok) return [];
     const json = await res.json();
     return json.data || json.requirements || json.rate_requests || [];
@@ -187,10 +215,7 @@ export async function fetchRequirementsList(options = {}) {
 
 export async function fetchMasterData(options = {}) {
   try {
-    const res = await fetch(`${getApiBaseUrl()}/api/master-data`, {
-      headers: getAuthHeaders(),
-      signal: options.signal
-    });
+    const res = await fetchWithRetry(`${getApiBaseUrl()}/api/master-data`, options);
     if (!res.ok) return [];
     const json = await res.json();
     return json.master_records || [];
@@ -201,10 +226,7 @@ export async function fetchMasterData(options = {}) {
 
 export async function fetchTruckDispatchesList(options = {}) {
   try {
-    const res = await fetch(`${getApiBaseUrl()}/api/dispatches`, {
-      headers: getAuthHeaders(),
-      signal: options.signal
-    });
+    const res = await fetchWithRetry(`${getApiBaseUrl()}/api/dispatches`, options);
     if (!res.ok) return [];
     const json = await res.json();
     return json.dispatches || json.truck_dispatches || [];
@@ -215,10 +237,7 @@ export async function fetchTruckDispatchesList(options = {}) {
 
 export async function fetchAuditLogs(options = {}) {
   try {
-    const res = await fetch(`${getApiBaseUrl()}/api/security/audit-logs`, {
-      headers: getAuthHeaders(),
-      signal: options.signal
-    });
+    const res = await fetchWithRetry(`${getApiBaseUrl()}/api/security/audit-logs`, options);
     if (!res.ok) return [];
     const json = await res.json();
     return json.audit_logs || [];
@@ -240,7 +259,6 @@ export async function saveDB(data) {
     localStorage.removeItem(LOCAL_STORAGE_KEY);
     localStorage.removeItem('transflow_db');
     localStorage.removeItem('transflow_live_db');
-    localStorage.removeItem('transflow_db_v1');
   } catch (e) {}
 
   try {
@@ -265,13 +283,7 @@ export async function saveDB(data) {
  * ☁️ Direct API Database Connection (No LocalStorage Cache)
  */
 export function loadDB() {
-  try {
-    localStorage.removeItem(LOCAL_STORAGE_KEY);
-    localStorage.removeItem('transflow_db');
-    localStorage.removeItem('transflow_live_db');
-    localStorage.removeItem('transflow_db_v1');
-  } catch (e) {}
-  return { ...EMPTY_STATE };
+  return { ...EMPTY_STATE, _hasLoaded: false };
 }
 
 /**
@@ -280,7 +292,8 @@ export function loadDB() {
 export function resetDB() {
   const cleanData = {
     ...INITIAL_SEED_DATA,
-    _updatedAt: Date.now()
+    _updatedAt: Date.now(),
+    _hasLoaded: true
   };
   saveDB(cleanData);
   return cleanData;
@@ -297,53 +310,63 @@ export async function loadDBFromSupabase(options = {}) {
 
   inFlightLoadPromise = (async () => {
     try {
-      // ⚡ HIGH-PERFORMANCE CANONICAL FETCH: Only fetch actual relational tables concurrently
-      const [transporters, companyUnits, products, requirements, rateSubmissions, dispatches] = await Promise.all([
-        fetchTransportersList(options).catch(() => []),
-        fetchCompanyUnitsList(options).catch(() => []),
-        fetchProductsList(options).catch(() => []),
-        fetchRequirementsList(options).catch(() => []),
-        fetchRateSubmissions(options).catch(() => []),
-        fetchTruckDispatchesList(options).catch(() => [])
+      console.log('📡 [API] Loading requirements');
+      const reqRes = await fetchWithRetry(`${getApiBaseUrl()}/api/requirements`, options);
+      console.log(`📡 [API] Requirements response: ${reqRes.status}`);
+
+      console.log('📡 [API] Loading products');
+      const prodRes = await fetchWithRetry(`${getApiBaseUrl()}/api/products`, options);
+      console.log(`📡 [API] Products response: ${prodRes.status}`);
+
+      console.log('📡 [API] Loading locations');
+      const compRes = await fetchWithRetry(`${getApiBaseUrl()}/api/company-units`, options);
+      console.log(`📡 [API] Locations response: ${compRes.status}`);
+
+      const [transRes, subRes, dispRes] = await Promise.all([
+        fetchWithRetry(`${getApiBaseUrl()}/api/transporters`, options).catch(() => null),
+        fetchWithRetry(`${getApiBaseUrl()}/api/rate-submissions`, options).catch(() => null),
+        fetchWithRetry(`${getApiBaseUrl()}/api/dispatches`, options).catch(() => null)
       ]);
+
+      const reqJson = reqRes.ok ? await reqRes.json() : null;
+      const prodJson = prodRes.ok ? await prodRes.json() : null;
+      const compJson = compRes.ok ? await compRes.json() : null;
+      const transJson = transRes && transRes.ok ? await transRes.json() : null;
+      const subJson = subRes && subRes.ok ? await subRes.json() : null;
+      const dispJson = dispRes && dispRes.ok ? await dispRes.json() : null;
+
+      const requirements = reqJson ? (reqJson.data || reqJson.requirements || reqJson.rate_requests || []) : [];
+      const products = prodJson ? (prodJson.data || prodJson.products || prodJson.product_masters || []) : [];
+      const companyUnits = compJson ? (compJson.data || compJson.company_units || []) : [];
+      const transporters = transJson ? (transJson.transporters || transJson.data || []) : [];
+      const rateSubmissions = subJson ? (subJson.rate_submissions || subJson.data || []) : [];
+      const dispatches = dispJson ? (dispJson.dispatches || dispJson.truck_dispatches || []) : [];
 
       const data = {
         ...EMPTY_STATE,
         company: INITIAL_SEED_DATA.company,
-        do_master_settings: INITIAL_SEED_DATA.do_master_settings
+        do_master_settings: INITIAL_SEED_DATA.do_master_settings,
+        transporters,
+        company_units_plants: companyUnits,
+        company_units: companyUnits,
+        company_masters: companyUnits,
+        products,
+        product_masters: products,
+        rate_requests: requirements,
+        transport_requirements: requirements,
+        requirements,
+        rate_submissions: rateSubmissions,
+        dispatches,
+        truck_dispatches: dispatches,
+        _hasLoaded: true
       };
-
-      if (Array.isArray(transporters)) {
-        data.transporters = transporters;
-      }
-      if (Array.isArray(companyUnits)) {
-        data.company_units_plants = companyUnits;
-        data.company_units = companyUnits;
-        data.company_masters = companyUnits;
-      }
-      if (Array.isArray(products)) {
-        data.products = products;
-        data.product_masters = products;
-      }
-      if (Array.isArray(requirements)) {
-        data.rate_requests = requirements;
-        data.transport_requirements = requirements;
-        data.requirements = requirements;
-      }
-      if (Array.isArray(rateSubmissions)) {
-        data.rate_submissions = rateSubmissions;
-      }
-      if (Array.isArray(dispatches)) {
-        data.dispatches = dispatches;
-        data.truck_dispatches = dispatches;
-      }
 
       return data;
     } catch (e) {
       if (e.name !== 'AbortError') {
-        console.error('API loadDBFromSupabase error:', e.message);
+        console.error('❌ [API] Failed to load data from server:', e.message);
       }
-      return null;
+      throw e;
     } finally {
       inFlightLoadPromise = null;
     }
