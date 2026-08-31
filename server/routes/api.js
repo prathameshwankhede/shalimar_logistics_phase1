@@ -5851,23 +5851,6 @@ router.get('/state', authenticateToken, async (req, res) => {
 
   let state = IN_MEMORY_CACHE || emptyState;
 
-  try {
-    const [rows] = await pool.query('SELECT data FROM app_database WHERE id = ?', [CLOUD_ROW_ID]);
-    if (rows && rows.length > 0 && rows[0].data) {
-      const parsed = typeof rows[0].data === 'string' ? JSON.parse(rows[0].data) : rows[0].data;
-      if (parsed && typeof parsed === 'object') {
-        state = parsed;
-        IN_MEMORY_CACHE = state;
-      }
-    } else if (!IN_MEMORY_CACHE) {
-      state = emptyState;
-    }
-  } catch (err) {
-    if (!IN_MEMORY_CACHE) {
-      state = emptyState;
-    }
-  }
-
   // Merge normalized transporters, requirements, and rate submissions from MySQL tables (100% Single Source of Truth)
   try {
     const [dbTransporters, dbSubs] = await Promise.all([
@@ -5880,7 +5863,6 @@ router.get('/state', authenticateToken, async (req, res) => {
       rate_submissions: Array.isArray(dbSubs) ? dbSubs : []
     };
   } catch (err) {
-    console.warn('MySQL state load notice:', err.message);
     state.rate_submissions = [];
   }
 
@@ -5915,17 +5897,7 @@ router.post('/state', authenticateToken, requireRole('admin'), async (req, res) 
 
   IN_MEMORY_CACHE = payload;
 
-  // 1. Optional write to legacy app_database blob table (isolated try/catch)
-  try {
-    const jsonStr = JSON.stringify(payload);
-    await pool.query(
-      `INSERT INTO app_database (id, data, updated_at) VALUES (?, ?, NOW())
-       ON DUPLICATE KEY UPDATE data = VALUES(data), updated_at = NOW()`,
-      [CLOUD_ROW_ID, jsonStr]
-    ).catch(() => {});
-  } catch (err) {}
-
-  // 2. Always sync normalized MySQL tables
+  // Sync normalized MySQL tables
   try {
     await syncNormalizedTables(payload);
   } catch (err) {
@@ -5965,26 +5937,28 @@ async function syncNormalizedTables(data) {
   }
 
   // 2. Sync Rate Requests (Indents)
-  if (Array.isArray(data.rate_requests)) {
-    for (const r of data.rate_requests) {
+  // 2. Sync Transport Requirements (Indents)
+  if (Array.isArray(data.rate_requests || data.transport_requirements)) {
+    const reqList = data.rate_requests || data.transport_requirements || [];
+    for (const r of reqList) {
       if (r.id) {
-        const reqNo = r.request_no || r.id;
+        const reqNo = r.req_no || r.request_no || r.id;
         await pool.query(
-          `INSERT INTO rate_requests (id, request_no, title, origin_city, dest_city, material_type, required_qty, unit, target_date, status)
+          `INSERT INTO transport_requirements (id, req_no, title, pickup_origin, drop_location, product_name, quantity_mt, unit, target_date, status)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
            ON DUPLICATE KEY UPDATE 
-           request_no = VALUES(request_no),
+           req_no = VALUES(req_no),
            title = VALUES(title),
-           origin_city = VALUES(origin_city),
-           dest_city = VALUES(dest_city),
-           material_type = VALUES(material_type),
-           required_qty = VALUES(required_qty),
+           pickup_origin = VALUES(pickup_origin),
+           drop_location = VALUES(drop_location),
+           product_name = VALUES(product_name),
+           quantity_mt = VALUES(quantity_mt),
            unit = VALUES(unit),
            target_date = VALUES(target_date),
            status = VALUES(status),
            updated_at = NOW()`,
-          [r.id, reqNo, r.title || reqNo, r.origin_city || '', r.dest_city || '', r.material_type || '', parseFloat(r.required_qty || 0), r.unit || 'MT', r.target_date || null, r.status || 'Open']
-        ).catch((err) => console.warn('MySQL sync rate_requests notice:', err.message));
+          [r.id, reqNo, r.title || reqNo, r.pickup_origin || r.origin_city || '', r.drop_location || r.dest_city || '', r.product_name || r.material_type || '', parseFloat(r.quantity_mt || r.required_qty || 0), r.unit || 'MT', r.target_date || null, r.status || 'Active']
+        ).catch(() => {});
       }
     }
   }

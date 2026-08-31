@@ -59,40 +59,63 @@ export const AuthProvider = ({ children }) => {
   // Listen to Window Storage & BroadcastChannel for real-time cross-device sync
   useEffect(() => {
     let isMounted = true;
+    let debounceTimer = null;
 
-    const fetchSharedServerDb = async () => {
+    const fetchSharedServerDb = async (signal) => {
       try {
-        const sharedDb = await loadDBFromSupabase();
-
+        const sharedDb = await loadDBFromSupabase({ signal });
         if (sharedDb && isMounted) {
           setDb(sharedDb);
         }
       } catch (e) {
-        console.error('API load failed:', e);
+        if (e.name !== 'AbortError') {
+          console.warn('API sync notice:', e.message);
+        }
       }
     };
 
-    fetchSharedServerDb();
+    const controller = new AbortController();
+    fetchSharedServerDb(controller.signal);
 
-    const handleStorageChange = () => {
-      fetchSharedServerDb();
+    const debouncedFetch = () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        if (isMounted) fetchSharedServerDb(controller.signal);
+      }, 1500);
+    };
+
+    const handleStorageChange = (e) => {
+      // Only react to relevant keys, ignore random storage changes
+      if (!e.key || e.key.includes('transflow')) {
+        debouncedFetch();
+      }
     };
 
     let bc = null;
     if (typeof BroadcastChannel !== 'undefined') {
       try {
         bc = new BroadcastChannel('transflow_live_sync_v1');
-        bc.onmessage = () => {
-          fetchSharedServerDb();
+        bc.onmessage = (msg) => {
+          if (msg?.data?.type === 'SYNC_DB') {
+            debouncedFetch();
+          }
         };
       } catch (e) {}
     }
 
-    const interval = setInterval(fetchSharedServerDb, 30000);
+    // 🔄 Conservative background sync interval (45s), pausing when tab is hidden
+    const interval = setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+        return;
+      }
+      fetchSharedServerDb(controller.signal);
+    }, 45000);
 
     window.addEventListener('storage', handleStorageChange);
     return () => {
       isMounted = false;
+      controller.abort();
+      if (debounceTimer) clearTimeout(debounceTimer);
       window.removeEventListener('storage', handleStorageChange);
       if (bc) bc.close();
       clearInterval(interval);
@@ -112,9 +135,9 @@ export const AuthProvider = ({ children }) => {
     }
   }, [currentUser]);
 
-  const refreshRequirements = async () => {
+  const refreshRequirements = async (options = {}) => {
     try {
-      const freshDb = await loadDBFromSupabase();
+      const freshDb = await loadDBFromSupabase(options);
 
       if (freshDb) {
         setDb(freshDb);
@@ -128,12 +151,14 @@ export const AuthProvider = ({ children }) => {
       }
       return freshDb;
     } catch (e) {
-      console.error('refreshRequirements Error:', e);
+      if (e.name !== 'AbortError') {
+        console.warn('refreshRequirements notice:', e.message);
+      }
     }
   };
 
-  const refreshDB = async () => {
-    return await refreshRequirements();
+  const refreshDB = async (options = {}) => {
+    return await refreshRequirements(options);
   };
 
   const addSecurityLog = (targetDb, action, username, role, status = 'AUTHENTICATED 🛡️') => {

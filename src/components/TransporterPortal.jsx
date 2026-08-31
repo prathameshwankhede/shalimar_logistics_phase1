@@ -72,42 +72,47 @@ export const TransporterPortal = () => {
     }
   };
 
-  useEffect(() => {
-    safeRefreshRequirements();
-    refreshDashboardSummary();
-    refreshAuthorizations();
-    refreshAllocations();
+  const isRefreshingRef = React.useRef(false);
 
-    // 🔄 Periodic polling to invalidate stale allocations across active transporter sessions
-    const pollInterval = setInterval(() => {
-      refreshDashboardSummary();
-      refreshAuthorizations();
-      refreshAllocations();
-      if (typeof refreshRequirements === 'function') {
-        refreshRequirements();
-      } else if (typeof refreshDB === 'function') {
-        refreshDB();
-      }
-    }, 8000);
-
-    return () => clearInterval(pollInterval);
-  }, [currentTransporter, currentUser, db?.rate_submissions, db?.rate_requests]);
-
-  // 🛡️ SAFE DATA REFRESH HELPER: Guarantees no ReferenceError or unhandled rejection during refresh
-  const safeRefreshRequirements = async () => {
+  // 🛡️ SAFE DATA REFRESH HELPER: Guarantees no ReferenceError, duplicate storms, or unhandled rejection
+  const safeRefreshRequirements = async (signal) => {
+    if (isRefreshingRef.current) return;
+    isRefreshingRef.current = true;
     try {
-      refreshDashboardSummary();
-      refreshAuthorizations();
-      refreshAllocations();
-      if (typeof refreshRequirements === 'function') {
-        return await refreshRequirements();
-      } else if (typeof refreshDB === 'function') {
-        return await refreshDB();
-      }
+      await Promise.allSettled([
+        refreshDashboardSummary(),
+        refreshAuthorizations(),
+        refreshAllocations(),
+        typeof refreshRequirements === 'function' 
+          ? refreshRequirements({ signal }) 
+          : (typeof refreshDB === 'function' ? refreshDB({ signal }) : Promise.resolve())
+      ]);
     } catch (e) {
-      console.error('Data refresh error:', e);
+      if (e.name !== 'AbortError') {
+        console.warn('Data refresh notice:', e.message);
+      }
+    } finally {
+      isRefreshingRef.current = false;
     }
   };
+
+  useEffect(() => {
+    const controller = new AbortController();
+    safeRefreshRequirements(controller.signal);
+
+    // 🔄 Controlled periodic polling (25s) with cleanup and visibility guard
+    const pollInterval = setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+        return; // Pause polling when tab is inactive to prevent log & network bloat
+      }
+      safeRefreshRequirements(controller.signal);
+    }, 25000);
+
+    return () => {
+      controller.abort();
+      clearInterval(pollInterval);
+    };
+  }, [currentTransporter?.id, currentUser?.id]);
 
   const handleAcceptAllocation = async (reqItem) => {
     const parentId = reqItem.requirement_id || reqItem.id;

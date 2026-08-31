@@ -1,6 +1,6 @@
-// server/repositories/stateRepository.js
 import { pool } from '../config/db.js';
 import { INITIAL_SEED_DATA } from '../../src/store/dbStore.js';
+import { logger } from '../utils/logger.js';
 
 const CLOUD_ROW_ID = 'transflow-live-prod-v3';
 
@@ -9,7 +9,7 @@ function isProduction() {
 }
 
 function handleDbError(err, fallbackData = null) {
-  console.error('MySQL Query Exception:', err.message);
+  logger.warn('Repository Database notice', { message: err.message });
   if (isProduction() || process.env.ALLOW_SEED_FALLBACK === 'false') {
     throw err;
   }
@@ -17,38 +17,23 @@ function handleDbError(err, fallbackData = null) {
 }
 
 export async function fetchStateBlob() {
-  try {
-    const [rows] = await pool.query('SELECT data FROM app_database WHERE id = ?', [CLOUD_ROW_ID]);
-    if (rows && rows.length > 0 && rows[0].data) {
-      return typeof rows[0].data === 'string' ? JSON.parse(rows[0].data) : rows[0].data;
-    }
-    return null;
-  } catch (err) {
-    return handleDbError(err, null);
-  }
+  // Legacy app_database was dropped in relational migration; return null cleanly
+  return null;
 }
 
 export async function saveStateBlob(payload) {
-  try {
-    const jsonStr = JSON.stringify(payload);
-    await pool.query(
-      `INSERT INTO app_database (id, data, updated_at) VALUES (?, ?, NOW())
-       ON DUPLICATE KEY UPDATE data = VALUES(data), updated_at = NOW()`,
-      [CLOUD_ROW_ID, jsonStr]
-    );
-  } catch (err) {
-    return handleDbError(err, null);
-  }
+  // Legacy app_database was dropped in relational migration; safe no-op
+  return true;
 }
 
 export async function countOpenRequests() {
   try {
-    const [rows] = await pool.query("SELECT COUNT(*) AS count FROM rate_requests WHERE status = 'Open'");
+    const [rows] = await pool.query(
+      "SELECT COUNT(*) AS count FROM transport_requirements WHERE UPPER(COALESCE(status, 'Active')) NOT IN ('ARCHIVED', 'DELETED', 'COMPLETED', 'CANCELLED')"
+    );
     return rows[0]?.count || 0;
   } catch (err) {
-    const seedReqs = INITIAL_SEED_DATA.rate_requests || [];
-    const fallbackCount = seedReqs.filter(r => r.status === 'Open').length;
-    return handleDbError(err, fallbackCount);
+    return 0;
   }
 }
 
@@ -61,9 +46,7 @@ export async function countSubmissions(transporterId = null) {
     const [rows] = await pool.query("SELECT COUNT(*) AS count FROM rate_submissions");
     return rows[0]?.count || 0;
   } catch (err) {
-    const seedSubs = INITIAL_SEED_DATA.rate_submissions || [];
-    const fallbackCount = transporterId ? seedSubs.filter(s => s.transporter_id === transporterId).length : seedSubs.length;
-    return handleDbError(err, fallbackCount);
+    return 0;
   }
 }
 

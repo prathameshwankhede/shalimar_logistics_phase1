@@ -53,10 +53,21 @@ app.use('/api', (req, res, next) => {
   next();
 });
 
-// Logging Middleware
+// Production-Safe HTTP Logging (Mutations & Non-2xx Responses Only)
 app.use((req, res, next) => {
   if (req.path.startsWith('/api')) {
-    console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
+    const isMutation = ['POST', 'PUT', 'DELETE', 'PATCH'].includes(req.method);
+    const isDebug = process.env.DEBUG_HTTP === 'true';
+
+    if (isMutation || isDebug) {
+      console.log(`[HTTP ${new Date().toISOString()}] ${req.method} ${req.path}`);
+    } else {
+      res.on('finish', () => {
+        if (res.statusCode >= 400 && res.statusCode !== 401 && res.statusCode !== 403 && res.statusCode !== 404) {
+          console.warn(`⚠️ [HTTP ${new Date().toISOString()}] ${req.method} ${req.path} -> ${res.statusCode}`);
+        }
+      });
+    }
   }
   next();
 });

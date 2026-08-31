@@ -101,9 +101,12 @@ export async function fetchDashboardMetrics() {
   }
 }
 
-export async function fetchRateRequests(page = 1, limit = 20) {
+export async function fetchRateRequests(page = 1, limit = 20, options = {}) {
   try {
-    const res = await fetch(`${getApiBaseUrl()}/api/rate-requests?page=${page}&limit=${limit}`, { headers: getAuthHeaders() });
+    const res = await fetch(`${getApiBaseUrl()}/api/rate-requests?page=${page}&limit=${limit}`, {
+      headers: getAuthHeaders(),
+      signal: options.signal
+    });
     if (!res.ok) return [];
     const json = await res.json();
     return json.rate_requests || [];
@@ -112,9 +115,12 @@ export async function fetchRateRequests(page = 1, limit = 20) {
   }
 }
 
-export async function fetchRateSubmissions() {
+export async function fetchRateSubmissions(options = {}) {
   try {
-    const res = await fetch(`${getApiBaseUrl()}/api/rate-submissions`, { headers: getAuthHeaders() });
+    const res = await fetch(`${getApiBaseUrl()}/api/rate-submissions`, {
+      headers: getAuthHeaders(),
+      signal: options.signal
+    });
     if (!res.ok) return [];
     const json = await res.json();
     return json.rate_submissions || [];
@@ -123,9 +129,12 @@ export async function fetchRateSubmissions() {
   }
 }
 
-export async function fetchTransportersList() {
+export async function fetchTransportersList(options = {}) {
   try {
-    const res = await fetch(`${getApiBaseUrl()}/api/transporters`, { headers: getAuthHeaders() });
+    const res = await fetch(`${getApiBaseUrl()}/api/transporters`, {
+      headers: getAuthHeaders(),
+      signal: options.signal
+    });
     if (!res.ok) return [];
     const json = await res.json();
     return json.transporters || [];
@@ -134,9 +143,12 @@ export async function fetchTransportersList() {
   }
 }
 
-export async function fetchCompanyUnitsList() {
+export async function fetchCompanyUnitsList(options = {}) {
   try {
-    const res = await fetch(`${getApiBaseUrl()}/api/company-units`, { headers: getAuthHeaders() });
+    const res = await fetch(`${getApiBaseUrl()}/api/company-units`, {
+      headers: getAuthHeaders(),
+      signal: options.signal
+    });
     if (!res.ok) return [];
     const json = await res.json();
     return json.data || json.company_units || [];
@@ -145,9 +157,12 @@ export async function fetchCompanyUnitsList() {
   }
 }
 
-export async function fetchProductsList() {
+export async function fetchProductsList(options = {}) {
   try {
-    const res = await fetch(`${getApiBaseUrl()}/api/products`, { headers: getAuthHeaders() });
+    const res = await fetch(`${getApiBaseUrl()}/api/products`, {
+      headers: getAuthHeaders(),
+      signal: options.signal
+    });
     if (!res.ok) return [];
     const json = await res.json();
     return json.data || json.products || json.product_masters || [];
@@ -156,9 +171,12 @@ export async function fetchProductsList() {
   }
 }
 
-export async function fetchRequirementsList() {
+export async function fetchRequirementsList(options = {}) {
   try {
-    const res = await fetch(`${getApiBaseUrl()}/api/requirements`, { headers: getAuthHeaders() });
+    const res = await fetch(`${getApiBaseUrl()}/api/requirements`, {
+      headers: getAuthHeaders(),
+      signal: options.signal
+    });
     if (!res.ok) return [];
     const json = await res.json();
     return json.data || json.requirements || json.rate_requests || [];
@@ -167,9 +185,12 @@ export async function fetchRequirementsList() {
   }
 }
 
-export async function fetchMasterData() {
+export async function fetchMasterData(options = {}) {
   try {
-    const res = await fetch(`${getApiBaseUrl()}/api/master-data`, { headers: getAuthHeaders() });
+    const res = await fetch(`${getApiBaseUrl()}/api/master-data`, {
+      headers: getAuthHeaders(),
+      signal: options.signal
+    });
     if (!res.ok) return [];
     const json = await res.json();
     return json.master_records || [];
@@ -178,9 +199,12 @@ export async function fetchMasterData() {
   }
 }
 
-export async function fetchTruckDispatchesList() {
+export async function fetchTruckDispatchesList(options = {}) {
   try {
-    const res = await fetch(`${getApiBaseUrl()}/api/dispatches`, { headers: getAuthHeaders() });
+    const res = await fetch(`${getApiBaseUrl()}/api/dispatches`, {
+      headers: getAuthHeaders(),
+      signal: options.signal
+    });
     if (!res.ok) return [];
     const json = await res.json();
     return json.dispatches || json.truck_dispatches || [];
@@ -189,9 +213,12 @@ export async function fetchTruckDispatchesList() {
   }
 }
 
-export async function fetchAuditLogs() {
+export async function fetchAuditLogs(options = {}) {
   try {
-    const res = await fetch(`${getApiBaseUrl()}/api/security/audit-logs`, { headers: getAuthHeaders() });
+    const res = await fetch(`${getApiBaseUrl()}/api/security/audit-logs`, {
+      headers: getAuthHeaders(),
+      signal: options.signal
+    });
     if (!res.ok) return [];
     const json = await res.json();
     return json.audit_logs || [];
@@ -259,49 +286,68 @@ export function resetDB() {
   return cleanData;
 }
 
-export async function loadDBFromSupabase() {
-  try {
-    // ⚡ HIGH-PERFORMANCE PARALLEL FETCH: All independent endpoints fetched concurrently in a single round-trip
-    const [stateRes, transporters, companyUnits, products, requirements, rateSubmissions, dispatches] = await Promise.all([
-      fetch(`${getApiBaseUrl()}/api/state`, { headers: getAuthHeaders() }).then(r => r.ok ? r.json() : null).catch(() => null),
-      fetchTransportersList().catch(() => []),
-      fetchCompanyUnitsList().catch(() => []),
-      fetchProductsList().catch(() => []),
-      fetchRequirementsList().catch(() => []),
-      fetchRateSubmissions().catch(() => []),
-      fetchTruckDispatchesList().catch(() => [])
-    ]);
+// In-flight Promise deduplication variable to prevent concurrent request storms
+let inFlightLoadPromise = null;
 
-    let data = stateRes && stateRes.data ? stateRes.data : { ...EMPTY_STATE };
-
-    if (Array.isArray(transporters)) {
-      data.transporters = transporters;
-    }
-    if (Array.isArray(companyUnits)) {
-      data.company_units_plants = companyUnits;
-      data.company_units = companyUnits;
-      data.company_masters = companyUnits;
-    }
-    if (Array.isArray(products)) {
-      data.products = products;
-      data.product_masters = products;
-    }
-    if (Array.isArray(requirements)) {
-      data.rate_requests = requirements;
-      data.transport_requirements = requirements;
-      data.requirements = requirements;
-    }
-    if (Array.isArray(rateSubmissions)) {
-      data.rate_submissions = rateSubmissions;
-    }
-    if (Array.isArray(dispatches)) {
-      data.dispatches = dispatches;
-      data.truck_dispatches = dispatches;
-    }
-
-    return data;
-  } catch (e) {
-    console.error('API loadDBFromSupabase error:', e.message);
+export async function loadDBFromSupabase(options = {}) {
+  // If a request is already in-flight, return the same promise to prevent duplicate API hammering
+  if (inFlightLoadPromise) {
+    return inFlightLoadPromise;
   }
-  return null;
+
+  inFlightLoadPromise = (async () => {
+    try {
+      // ⚡ HIGH-PERFORMANCE CANONICAL FETCH: Only fetch actual relational tables concurrently
+      const [transporters, companyUnits, products, requirements, rateSubmissions, dispatches] = await Promise.all([
+        fetchTransportersList(options).catch(() => []),
+        fetchCompanyUnitsList(options).catch(() => []),
+        fetchProductsList(options).catch(() => []),
+        fetchRequirementsList(options).catch(() => []),
+        fetchRateSubmissions(options).catch(() => []),
+        fetchTruckDispatchesList(options).catch(() => [])
+      ]);
+
+      const data = {
+        ...EMPTY_STATE,
+        company: INITIAL_SEED_DATA.company,
+        do_master_settings: INITIAL_SEED_DATA.do_master_settings
+      };
+
+      if (Array.isArray(transporters)) {
+        data.transporters = transporters;
+      }
+      if (Array.isArray(companyUnits)) {
+        data.company_units_plants = companyUnits;
+        data.company_units = companyUnits;
+        data.company_masters = companyUnits;
+      }
+      if (Array.isArray(products)) {
+        data.products = products;
+        data.product_masters = products;
+      }
+      if (Array.isArray(requirements)) {
+        data.rate_requests = requirements;
+        data.transport_requirements = requirements;
+        data.requirements = requirements;
+      }
+      if (Array.isArray(rateSubmissions)) {
+        data.rate_submissions = rateSubmissions;
+      }
+      if (Array.isArray(dispatches)) {
+        data.dispatches = dispatches;
+        data.truck_dispatches = dispatches;
+      }
+
+      return data;
+    } catch (e) {
+      if (e.name !== 'AbortError') {
+        console.error('API loadDBFromSupabase error:', e.message);
+      }
+      return null;
+    } finally {
+      inFlightLoadPromise = null;
+    }
+  })();
+
+  return inFlightLoadPromise;
 }

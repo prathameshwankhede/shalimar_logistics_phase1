@@ -1,8 +1,9 @@
 // server/controllers/stateController.js
 import * as stateService from '../services/stateService.js';
+import { logger } from '../utils/logger.js';
 
 function sendDbErrorResponse(res, err) {
-  console.error('Database Error in Controller:', err.message);
+  logger.warn('State Controller Database Notice', { message: err?.message });
   return res.status(503).json({
     success: false,
     error: {
