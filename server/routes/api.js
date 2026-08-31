@@ -6555,11 +6555,46 @@ router.post('/admin/clean-orphan-data', authenticateToken, requireRole('admin'),
 });
 
 // 🛡️ CONTROLLED DATABASE HARDENING MIGRATION ENDPOINT (ADMIN ONLY)
+let isHardeningMigrationRunning = false;
+
 router.post('/admin/database-hardening-migration', authenticateToken, requireRole('admin'), async (req, res) => {
+  if (isHardeningMigrationRunning) {
+    return res.status(409).json({
+      success: false,
+      error: 'A database hardening migration is already running. Concurrency lock active.'
+    });
+  }
+
+  isHardeningMigrationRunning = true;
   const steps = [];
   const conn = await pool.getConnection();
 
   try {
+    // 0. Ensure schema_migrations table exists for version control
+    await conn.query(`
+      CREATE TABLE IF NOT EXISTS schema_migrations (
+        version VARCHAR(100) PRIMARY KEY,
+        applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        applied_by VARCHAR(100) DEFAULT 'admin',
+        details TEXT
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+
+    const [appliedCheck] = await conn.query(
+      `SELECT version, applied_at FROM schema_migrations WHERE version = '20260831_hardening_v1'`
+    );
+
+    if (appliedCheck.length > 0) {
+      conn.release();
+      isHardeningMigrationRunning = false;
+      return res.json({
+        success: true,
+        already_applied: true,
+        message: 'Hardening migration (20260831_hardening_v1) was already successfully applied.',
+        applied_at: appliedCheck[0].applied_at
+      });
+    }
+
     // 1. Pre-cleanup orphan records to ensure FK integrity
     await cleanupOrphanDatabaseRows();
     steps.push({ step: 'pre_cleanup_orphans', status: 'SUCCESS' });
@@ -6578,7 +6613,6 @@ router.post('/admin/database-hardening-migration', authenticateToken, requireRol
     }
 
     // 3. Covering Index on truck_dispatches
-    // Check if idx_dispatches_covering exists
     const [existingIndexes] = await conn.query(`SHOW INDEX FROM truck_dispatches WHERE Key_name = 'idx_dispatches_covering'`);
     if (existingIndexes.length === 0) {
       await conn.query(`ALTER TABLE truck_dispatches ADD INDEX idx_dispatches_covering (requirement_id, requirement_item_id, loaded_quantity_mt)`);
@@ -6648,15 +6682,24 @@ router.post('/admin/database-hardening-migration', authenticateToken, requireRol
       steps.push({ step: 'add_fk_bnh_req', status: 'ALREADY_EXISTS' });
     }
 
+    // 5. Record version migration in schema_migrations
+    await conn.query(`
+      INSERT INTO schema_migrations (version, applied_at, applied_by, details)
+      VALUES ('20260831_hardening_v1', NOW(), 'admin', ?)
+    `, [JSON.stringify(steps)]);
+
     conn.release();
+    isHardeningMigrationRunning = false;
 
     return res.json({
       success: true,
       message: 'Database hardening migration completed successfully',
+      version: '20260831_hardening_v1',
       steps
     });
   } catch (err) {
     conn.release();
+    isHardeningMigrationRunning = false;
     console.error('❌ Database Hardening Migration Failure:', err);
     return res.status(500).json({
       success: false,
