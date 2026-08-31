@@ -901,7 +901,12 @@ export const TransporterPortal = () => {
       let canDispatch = false;
       let authStatus = null;
 
-      if (isRemainingAccepted && isCurrentTransporterAssigned) {
+      if (isOpenCounterDispatch) {
+        allocationRole = 'OPEN_COUNTER_BIDDER';
+        allocationStatus = 'WINNER_ACTIVE';
+        authStatus = 'APPROVED';
+        canDispatch = remQty > 0;
+      } else if (isRemainingAccepted && isCurrentTransporterAssigned) {
         allocationRole = 'ACCEPTED_EXCLUSIVE_TRANSPORTER';
         allocationStatus = 'ACCEPTED_SHARED_TRANSPORTER';
         authStatus = 'APPROVED';
@@ -927,7 +932,7 @@ export const TransporterPortal = () => {
 
       // If normal finalized item with NO partial dispatch yet, only winning transporter can see it.
       // But if partially dispatched with remaining balance (e.g. 25 MT left), all eligible transporters can see it to accept!
-      if (fixedRate !== null && !isPartiallyDispatchedWithRemaining && !isWinningTransporter && !isCurrentTransporterAssigned) {
+      if (fixedRate !== null && !isPartiallyDispatchedWithRemaining && !isWinningTransporter && !isCurrentTransporterAssigned && !isOpenCounterDispatch) {
         return;
       }
 
@@ -938,6 +943,9 @@ export const TransporterPortal = () => {
         item_id: parentReq.id,
         sub_indent_id: parentReq.id,
         sub_indent_no: parentReq.req_no || parentReq.request_no || parentReq.id,
+        request_no: parentReq.req_no || parentReq.request_no || parentReq.id,
+        is_open_counter_dispatch: isOpenCounterDispatch,
+        can_dispatch: canDispatch || isOpenCounterDispatch,
         parent_req_no: parentReq.req_no || parentReq.request_no || parentReq.id,
         required_qty: remQty > 0 ? remQty : allocatedQty,
         quantity_mt: remQty > 0 ? remQty : allocatedQty,
@@ -1224,11 +1232,69 @@ export const TransporterPortal = () => {
     const isFinalized = Boolean(myExistingBid.is_finalized) || isBidFrozen(myExistingBid) || counterOfferStatus === 'ACCEPTED' || bidStatusUpper === 'COUNTER_ACCEPTED' || bidStatusUpper === 'FINALIZED' || Number(myExistingBid.final_rate) > 0;
     const isAccepted = String(myExistingBid.acceptance_status || '').toUpperCase() === 'ACCEPTED';
 
-    // CASE 0 — AWARDED TO ANOTHER TRANSPORTER (NON-WINNING TRANSPORTER VIEW)
+    // ACTIVE RATE RESOLUTION FOR COLLABORATIVE DISPATCH
+    const activeRate = Number(
+      req.fixed_rate ||
+      req.counter_offer_rate ||
+      req.remaining_finalized_rate ||
+      currentRate ||
+      adminCounter ||
+      0
+    );
+
+    // If there is remaining quantity left on this requirement (e.g. 100 MT of 200 MT):
+    // ALL transporters (original winner AND other transporters) can dispatch trucks!
+    if (remQty > 0 && activeRate > 0) {
+      return (
+        <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: '0.86rem', fontWeight: '900', color: '#0284c7', background: '#e0f2fe', border: '1.5px solid #7dd3fc', padding: '4px 10px', borderRadius: '8px' }}>
+            ⚡ Rate: ₹{activeRate}/MT
+          </span>
+          <span style={{ fontSize: '0.8rem', fontWeight: '800', color: '#b45309', background: '#fef3c7', padding: '4px 8px', borderRadius: '6px', border: '1px solid #fcd34d' }}>
+            Remaining: <strong>{remQty} MT</strong>
+          </span>
+          <button
+            type="button"
+            onClick={() => handleOpenDispatchModal(req, {
+              ...myExistingBid,
+              final_rate: activeRate,
+              rate_per_mt: activeRate,
+              acceptance_status: 'ACCEPTED'
+            })}
+            className="btn btn-primary"
+            style={{
+              padding: '6px 14px',
+              fontSize: '0.82rem',
+              fontWeight: '900',
+              borderRadius: '8px',
+              background: '#0284c7',
+              color: '#ffffff',
+              border: 'none',
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '4px'
+            }}
+          >
+            <Truck size={14} /> Dispatch Truck
+          </button>
+          <button
+            type="button"
+            onClick={() => setSelectedHistorySub(myExistingBid)}
+            style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: '0.78rem', fontWeight: '700', textDecoration: 'underline' }}
+          >
+            📜 History
+          </button>
+        </div>
+      );
+    }
+
+    // CASE 0 — AWARDED TO ANOTHER TRANSPORTER (NON-WINNING TRANSPORTER VIEW ONLY WHEN NO REMAINING QTY)
     const isAwardedToOther = (
       req.dispatch_status &&
       req.dispatch_status !== 'PENDING' &&
-      !isFinalized
+      !isFinalized &&
+      remQty <= 0
     );
 
     if (isAwardedToOther) {

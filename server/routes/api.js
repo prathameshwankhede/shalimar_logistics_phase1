@@ -2647,16 +2647,12 @@ async function handleCreateTruckDispatch(req, res) {
       }
 
       if (!isAuthorized) {
-        // Fallback: If item has an active counter rate and this transporter submitted a quote on it
-        const [transQuoteRows] = await conn.query(
-          `SELECT id FROM rate_submissions 
-           WHERE requirement_id IN (?) 
-             AND (item_id IN (?) OR item_id = 'MAIN')
-             AND transporter_id IN (?)
-           LIMIT 1`,
-          [resolvedReqIds, resolvedItemIds.length > 0 ? resolvedItemIds : ['MAIN'], transMatchIds]
+        // Fallback: If item has an active counter rate or remaining finalized rate
+        const hasOpenRate = Boolean(
+          (finalizedSub && Number(finalizedSub.final_rate) > 0) ||
+          Number(originalItemRec?.remaining_finalized_rate || parentReq?.remaining_finalized_rate || originalItemRec?.counter_offer_rate || parentReq?.counter_offer_rate || 0) > 0
         );
-        if (transQuoteRows.length > 0 && finalizedSub && finalizedSub.final_rate > 0) {
+        if (hasOpenRate) {
           isAuthorized = true;
         }
       }
