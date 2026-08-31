@@ -5367,6 +5367,8 @@ router.delete('/requirements/:id', authenticateToken, requireRole('admin'), asyn
     await conn.query('DELETE FROM bid_negotiation_history WHERE requirement_id = ?', [actualReqId]);
     await conn.query('DELETE FROM rate_negotiations WHERE requirement_id = ?', [actualReqId]);
     await conn.query('DELETE FROM rate_submissions WHERE requirement_id = ?', [actualReqId]);
+    await conn.query('DELETE FROM requirement_dispatch_authorizations WHERE requirement_id = ?', [actualReqId]);
+    await conn.query('DELETE FROM transporter_item_allocations WHERE requirement_id = ?', [actualReqId]);
     await conn.query('DELETE FROM transport_requirement_items WHERE requirement_id = ?', [actualReqId]);
 
     // 3. Delete parent requirement record
@@ -6481,6 +6483,73 @@ router.get('/audit-quote-details', authenticateToken, requireRole('admin'), asyn
     });
   } catch (err) {
     console.error('Audit quote details error:', err.message);
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 🧹 Automatic & Manual Cleanup for Orphan Rows from Deleted Requirements
+export async function cleanupOrphanDatabaseRows() {
+  try {
+    const [resAuth] = await pool.query(`
+      DELETE FROM requirement_dispatch_authorizations
+      WHERE requirement_id NOT IN (SELECT id FROM transport_requirements)
+    `).catch(() => [{}]);
+
+    const [resAlloc] = await pool.query(`
+      DELETE FROM transporter_item_allocations
+      WHERE requirement_id NOT IN (SELECT id FROM transport_requirements)
+    `).catch(() => [{}]);
+
+    const [resBids] = await pool.query(`
+      DELETE FROM bid_negotiation_history
+      WHERE requirement_id NOT IN (SELECT id FROM transport_requirements)
+    `).catch(() => [{}]);
+
+    const [resNeg] = await pool.query(`
+      DELETE FROM rate_negotiations
+      WHERE requirement_id NOT IN (SELECT id FROM transport_requirements)
+    `).catch(() => [{}]);
+
+    const [resSubs] = await pool.query(`
+      DELETE FROM rate_submissions
+      WHERE requirement_id NOT IN (SELECT id FROM transport_requirements)
+    `).catch(() => [{}]);
+
+    const [resItems] = await pool.query(`
+      DELETE FROM transport_requirement_items
+      WHERE requirement_id NOT IN (SELECT id FROM transport_requirements)
+    `).catch(() => [{}]);
+
+    const [resDispatches] = await pool.query(`
+      DELETE FROM truck_dispatches
+      WHERE requirement_id NOT IN (SELECT id FROM transport_requirements)
+    `).catch(() => [{}]);
+
+    console.log(`🧹 [DATABASE CLEANUP] Orphan rows purged successfully: Auth=${resAuth.affectedRows || 0}, Alloc=${resAlloc.affectedRows || 0}, Bids=${resBids.affectedRows || 0}, Neg=${resNeg.affectedRows || 0}, Subs=${resSubs.affectedRows || 0}, Items=${resItems.affectedRows || 0}, Dispatches=${resDispatches.affectedRows || 0}`);
+    return {
+      authorizations: resAuth.affectedRows || 0,
+      allocations: resAlloc.affectedRows || 0,
+      bids: resBids.affectedRows || 0,
+      negotiations: resNeg.affectedRows || 0,
+      submissions: resSubs.affectedRows || 0,
+      items: resItems.affectedRows || 0,
+      dispatches: resDispatches.affectedRows || 0
+    };
+  } catch (e) {
+    console.warn('⚠️ [DATABASE CLEANUP] Error during orphan cleanup:', e.message);
+    return null;
+  }
+}
+
+router.post('/admin/clean-orphan-data', authenticateToken, requireRole('admin'), async (req, res) => {
+  try {
+    const result = await cleanupOrphanDatabaseRows();
+    return res.json({
+      success: true,
+      message: 'Orphan records from deleted requirements purged successfully',
+      purged: result
+    });
+  } catch (err) {
     return res.status(500).json({ success: false, error: err.message });
   }
 });

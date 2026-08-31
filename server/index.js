@@ -28,7 +28,8 @@ import apiRoutes, {
   ensureRequirementsTableExists,
   ensureRateSubmissionsTableExists,
   ensureTruckDispatchesTableExists,
-  ensureSecurityAuditLogsTableExists
+  ensureSecurityAuditLogsTableExists,
+  cleanupOrphanDatabaseRows
 } from './routes/api.js';
 
 const app = express();
@@ -273,6 +274,7 @@ app.listen(PORT, () => {
         await ensureRateSubmissionsTableExists().catch(() => {});
         await ensureSecurityAuditLogsTableExists().catch(() => {});
         await ensureTruckDispatchesTableExists().catch(() => {});
+        await cleanupOrphanDatabaseRows().catch(() => {});
       } else {
         console.warn('⚠️ MySQL connection check returned false. Verify Hostinger DB environment variables.');
       }
