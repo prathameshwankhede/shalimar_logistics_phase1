@@ -513,17 +513,56 @@ export const TransporterPortal = () => {
   }, [db.rate_requests, db.rate_submissions, currentTransporter, currentUser]);
 
   const dispatchedFinalizedItems = React.useMemo(() => {
-    return myFinalizedItems.filter(({ item, parentReq }) => {
+    const list = [...myFinalizedItems];
+    const existingKeys = new Set(list.map(i => i.uniqueKey));
+
+    // Guarantee that any requirement item with dispatches belonging to this transporter appears in Dispatched Orders
+    (db.rate_requests || []).forEach((req) => {
+      const childItems = req.items || [];
+      const itemsToScan = childItems.length > 0 ? childItems : [req];
+
+      itemsToScan.forEach((item) => {
+        const dispatches = (db.truck_dispatches || []).filter((d) => {
+          const itemMatches = item && item.id
+            ? (String(d.requirement_item_id) === String(item.id) || String(d.requirement_item_id) === String(item.sub_indent_no))
+            : true;
+          const reqMatches = String(d.requirement_id) === String(req.id) || String(d.requirement_id) === String(req.req_no);
+          return itemMatches && reqMatches;
+        });
+
+        const totalDispatched = dispatches.reduce((acc, curr) => acc + (parseFloat(curr.loaded_quantity_mt || curr.dispatched_qty) || 0), 0);
+        if (totalDispatched > 0 || dispatches.length > 0) {
+          const uniqueKey = `awarded_${req.id}_${item.id || item.sub_indent_no || 'main'}`;
+          if (!existingKeys.has(uniqueKey)) {
+            existingKeys.add(uniqueKey);
+            const myBid = findMyBid(item, db.rate_submissions, currentTransporter, currentUser) ||
+                          findMyBid({ ...item, id: item.id, requirement_id: req.id }, db.rate_submissions, currentTransporter, currentUser) || {};
+            list.push({
+              item,
+              parentReq: req,
+              myBid: {
+                ...myBid,
+                final_rate: myBid.final_rate || dispatches[0]?.finalized_rate || item.lowest_rate || item.rate_per_mt || 0
+              },
+              isMultiItem: childItems.length > 0,
+              uniqueKey
+            });
+          }
+        }
+      });
+    });
+
+    return list.filter(({ item, parentReq }) => {
       const dispatches = (db.truck_dispatches || []).filter((d) => {
         if (item && item.id) {
-          return d.requirement_item_id === item.id || d.requirement_item_id === item.sub_indent_no;
+          return String(d.requirement_item_id) === String(item.id) || String(d.requirement_item_id) === String(item.sub_indent_no);
         }
-        return d.requirement_id === parentReq.id;
+        return String(d.requirement_id) === String(parentReq.id) || String(d.requirement_id) === String(parentReq.req_no);
       });
       const totalDispatched = dispatches.reduce((acc, curr) => acc + (parseFloat(curr.loaded_quantity_mt || curr.dispatched_qty) || 0), 0);
       return totalDispatched > 0 || dispatches.length > 0;
     });
-  }, [myFinalizedItems, db.truck_dispatches]);
+  }, [myFinalizedItems, db.rate_requests, db.rate_submissions, db.truck_dispatches, currentTransporter, currentUser]);
 
   const totalContractsCount = dispatchedFinalizedItems.length;
 

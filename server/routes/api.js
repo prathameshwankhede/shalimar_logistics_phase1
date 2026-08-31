@@ -2716,9 +2716,9 @@ async function handleGetDispatches(req, res) {
                 COALESCE(tri.product_name, tr.product_name) AS product_name, 
                 COALESCE(tri.sub_indent_no, td.requirement_item_id) AS sub_indent_no
          FROM truck_dispatches td
-         LEFT JOIN transporters t ON (t.id = td.transporter_id OR t.code = td.transporter_id)
-         LEFT JOIN transport_requirements tr ON (tr.id = td.requirement_id OR tr.req_no = td.requirement_id)
-         LEFT JOIN transport_requirement_items tri ON (tri.id = td.requirement_item_id OR tri.sub_indent_no = td.requirement_item_id)
+         LEFT JOIN transporters t ON (BINARY t.id = BINARY td.transporter_id OR BINARY t.code = BINARY td.transporter_id)
+         LEFT JOIN transport_requirements tr ON (BINARY tr.id = BINARY td.requirement_id OR BINARY tr.req_no = BINARY td.requirement_id)
+         LEFT JOIN transport_requirement_items tri ON (BINARY tri.id = BINARY td.requirement_item_id OR BINARY tri.sub_indent_no = BINARY td.requirement_item_id)
          ORDER BY td.dispatched_at DESC, td.created_at DESC LIMIT 500`
       );
       return res.json({ success: true, dispatches: rows, truck_dispatches: rows });
@@ -2734,26 +2734,26 @@ async function handleGetDispatches(req, res) {
       const [rows] = await pool.query(
         `SELECT td.*, 
                 COALESCE(t.company_name, td.transporter_id) AS transporter_name, 
-                COALESCE(t.code, td.transporter_code, td.transporter_id) AS transporter_code,
+                COALESCE(t.code, td.transporter_id) AS transporter_code,
                 COALESCE(tr.req_no, td.requirement_id) AS req_no, 
                 COALESCE(tri.pickup_origin, tr.pickup_origin) AS pickup_origin, 
                 COALESCE(tri.drop_location, tr.drop_location) AS drop_location, 
                 COALESCE(tri.product_name, tr.product_name) AS product_name, 
                 COALESCE(tri.sub_indent_no, td.requirement_item_id) AS sub_indent_no
          FROM truck_dispatches td
-         LEFT JOIN transporters t ON (t.id = td.transporter_id OR t.code = td.transporter_id)
-         LEFT JOIN transport_requirements tr ON (tr.id = td.requirement_id OR tr.req_no = td.requirement_id)
-         LEFT JOIN transport_requirement_items tri ON (tri.id = td.requirement_item_id OR tri.sub_indent_no = td.requirement_item_id)
-         WHERE td.transporter_id IN (?)
+         LEFT JOIN transporters t ON (BINARY t.id = BINARY td.transporter_id OR BINARY t.code = BINARY td.transporter_id)
+         LEFT JOIN transport_requirements tr ON (BINARY tr.id = BINARY td.requirement_id OR BINARY tr.req_no = BINARY td.requirement_id)
+         LEFT JOIN transport_requirement_items tri ON (BINARY tri.id = BINARY td.requirement_item_id OR BINARY tri.sub_indent_no = BINARY td.requirement_item_id)
+         WHERE td.transporter_id IN (?) OR t.id IN (?) OR t.code IN (?) OR t.username IN (?)
          ORDER BY td.dispatched_at DESC, td.created_at DESC LIMIT 500`,
-        [transMatchIds]
+        [transMatchIds, transMatchIds, transMatchIds, transMatchIds]
       );
       return res.json({ success: true, dispatches: rows, truck_dispatches: rows });
     }
 
     return res.status(403).json({ success: false, error: 'Access denied' });
   } catch (err) {
-    console.error('❌ Get All Dispatches Error:', err.message);
+    logger.error('Get All Dispatches Error', err);
     return res.status(500).json({ success: false, error: { code: 'DATABASE_ERROR', message: err.message } });
   }
 }
