@@ -450,6 +450,11 @@ export const RateComparisonView = ({ rateRequest, onBack }) => {
                       </div>
                       <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
                         Contact: {transporter?.contact_person} ({transporter?.mobile})
+                        {sub.submitted_at && (
+                          <span style={{ marginLeft: '6px', color: '#38bdf8', fontWeight: '600' }}>
+                            • Quoted: {new Date(sub.submitted_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                          </span>
+                        )}
                       </div>
                     </td>
 
@@ -531,32 +536,58 @@ export const RateComparisonView = ({ rateRequest, onBack }) => {
                         }
 
                         return (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setActiveCounterSub(sub);
-                              setCounterForm({ counter_rate: Math.round((sub.rate_per_unit || sub.rate_per_mt) * 0.92), note: '' });
-                            }}
-                            className="btn btn-primary"
-                            style={{
-                              padding: '6px 14px',
-                              fontSize: '0.8rem',
-                              fontWeight: '900',
-                              borderRadius: '6px',
-                              border: '1.5px solid #38bdf8',
-                              color: '#ffffff',
-                              background: 'linear-gradient(135deg, #0284c7 0%, #2563eb 100%)',
-                              boxShadow: '0 2px 6px rgba(2, 132, 199, 0.35)',
-                              cursor: 'pointer',
-                              whiteSpace: 'nowrap',
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '6px'
-                            }}
-                            title="Send target counter rate to transporter"
-                          >
-                            <MessageSquare size={14} /> Counter Rate
-                          </button>
+                          <div style={{ display: 'inline-flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
+                            <button
+                              type="button"
+                              onClick={() => handleAdminFinalizeBid(sub, sub.rate_per_unit || sub.rate_per_mt)}
+                              disabled={finalizingId === sub.id}
+                              className="btn btn-success"
+                              style={{
+                                padding: '6px 12px',
+                                fontSize: '0.8rem',
+                                fontWeight: '800',
+                                borderRadius: '6px',
+                                background: '#16a34a',
+                                color: '#ffffff',
+                                border: 'none',
+                                cursor: 'pointer',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                whiteSpace: 'nowrap',
+                                boxShadow: '0 2px 6px rgba(22, 163, 74, 0.35)'
+                              }}
+                              title={`Finalize contract directly for ${transporter?.company_name || 'this transporter'} at ₹${sub.rate_per_unit || sub.rate_per_mt}/MT`}
+                            >
+                              ✓ Finalize Rate
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setActiveCounterSub(sub);
+                                setCounterForm({ counter_rate: Math.round((sub.rate_per_unit || sub.rate_per_mt) * 0.92), note: '' });
+                              }}
+                              className="btn btn-primary"
+                              style={{
+                                padding: '6px 12px',
+                                fontSize: '0.8rem',
+                                fontWeight: '900',
+                                borderRadius: '6px',
+                                border: '1.5px solid #38bdf8',
+                                color: '#ffffff',
+                                background: 'linear-gradient(135deg, #0284c7 0%, #2563eb 100%)',
+                                boxShadow: '0 2px 6px rgba(2, 132, 199, 0.35)',
+                                cursor: 'pointer',
+                                whiteSpace: 'nowrap',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '6px'
+                              }}
+                              title="Send target counter rate to transporter"
+                            >
+                              <MessageSquare size={14} /> Counter Rate
+                            </button>
+                          </div>
                         );
                       })()}
                     </td>
@@ -579,7 +610,7 @@ export const RateComparisonView = ({ rateRequest, onBack }) => {
                           </span>
                         ) : isL1 ? (
                           <span className="l1-badge">
-                            🔥 L1 LOWEST RATE
+                            🔥 L1 LOWEST RATE {submissions.filter(s => (s.rate_per_unit || s.rate_per_mt) === lowestRate).length > 1 ? '(TIE)' : ''}
                           </span>
                         ) : (
                           <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Submitted</span>
