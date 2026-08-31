@@ -5498,7 +5498,7 @@ export const AdminDashboard = () => {
             padding: '24px',
             maxWidth: '520px',
             width: '90%',
-            boxShadow: '0 20px 40px rgba(0, 0, 0, 0.6)'
+            boxShadow: '0 20px 40px rgba(0, 0, 0, 0.3)'
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -5506,7 +5506,7 @@ export const AdminDashboard = () => {
                   <RefreshCw size={20} color="#ffffff" />
                 </div>
                 <div>
-                  <h3 style={{ fontSize: '1.15rem', fontWeight: '900', color: 'var(--text-main, #0f172a)', margin: 0 }}>Release Remaining Quantity?</h3>
+                  <h3 style={{ fontSize: '1.15rem', fontWeight: '900', color: '#0f172a', margin: 0 }}>Release Remaining Quantity?</h3>
                   <span style={{ fontSize: '0.8rem', color: '#d97706', fontFamily: 'monospace', fontWeight: '800' }}>
                     {releaseRequoteModal.item?.sub_indent_no || releaseRequoteModal.req?.req_no}
                   </span>
@@ -5515,7 +5515,7 @@ export const AdminDashboard = () => {
               <button
                 type="button"
                 onClick={() => setReleaseRequoteModal(prev => ({ ...prev, isOpen: false }))}
-                style={{ background: 'transparent', border: 'none', color: 'var(--text-muted, #64748b)', fontSize: '1.4rem', cursor: 'pointer' }}
+                style={{ background: 'transparent', border: 'none', color: '#64748b', fontSize: '1.4rem', cursor: 'pointer' }}
               >
                 ✕
               </button>
@@ -5533,7 +5533,7 @@ export const AdminDashboard = () => {
             </div>
 
             {/* Editable Re-Quote Quantity Section */}
-            <div style={{ background: 'rgba(15, 23, 42, 0.95)', border: '1.5px solid #38bdf8', borderRadius: '12px', padding: '14px', marginBottom: '16px', boxShadow: '0 4px 14px rgba(56, 189, 248, 0.15)' }}>
+            <div style={{ background: '#0f172a', border: '1.5px solid #38bdf8', borderRadius: '12px', padding: '14px', marginBottom: '16px', boxShadow: '0 4px 14px rgba(56, 189, 248, 0.2)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                 <label style={{ fontSize: '0.86rem', color: '#38bdf8', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '6px' }}>
                   ⚖️ Re-Quote Quantity (MT):
@@ -5612,39 +5612,39 @@ export const AdminDashboard = () => {
               </div>
             </div>
 
+            {/* This Will Checklist Box with PURE DARK BLACK TEXT for high contrast readability */}
             <div style={{
-              background: '#0f172a',
-              border: '1.5px solid #d97706',
+              background: '#fef3c7',
+              border: '2px solid #f59e0b',
               borderRadius: '12px',
               padding: '14px 16px',
               marginBottom: '16px',
-              fontSize: '0.86rem',
-              color: '#f1f5f9',
+              fontSize: '0.88rem',
               lineHeight: 1.6,
-              boxShadow: '0 6px 18px rgba(0, 0, 0, 0.35)'
+              boxShadow: '0 4px 12px rgba(245, 158, 11, 0.2)'
             }}>
-              <div style={{ fontWeight: '900', color: '#f59e0b', fontSize: '0.94rem', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <div style={{ fontWeight: '900', color: '#b45309', fontSize: '0.96rem', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                 📌 This will:
               </div>
-              <div style={{ color: '#f1f5f9', fontWeight: '600', marginBottom: '6px' }}>
-                <span style={{ color: '#10b981', fontWeight: '900', marginRight: '8px', fontSize: '1rem' }}>✓</span> Close remaining allocation for current transporter
+              <div style={{ color: '#0f172a', fontWeight: '800', marginBottom: '6px' }}>
+                <span style={{ color: '#16a34a', fontWeight: '900', marginRight: '8px', fontSize: '1.1rem' }}>✓</span> Close remaining allocation for current transporter
               </div>
-              <div style={{ color: '#f1f5f9', fontWeight: '600', marginBottom: '6px' }}>
-                <span style={{ color: '#10b981', fontWeight: '900', marginRight: '8px', fontSize: '1rem' }}>✓</span> Preserve existing truck and LR history
+              <div style={{ color: '#0f172a', fontWeight: '800', marginBottom: '6px' }}>
+                <span style={{ color: '#16a34a', fontWeight: '900', marginRight: '8px', fontSize: '1.1rem' }}>✓</span> Preserve existing truck and LR history
               </div>
-              <div style={{ color: '#f1f5f9', fontWeight: '600', marginBottom: '6px' }}>
-                <span style={{ color: '#10b981', fontWeight: '900', marginRight: '8px', fontSize: '1rem' }}>✓</span> Create a new Sub-Indent for <strong style={{ color: '#38bdf8', fontSize: '1rem', background: 'rgba(56, 189, 248, 0.25)', padding: '1px 8px', borderRadius: '4px', border: '1px solid #38bdf8' }}>{releaseRequoteModal.customQty !== undefined ? releaseRequoteModal.customQty : releaseRequoteModal.remainingQty} MT</strong>
+              <div style={{ color: '#0f172a', fontWeight: '800', marginBottom: '6px' }}>
+                <span style={{ color: '#16a34a', fontWeight: '900', marginRight: '8px', fontSize: '1.1rem' }}>✓</span> Create a new Sub-Indent for <strong style={{ color: '#0369a1', fontSize: '1.05rem', background: '#e0f2fe', padding: '2px 8px', borderRadius: '6px', border: '1.5px solid #0284c7' }}>{releaseRequoteModal.customQty !== undefined ? releaseRequoteModal.customQty : releaseRequoteModal.remainingQty} MT</strong>
               </div>
-              <div style={{ color: '#f1f5f9', fontWeight: '600', marginBottom: '6px' }}>
-                <span style={{ color: '#10b981', fontWeight: '900', marginRight: '8px', fontSize: '1rem' }}>✓</span> Open fresh bidding for eligible transporters
+              <div style={{ color: '#0f172a', fontWeight: '800', marginBottom: '6px' }}>
+                <span style={{ color: '#16a34a', fontWeight: '900', marginRight: '8px', fontSize: '1.1rem' }}>✓</span> Open fresh bidding for eligible transporters
               </div>
-              <div style={{ marginTop: '10px', fontSize: '0.82rem', color: '#f87171', fontWeight: '800', borderTop: '1px solid rgba(255,255,255,0.12)', paddingTop: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <div style={{ marginTop: '10px', fontSize: '0.84rem', color: '#b91c1c', fontWeight: '900', borderTop: '1.5px solid #fcd34d', paddingTop: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                 ⚠️ This action cannot be undone automatically.
               </div>
             </div>
 
             <div style={{ marginBottom: '16px' }}>
-              <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--text-main, #0f172a)', fontWeight: '800', marginBottom: '6px' }}>
+              <label style={{ display: 'block', fontSize: '0.85rem', color: '#0f172a', fontWeight: '800', marginBottom: '6px' }}>
                 Reason (Optional):
               </label>
               <textarea
@@ -5654,12 +5654,13 @@ export const AdminDashboard = () => {
                 style={{
                   width: '100%',
                   height: '70px',
-                  background: '#1e293b',
-                  border: '1px solid rgba(255,255,255,0.15)',
-                  color: '#ffffff',
+                  background: '#ffffff',
+                  border: '1.5px solid #94a3b8',
+                  color: '#0f172a',
                   padding: '10px',
                   borderRadius: '8px',
-                  fontSize: '0.82rem',
+                  fontSize: '0.85rem',
+                  fontWeight: '600',
                   resize: 'none'
                 }}
               />
@@ -5670,7 +5671,7 @@ export const AdminDashboard = () => {
                 type="button"
                 onClick={() => setReleaseRequoteModal(prev => ({ ...prev, isOpen: false }))}
                 className="btn btn-secondary"
-                style={{ padding: '8px 18px', fontSize: '0.88rem', borderRadius: '8px' }}
+                style={{ padding: '8px 18px', fontSize: '0.88rem', borderRadius: '8px', background: '#e2e8f0', color: '#0f172a', border: '1px solid #cbd5e1', fontWeight: '700' }}
               >
                 Cancel
               </button>
@@ -5691,7 +5692,9 @@ export const AdminDashboard = () => {
                   cursor: 'pointer'
                 }}
               >
-                {releaseRequoteModal.isSubmitting ? '⏳ Releasing...' : '🔄 Confirm & Release For Re-Quote'}
+                {releaseRequoteModal.isSubmitting
+                  ? '⏳ Releasing...'
+                  : `🔄 Confirm & Release ${releaseRequoteModal.customQty !== undefined ? releaseRequoteModal.customQty : releaseRequoteModal.remainingQty} MT For Re-Quote`}
               </button>
             </div>
           </div>
