@@ -3338,7 +3338,6 @@ async function handleGetTransporterDashboardSummary(req, res) {
            is_finalized = 1 OR
            UPPER(COALESCE(bid_status, '')) IN ('FINALIZED', 'AWARDED', 'COUNTER_ACCEPTED') OR 
            UPPER(COALESCE(acceptance_status, '')) IN ('ACCEPTED', 'PENDING') OR
-           UPPER(COALESCE(status, '')) IN ('FINALIZED', 'AWARDED', 'ACCEPTED', 'RATE FROZEN', 'SELECTED') OR 
            final_rate IS NOT NULL
          )`,
       [transIds]
@@ -3393,6 +3392,16 @@ router.post('/rate-submissions', authenticateToken, handleCreateRateSubmission);
 router.post('/bids', authenticateToken, handleCreateRateSubmission);
 router.get('/rate-submissions', authenticateToken, handleGetRateSubmissions);
 router.get('/transporters', authenticateToken, handleGetTransporters);
+router.get('/master-data', authenticateToken, handleGetMasterData);
+router.get('/security/audit-logs', authenticateToken, async (req, res) => {
+  try {
+    await ensureSecurityAuditLogsTableExists();
+    const [rows] = await pool.query('SELECT * FROM security_audit_logs ORDER BY created_at DESC, timestamp DESC LIMIT 200');
+    return res.json({ success: true, audit_logs: rows });
+  } catch (err) {
+    return res.json({ success: true, audit_logs: [] });
+  }
+});
 router.post('/admin/reconcile-dispatch-balances', authenticateToken, requireRole('admin'), async (req, res) => {
   try {
     const result = await reconcileItemDispatchBalances(pool);
@@ -3409,7 +3418,7 @@ router.post('/admin/reconcile-dispatch-balances', authenticateToken, requireRole
   }
 });
 
-router.get('/admin/dispatch-integrity-report', authenticateToken, requireRole('admin'), async (req, res) => {
+router.get(['/admin/dispatch-integrity-report', '/admin/reconciliation/integrity-report'], authenticateToken, requireRole('admin'), async (req, res) => {
   try {
     const [items] = await pool.query('SELECT * FROM transport_requirement_items');
     const [dispatches] = await pool.query('SELECT * FROM truck_dispatches');
