@@ -176,7 +176,8 @@ export async function ensureRequirementsTableExists() {
       { name: 'remaining_allocated_to', def: 'VARCHAR(100) DEFAULT NULL' },
       { name: 'remaining_allocation_status', def: 'VARCHAR(50) DEFAULT NULL' },
       { name: 'remaining_allocation_accepted_at', def: 'DATETIME DEFAULT NULL' },
-      { name: 'remaining_finalized_rate', def: 'DECIMAL(12,2) DEFAULT NULL' }
+      { name: 'remaining_finalized_rate', def: 'DECIMAL(12,2) DEFAULT NULL' },
+      { name: 'counter_offer_rate', def: 'DECIMAL(12,2) DEFAULT NULL' }
     ];
     for (const { name, def } of reqCols) {
       await ensureColumnExists('transport_requirements', name, def);
@@ -217,7 +218,8 @@ export async function ensureRequirementsTableExists() {
       { name: 'remaining_allocated_to', def: 'VARCHAR(100) DEFAULT NULL' },
       { name: 'remaining_allocation_status', def: 'VARCHAR(50) DEFAULT NULL' },
       { name: 'remaining_allocation_accepted_at', def: 'DATETIME DEFAULT NULL' },
-      { name: 'remaining_finalized_rate', def: 'DECIMAL(12,2) DEFAULT NULL' }
+      { name: 'remaining_finalized_rate', def: 'DECIMAL(12,2) DEFAULT NULL' },
+      { name: 'counter_offer_rate', def: 'DECIMAL(12,2) DEFAULT NULL' }
     ];
     for (const { name, def } of childCols) {
       await ensureColumnExists('transport_requirement_items', name, def);
@@ -1449,6 +1451,9 @@ async function handleCreateRateSubmission(req, res) {
 async function handleAdminCounter(req, res) {
   try {
     await ensureRateSubmissionsTableExists();
+    await ensureRequirementsTableExists();
+    await ensureColumnExists('transport_requirement_items', 'counter_offer_rate', 'DECIMAL(12,2) DEFAULT NULL');
+    await ensureColumnExists('transport_requirements', 'counter_offer_rate', 'DECIMAL(12,2) DEFAULT NULL');
     await ensureBidNegotiationHistoryTableExists();
     await ensureRateNegotiationsTableExists();
 
@@ -1570,19 +1575,38 @@ async function handleAdminCounter(req, res) {
         }
       }
 
-      // Update requirement item with active counter rate
-      await conn.query(
-        `UPDATE transport_requirement_items 
-         SET counter_offer_rate = ?, remaining_finalized_rate = ?, updated_at = NOW() 
-         WHERE (requirement_id = ?) AND (id = ? OR sub_indent_no = ?)`,
-        [counterRateVal, counterRateVal, sub.requirement_id, sub.item_id || 'MAIN', sub.item_id || 'MAIN']
-      );
-      await conn.query(
-        `UPDATE transport_requirements 
-         SET counter_offer_rate = ?, remaining_finalized_rate = ?, updated_at = NOW() 
-         WHERE id = ?`,
-        [counterRateVal, counterRateVal, sub.requirement_id]
-      );
+      // Update requirement item with active counter rate (resilient fallback)
+      try {
+        await conn.query(
+          `UPDATE transport_requirement_items 
+           SET counter_offer_rate = ?, remaining_finalized_rate = ?, updated_at = NOW() 
+           WHERE (requirement_id = ?) AND (id = ? OR sub_indent_no = ?)`,
+          [counterRateVal, counterRateVal, sub.requirement_id, sub.item_id || 'MAIN', sub.item_id || 'MAIN']
+        );
+      } catch (colErr) {
+        await conn.query(
+          `UPDATE transport_requirement_items 
+           SET remaining_finalized_rate = ?, updated_at = NOW() 
+           WHERE (requirement_id = ?) AND (id = ? OR sub_indent_no = ?)`,
+          [counterRateVal, sub.requirement_id, sub.item_id || 'MAIN', sub.item_id || 'MAIN']
+        );
+      }
+
+      try {
+        await conn.query(
+          `UPDATE transport_requirements 
+           SET counter_offer_rate = ?, remaining_finalized_rate = ?, updated_at = NOW() 
+           WHERE id = ?`,
+          [counterRateVal, counterRateVal, sub.requirement_id]
+        );
+      } catch (colErr) {
+        await conn.query(
+          `UPDATE transport_requirements 
+           SET remaining_finalized_rate = ?, updated_at = NOW() 
+           WHERE id = ?`,
+          [counterRateVal, sub.requirement_id]
+        );
+      }
 
       const [updatedRows] = await pool.query('SELECT * FROM rate_submissions WHERE id = ? LIMIT 1', [id]);
       return res.json({
@@ -1607,6 +1631,9 @@ async function handleAdminCounter(req, res) {
 async function handleAdminCounterAll(req, res) {
   try {
     await ensureRateSubmissionsTableExists();
+    await ensureRequirementsTableExists();
+    await ensureColumnExists('transport_requirement_items', 'counter_offer_rate', 'DECIMAL(12,2) DEFAULT NULL');
+    await ensureColumnExists('transport_requirements', 'counter_offer_rate', 'DECIMAL(12,2) DEFAULT NULL');
     await ensureBidNegotiationHistoryTableExists();
     await ensureRateNegotiationsTableExists();
 
@@ -1754,19 +1781,38 @@ async function handleAdminCounterAll(req, res) {
         );
       }
 
-      // Update requirement item with active counter rate
-      await conn.query(
-        `UPDATE transport_requirement_items 
-         SET counter_offer_rate = ?, remaining_finalized_rate = ?, updated_at = NOW() 
-         WHERE (requirement_id = ? OR requirement_id IN (?)) AND (id = ? OR id = ? OR sub_indent_no = ? OR sub_indent_no = ?)`,
-        [counterRateVal, counterRateVal, actualReqId, [actualReqId], actualItemId, itemId, actualItemId, itemId]
-      );
-      await conn.query(
-        `UPDATE transport_requirements 
-         SET counter_offer_rate = ?, remaining_finalized_rate = ?, updated_at = NOW() 
-         WHERE id = ? OR req_no = ?`,
-        [counterRateVal, counterRateVal, actualReqId, actualReqId]
-      );
+      // Update requirement item with active counter rate (resilient fallback)
+      try {
+        await conn.query(
+          `UPDATE transport_requirement_items 
+           SET counter_offer_rate = ?, remaining_finalized_rate = ?, updated_at = NOW() 
+           WHERE (requirement_id = ? OR requirement_id IN (?)) AND (id = ? OR id = ? OR sub_indent_no = ? OR sub_indent_no = ?)`,
+          [counterRateVal, counterRateVal, actualReqId, [actualReqId], actualItemId, itemId, actualItemId, itemId]
+        );
+      } catch (colErr) {
+        await conn.query(
+          `UPDATE transport_requirement_items 
+           SET remaining_finalized_rate = ?, updated_at = NOW() 
+           WHERE (requirement_id = ? OR requirement_id IN (?)) AND (id = ? OR id = ? OR sub_indent_no = ? OR sub_indent_no = ?)`,
+          [counterRateVal, actualReqId, [actualReqId], actualItemId, itemId, actualItemId, itemId]
+        );
+      }
+
+      try {
+        await conn.query(
+          `UPDATE transport_requirements 
+           SET counter_offer_rate = ?, remaining_finalized_rate = ?, updated_at = NOW() 
+           WHERE id = ? OR req_no = ?`,
+          [counterRateVal, counterRateVal, actualReqId, actualReqId]
+        );
+      } catch (colErr) {
+        await conn.query(
+          `UPDATE transport_requirements 
+           SET remaining_finalized_rate = ?, updated_at = NOW() 
+           WHERE id = ? OR req_no = ?`,
+          [counterRateVal, actualReqId, actualReqId]
+        );
+      }
 
       await conn.commit();
       conn.release();
