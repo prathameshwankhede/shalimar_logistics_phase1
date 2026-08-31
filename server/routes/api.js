@@ -5776,39 +5776,7 @@ router.post('/contracts', authenticateToken, requireRole('admin'), async (req, r
   }
 });
 
-// -------------------------------------------------------------
-// POST /api/dispatches & GET /api/dispatches — Dedicated Dispatch / LR API
-// -------------------------------------------------------------
-router.get('/dispatches', authenticateToken, async (req, res) => {
-  try {
-    const [rows] = await pool.query('SELECT id, contract_id, lr_number, truck_number, loaded_quantity, driver_name, driver_mobile, driver_license_no, dispatch_date, status, created_at, updated_at FROM dispatches ORDER BY created_at DESC LIMIT 100');
-    return res.json({ success: true, count: rows.length, dispatches: rows });
-  } catch (err) {
-    return res.status(503).json({ success: false, error: { code: 'DATABASE_UNAVAILABLE', message: err.message } });
-  }
-});
 
-router.post('/dispatches', authenticateToken, async (req, res) => {
-  const { id, contract_id, lr_number, truck_number, loaded_quantity, driver_name, driver_mobile, driver_license_no, dispatch_date, status } = req.body;
-  if (!lr_number || !truck_number) {
-    return res.status(400).json({ success: false, error: 'lr_number and truck_number required' });
-  }
-
-  const dispatchId = id || `disp_${Date.now()}`;
-  try {
-    const [result] = await pool.query(
-      `INSERT INTO dispatches (id, contract_id, lr_number, truck_number, loaded_quantity, driver_name, driver_mobile, driver_license_no, dispatch_date, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-       ON DUPLICATE KEY UPDATE loaded_quantity = VALUES(loaded_quantity), driver_name = VALUES(driver_name), driver_mobile = VALUES(driver_mobile), status = VALUES(status), updated_at = NOW()`,
-      [dispatchId, contract_id || null, lr_number.trim(), truck_number.trim(), parseFloat(loaded_quantity || 0), driver_name || '', driver_mobile || '', driver_license_no || '', dispatch_date || null, status || 'Dispatched']
-    );
-
-    return res.json({ success: true, affectedRows: result.affectedRows, id: dispatchId, message: 'Dispatch LR saved to MySQL dispatches table' });
-  } catch (err) {
-    console.error('❌ MySQL Dispatch Error:', err.message);
-    return res.status(500).json({ success: false, error: { code: 'DATABASE_ERROR', message: err.message } });
-  }
-});
 
 // -------------------------------------------------------------
 // POST /api/admin/execute-database-reset — Disabled DDL Route
