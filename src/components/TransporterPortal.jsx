@@ -650,8 +650,8 @@ export const TransporterPortal = () => {
           // Priority 2: Existing truck_dispatches recorded finalized_rate
           fixedRate = Number(dispatches[0].finalized_rate);
           winningTransporterId = dispatches[0].transporter_id;
-        } else if (item.remaining_finalized_rate || item.lowest_rate || parentReq.lowest_rate) {
-          // Priority 3: Server provided lowest / finalized rate
+        } else if (totalDispatched > 0 && (item.remaining_finalized_rate || item.lowest_rate || parentReq.lowest_rate)) {
+          // Priority 3: Remaining balance allocation rate after partial dispatch
           fixedRate = Number(item.remaining_finalized_rate || item.lowest_rate || parentReq.lowest_rate);
         }
 
@@ -820,7 +820,7 @@ export const TransporterPortal = () => {
       } else if (dispatches.length > 0 && Number(dispatches[0]?.finalized_rate) > 0) {
         fixedRate = Number(dispatches[0].finalized_rate);
         winningTransporterId = dispatches[0].transporter_id;
-      } else if (parentReq.remaining_finalized_rate || parentReq.lowest_rate) {
+      } else if (totalDispatched > 0 && (parentReq.remaining_finalized_rate || parentReq.lowest_rate)) {
         fixedRate = Number(parentReq.remaining_finalized_rate || parentReq.lowest_rate);
       }
 
