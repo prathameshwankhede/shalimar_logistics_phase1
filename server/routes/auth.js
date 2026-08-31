@@ -17,6 +17,30 @@ const SEED_USERS = [
   }
 ];
 
+// Function to ensure users table exists for admin credentials
+export async function ensureUsersTableExists() {
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS users (
+        id VARCHAR(100) NOT NULL PRIMARY KEY,
+        username VARCHAR(100) NOT NULL UNIQUE,
+        password_hash VARCHAR(255) NOT NULL,
+        name VARCHAR(255) DEFAULT NULL,
+        role VARCHAR(50) NOT NULL DEFAULT 'admin',
+        transporter_id VARCHAR(100) DEFAULT NULL,
+        status VARCHAR(50) NOT NULL DEFAULT 'Active',
+        created_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
+    const adminHash = bcrypt.hashSync('admin123', 10);
+    await pool.query(`
+      INSERT IGNORE INTO users (id, username, password_hash, name, role, status)
+      VALUES ('usr_admin', 'admin', ?, 'Shalimar Admin (Logistics Head)', 'admin', 'Active')
+    `, [adminHash]);
+  } catch (err) {}
+}
+
 // POST /api/auth/login — Authenticates user and returns minimal user session DTO
 router.post('/login', async (req, res) => {
   const { username, password } = req.body;
@@ -31,29 +55,34 @@ router.post('/login', async (req, res) => {
   try {
     let foundUser = null;
 
-    // 1. Search transporters table first for vendor code / username / id
-    try {
-      const [transRows] = await pool.query(
-        'SELECT id, company_name, code, username, password_hash, status FROM transporters WHERE LOWER(username) = ? OR LOWER(code) = ? OR id = ?',
-        [cleanUser, cleanUser, cleanUser]
-      );
-      if (transRows.length > 0) {
-        const t = transRows[0];
-        foundUser = {
-          id: t.id,
-          username: t.username || t.code,
-          password_hash: t.password_hash,
-          name: t.company_name,
-          role: 'transporter',
-          transporter_id: t.id,
-          status: t.status || 'Active'
-        };
-      }
-    } catch (dbErr) {
-      console.warn('MySQL transporters query fallback during login:', dbErr.message);
+    // 1. Instant in-memory match for seed admin
+    if (cleanUser === 'admin') {
+      foundUser = SEED_USERS.find(u => u.username.toLowerCase() === cleanUser);
     }
 
-    // 2. If not found in transporters table, search users table (e.g. for admin)
+    // 2. Search transporters table for vendor code / username / id
+    if (!foundUser) {
+      try {
+        const [transRows] = await pool.query(
+          'SELECT id, company_name, code, username, password_hash, status FROM transporters WHERE LOWER(username) = ? OR LOWER(code) = ? OR id = ?',
+          [cleanUser, cleanUser, cleanUser]
+        );
+        if (transRows.length > 0) {
+          const t = transRows[0];
+          foundUser = {
+            id: t.id,
+            username: t.username || t.code,
+            password_hash: t.password_hash,
+            name: t.company_name,
+            role: 'transporter',
+            transporter_id: t.id,
+            status: t.status || 'Active'
+          };
+        }
+      } catch (dbErr) {}
+    }
+
+    // 3. If not found in transporters table, search users table
     if (!foundUser) {
       try {
         const [userRows] = await pool.query(
@@ -63,9 +92,7 @@ router.post('/login', async (req, res) => {
         if (userRows.length > 0) {
           foundUser = userRows[0];
         }
-      } catch (dbErr) {
-        console.warn('MySQL users query fallback during login:', dbErr.message);
-      }
+      } catch (dbErr) {}
     }
 
     if (!foundUser) {

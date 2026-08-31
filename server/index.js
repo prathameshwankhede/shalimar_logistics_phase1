@@ -23,7 +23,7 @@ process.on('unhandledRejection', (reason, promise) => {
 });
 
 import { testConnection } from './config/db.js';
-import authRoutes from './routes/auth.js';
+import authRoutes, { ensureUsersTableExists } from './routes/auth.js';
 import apiRoutes, {
   ensureRequirementsTableExists,
   ensureRateSubmissionsTableExists,
@@ -268,10 +268,11 @@ app.listen(PORT, () => {
     .then(async (dbConnected) => {
       if (dbConnected) {
         console.log('✅ MySQL Connection established.');
-        await ensureRequirementsTableExists().catch(e => console.warn('Startup requirements ensure notice:', e.message));
-        await ensureRateSubmissionsTableExists().catch(e => console.warn('Startup rate submissions ensure notice:', e.message));
-        await ensureSecurityAuditLogsTableExists().catch(e => console.warn('Startup audit logs ensure notice:', e.message));
-        await ensureTruckDispatchesTableExists().catch(e => console.warn('Startup truck dispatches ensure notice:', e.message));
+        await ensureUsersTableExists().catch(() => {});
+        await ensureRequirementsTableExists().catch(() => {});
+        await ensureRateSubmissionsTableExists().catch(() => {});
+        await ensureSecurityAuditLogsTableExists().catch(() => {});
+        await ensureTruckDispatchesTableExists().catch(() => {});
       } else {
         console.warn('⚠️ MySQL connection check returned false. Verify Hostinger DB environment variables.');
       }
