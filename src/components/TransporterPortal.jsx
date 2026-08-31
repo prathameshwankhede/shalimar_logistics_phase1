@@ -1218,6 +1218,7 @@ export const TransporterPortal = () => {
     const remainingQty = req.remaining_quantity_mt !== undefined && req.remaining_quantity_mt !== null
       ? Number(req.remaining_quantity_mt)
       : Math.max(0, Number(req.quantity_mt || req.required_qty || 0) - Number(req.dispatched_quantity_mt || 0));
+    const remQty = remainingQty;
     const dispatchedQty = Number(req.dispatched_quantity_mt || 0);
     const isFullyDispatched = remainingQty <= 0 && dispatchedQty > 0;
 
