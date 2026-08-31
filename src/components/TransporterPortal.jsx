@@ -650,9 +650,16 @@ export const TransporterPortal = () => {
           // Priority 2: Existing truck_dispatches recorded finalized_rate
           fixedRate = Number(dispatches[0].finalized_rate);
           winningTransporterId = dispatches[0].transporter_id;
-        } else if (totalDispatched > 0 && (item.remaining_finalized_rate || item.lowest_rate || parentReq.lowest_rate)) {
-          // Priority 3: Remaining balance allocation rate after partial dispatch
-          fixedRate = Number(item.remaining_finalized_rate || item.lowest_rate || parentReq.lowest_rate);
+        } else if (item.remaining_finalized_rate || parentReq.remaining_finalized_rate || item.counter_offer_rate || parentReq.counter_offer_rate || item.lowest_rate || parentReq.lowest_rate) {
+          // Priority 3: Remaining balance allocation rate or Counter Rate after partial dispatch
+          fixedRate = Number(
+            item.counter_offer_rate ||
+            parentReq.counter_offer_rate ||
+            item.remaining_finalized_rate ||
+            parentReq.remaining_finalized_rate ||
+            item.lowest_rate ||
+            parentReq.lowest_rate
+          );
         }
 
         const isWinningTransporter = Boolean(
@@ -707,7 +714,15 @@ export const TransporterPortal = () => {
         let canDispatch = false;
         let authStatus = null;
 
-        if (isRemainingAccepted && isCurrentTransporterAssigned) {
+        const activeCounterRate = fixedRate;
+        const isOpenCounterDispatch = Boolean(activeCounterRate && activeCounterRate > 0 && remQty > 0);
+
+        if (isOpenCounterDispatch) {
+          allocationRole = 'OPEN_COUNTER_BIDDER';
+          allocationStatus = 'WINNER_ACTIVE';
+          authStatus = 'APPROVED';
+          canDispatch = remQty > 0;
+        } else if (isRemainingAccepted && isCurrentTransporterAssigned) {
           allocationRole = 'ACCEPTED_EXCLUSIVE_TRANSPORTER';
           allocationStatus = 'ACCEPTED_SHARED_TRANSPORTER';
           authStatus = 'APPROVED';
@@ -722,7 +737,7 @@ export const TransporterPortal = () => {
           allocationStatus = 'ACCEPTED_SHARED_TRANSPORTER';
           authStatus = 'APPROVED';
           canDispatch = true;
-        } else if (Boolean(myExistingBid) || Boolean(myAlloc) || (fixedRate !== null && totalDispatched > 0 && remQty > 0)) {
+        } else if (Boolean(myExistingBid) || Boolean(myAlloc) || (fixedRate !== null && remQty > 0)) {
           allocationRole = 'ELIGIBLE_PREVIOUS_BIDDER';
           allocationStatus = 'PREVIOUS_BIDDER_PENDING_ACCEPTANCE';
           authStatus = 'AVAILABLE_FOR_ACCEPTANCE';
@@ -733,7 +748,7 @@ export const TransporterPortal = () => {
 
         // If normal finalized item with NO partial dispatch yet, only winning transporter can see it.
         // But if partially dispatched with remaining balance (e.g. 25 MT left), all eligible transporters can see it to accept!
-        if (fixedRate !== null && !isPartiallyDispatchedWithRemaining && !isWinningTransporter && !isCurrentTransporterAssigned) {
+        if (fixedRate !== null && !isPartiallyDispatchedWithRemaining && !isWinningTransporter && !isCurrentTransporterAssigned && !isOpenCounterDispatch) {
           return;
         }
 
@@ -741,7 +756,8 @@ export const TransporterPortal = () => {
 
         openRateRequests.push({
           ...parentReq,
-          id: parentReq.id,
+          ...item,
+          id: item.id || parentReq.id,
           requirement_id: parentReq.id,
           item_id: item.id,
           sub_indent_id: item.id,
@@ -761,6 +777,7 @@ export const TransporterPortal = () => {
           allocated_quantity_mt: allocatedQty,
           dispatched_quantity_mt: totalDispatched,
           remaining_quantity_mt: remQty,
+          dispatch_status: item.dispatch_status || 'PENDING',
           unit: item.unit || 'MT',
           target_date: item.target_date || parentReq.target_date,
           parent_total_qty: parentReq.total_quantity_mt || parentReq.quantity_mt,
@@ -768,16 +785,17 @@ export const TransporterPortal = () => {
           source_item_id: item.source_item_id || null,
           is_reopened: Boolean(item.source_item_id),
           is_fixed_rate_allocation: isFixedRateAllocation,
+          is_open_counter_dispatch: isOpenCounterDispatch,
           can_dispatch: canDispatch,
           auth_status: authStatus,
           allocation_role: allocationRole,
           allocation_status: allocationStatus,
           is_winning_transporter: isWinningTransporter,
-          is_awarded_to_other: Boolean(fixedRate !== null && !isWinningTransporter && !canDispatch),
+          is_awarded_to_other: Boolean(fixedRate !== null && !isWinningTransporter && !canDispatch && !isOpenCounterDispatch),
           winning_transporter_id: winningTransporterId,
           fixed_rate: fixedRate,
           finalized_rate: fixedRate,
-          finalized_bid: myWinningBid,
+          finalized_bid: myWinningBid || (fixedRate ? { final_rate: fixedRate, acceptance_status: 'ACCEPTED' } : null),
           rate_editable: false,
           requires_new_bid: !isFixedRateAllocation && fixedRate === null,
           is_requote: false
@@ -2538,7 +2556,7 @@ export const TransporterPortal = () => {
                                                         </div>
                                                       ) : hasSubmittedQuote ? (
                                                         renderTransporterNegotiationCell(myExistingBid, req)
-                                                      ) : (isAwarded || (req.dispatch_status && req.dispatch_status !== 'PENDING')) ? (
+                                                      ) : (isAwarded && !req.can_dispatch) ? (
                                                         <span style={{
                                                           fontSize: '0.8rem',
                                                           background: '#f1f5f9',
