@@ -650,15 +650,13 @@ export const TransporterPortal = () => {
           // Priority 2: Existing truck_dispatches recorded finalized_rate
           fixedRate = Number(dispatches[0].finalized_rate);
           winningTransporterId = dispatches[0].transporter_id;
-        } else if (item.remaining_finalized_rate || parentReq.remaining_finalized_rate || item.counter_offer_rate || parentReq.counter_offer_rate || item.lowest_rate || parentReq.lowest_rate) {
-          // Priority 3: Remaining balance allocation rate or Counter Rate after partial dispatch
+        } else if (item.counter_offer_rate || parentReq.counter_offer_rate || (totalDispatched > 0 && (item.remaining_finalized_rate || parentReq.remaining_finalized_rate))) {
+          // Priority 3: Active Admin Counter Rate or Remaining balance allocation rate after partial dispatch
           fixedRate = Number(
             item.counter_offer_rate ||
             parentReq.counter_offer_rate ||
             item.remaining_finalized_rate ||
-            parentReq.remaining_finalized_rate ||
-            item.lowest_rate ||
-            parentReq.lowest_rate
+            parentReq.remaining_finalized_rate
           );
         }
 
@@ -838,8 +836,8 @@ export const TransporterPortal = () => {
       } else if (dispatches.length > 0 && Number(dispatches[0]?.finalized_rate) > 0) {
         fixedRate = Number(dispatches[0].finalized_rate);
         winningTransporterId = dispatches[0].transporter_id;
-      } else if (totalDispatched > 0 && (parentReq.remaining_finalized_rate || parentReq.lowest_rate)) {
-        fixedRate = Number(parentReq.remaining_finalized_rate || parentReq.lowest_rate);
+      } else if (totalDispatched > 0 && parentReq.remaining_finalized_rate) {
+        fixedRate = Number(parentReq.remaining_finalized_rate);
       }
 
       const isWinningTransporter = Boolean(
@@ -2482,161 +2480,99 @@ export const TransporterPortal = () => {
                                                     </td>
 
                                                     <td style={{ padding: '10px 14px' }}>
-                                                      {req.is_fixed_rate_allocation ? (
-                                                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-                                                          {req.can_dispatch ? (
-                                                            <>
-                                                              <span style={{ fontSize: '0.88rem', fontWeight: '900', color: req.is_open_counter_dispatch ? '#0284c7' : '#059669', background: req.is_open_counter_dispatch ? '#e0f2fe' : '#dcfce7', border: req.is_open_counter_dispatch ? '1.5px solid #7dd3fc' : '1.5px solid #86efac', padding: '4px 10px', borderRadius: '8px' }}>
-                                                                {req.is_open_counter_dispatch ? `⚡ Open Counter Dispatch — ₹${req.fixed_rate}/MT` : (req.allocation_status === 'WINNER_ACTIVE' || req.auth_status === 'WINNER' ? '🏆 Awarded to You' : '✅ Allocation Accepted') + ` — ₹${req.fixed_rate}/MT (Fixed)`}
+                                                      {!hasSubmittedQuote ? (
+                                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                                          <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
+                                                            <div style={{ position: 'relative' }}>
+                                                              <span style={{ position: 'absolute', left: '8px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', fontSize: '0.85rem' }}>₹</span>
+                                                              <input
+                                                                id={`rate_input_${req.item_id || req.sub_indent_no || req.id}`}
+                                                                type="number"
+                                                                inputMode="decimal"
+                                                                min="1"
+                                                                step="0.01"
+                                                                placeholder="Your Rate"
+                                                                aria-label={`Enter quote rate for ${displayCode}`}
+                                                                className="form-control"
+                                                                disabled={isSubmitting}
+                                                                value={currentInputRate}
+                                                                onChange={(e) => {
+                                                                  const val = e.target.value;
+                                                                  const key = getSubIndentKey(req);
+                                                                  setQuickRates((prev) => ({
+                                                                    ...prev,
+                                                                    [key]: val,
+                                                                    [req.id]: val
+                                                                  }));
+                                                                }}
+                                                                onKeyDown={(e) => {
+                                                                  if (e.key === 'Enter') {
+                                                                    e.preventDefault();
+                                                                    e.stopPropagation();
+                                                                    handleExpressQuickSubmit(req, currentInputRate);
+                                                                  }
+                                                                }}
+                                                                style={{ paddingLeft: '22px', fontSize: '0.86rem', fontWeight: '800', height: '36px', width: '110px' }}
+                                                              />
+                                                            </div>
+
+                                                            <button
+                                                              type="button"
+                                                              aria-label={`Submit quote for ${displayCode}`}
+                                                              className="btn btn-primary"
+                                                              disabled={isSubmitting}
+                                                              onClick={(e) => {
+                                                                e.preventDefault();
+                                                                e.stopPropagation();
+                                                                handleExpressQuickSubmit(req, currentInputRate);
+                                                              }}
+                                                              style={{
+                                                                padding: '6px 14px',
+                                                                fontSize: '0.8rem',
+                                                                whiteSpace: 'nowrap',
+                                                                height: '36px',
+                                                                borderRadius: '8px',
+                                                                fontWeight: '900',
+                                                                display: 'inline-flex',
+                                                                alignItems: 'center',
+                                                                gap: '4px',
+                                                                background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                                                                color: '#ffffff',
+                                                                border: 'none',
+                                                                cursor: isSubmitting ? 'not-allowed' : 'pointer'
+                                                              }}
+                                                            >
+                                                              {isSubmitting ? '⏳ Submitting...' : '🚀 Quote'}
+                                                            </button>
+                                                          </div>
+
+                                                          {req.can_dispatch && req.fixed_rate && (
+                                                            <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
+                                                              <span style={{ fontSize: '0.78rem', fontWeight: '800', color: '#0369a1', background: '#e0f2fe', padding: '2px 8px', borderRadius: '6px', border: '1px solid #7dd3fc' }}>
+                                                                ⚡ Or Dispatch @ ₹{req.fixed_rate}/MT
                                                               </span>
-                                                              {req.is_open_counter_dispatch && (
-                                                                <span style={{ fontSize: '0.8rem', fontWeight: '800', color: '#b45309', background: '#fef3c7', padding: '4px 8px', borderRadius: '6px', border: '1px solid #fcd34d' }}>
-                                                                  Remaining: <strong>{req.remaining_quantity_mt} MT</strong>
-                                                                </span>
-                                                              )}
                                                               <button
                                                                 type="button"
                                                                 onClick={() => handleOpenDispatchModal(req, req.finalized_bid || { final_rate: req.fixed_rate, acceptance_status: 'ACCEPTED' })}
                                                                 className="btn btn-primary"
-                                                                style={{ padding: '6px 14px', fontSize: '0.82rem', fontWeight: '900', borderRadius: '8px', background: '#0284c7', color: '#ffffff', border: 'none', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                                                                style={{ padding: '3px 10px', fontSize: '0.76rem', fontWeight: '900', borderRadius: '6px', background: '#0284c7', color: '#ffffff', border: 'none', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '3px' }}
                                                               >
-                                                                <Truck size={14} /> Dispatch Truck
-                                                              </button>
-                                                            </>
-                                                          ) : req.allocation_status === 'PREVIOUS_BIDDER_PENDING_ACCEPTANCE' || req.auth_status === 'AVAILABLE_FOR_ACCEPTANCE' ? (
-                                                            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-                                                              <span style={{ fontSize: '0.84rem', fontWeight: '800', color: '#0369a1', background: '#e0f2fe', border: '1.5px solid #7dd3fc', padding: '4px 10px', borderRadius: '8px' }}>
-                                                                🔒 ₹{req.fixed_rate}/MT (Fixed) | Status: Available for Acceptance
-                                                              </span>
-                                                              <button
-                                                                type="button"
-                                                                onClick={() => handleAcceptAllocation(req)}
-                                                                disabled={requestingAccessId === (req.item_id || req.id)}
-                                                                className="btn btn-primary"
-                                                                style={{ padding: '6px 14px', fontSize: '0.82rem', fontWeight: '900', borderRadius: '8px', background: 'linear-gradient(135deg, #059669 0%, #10b981 100%)', color: '#ffffff', border: 'none', cursor: 'pointer' }}
-                                                              >
-                                                                {requestingAccessId === (req.item_id || req.id) ? 'Accepting...' : 'Accept Remaining Allocation'}
-                                                              </button>
-                                                            </div>
-                                                          ) : req.auth_status === 'PENDING' ? (
-                                                            <span style={{ fontSize: '0.82rem', fontWeight: '900', color: '#b45309', background: '#fef3c7', border: '1.5px solid #f59e0b', padding: '5px 12px', borderRadius: '8px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                                                              ⏳ Dispatch Access Request Pending (₹{req.fixed_rate}/MT Fixed)
-                                                            </span>
-                                                          ) : req.auth_status === 'REJECTED' ? (
-                                                            <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                                                              <span style={{ fontSize: '0.8rem', fontWeight: '800', color: '#dc2626', background: '#fee2e2', border: '1px solid #f87171', padding: '4px 8px', borderRadius: '8px' }}>
-                                                                ❌ Access Request Rejected (₹{req.fixed_rate}/MT)
-                                                              </span>
-                                                              <button
-                                                                type="button"
-                                                                onClick={() => handleRequestAccess(req)}
-                                                                disabled={requestingAccessId === (req.item_id || req.id)}
-                                                                className="btn btn-secondary"
-                                                                style={{ padding: '4px 8px', fontSize: '0.75rem', fontWeight: '800', borderRadius: '6px' }}
-                                                              >
-                                                                {requestingAccessId === (req.item_id || req.id) ? 'Submitting...' : 'Re-apply'}
-                                                              </button>
-                                                            </div>
-                                                          ) : (
-                                                            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                                                              <span style={{ fontSize: '0.84rem', fontWeight: '800', color: '#0369a1', background: '#e0f2fe', border: '1px solid #7dd3fc', padding: '4px 8px', borderRadius: '8px' }}>
-                                                                🔒 ₹{req.fixed_rate}/MT (Fixed)
-                                                              </span>
-                                                              <button
-                                                                type="button"
-                                                                onClick={() => handleRequestAccess(req)}
-                                                                disabled={requestingAccessId === (req.item_id || req.id)}
-                                                                className="btn btn-secondary"
-                                                                style={{ padding: '6px 12px', fontSize: '0.8rem', fontWeight: '900', borderRadius: '8px', background: '#0284c7', color: '#ffffff', border: 'none', cursor: 'pointer' }}
-                                                              >
-                                                                {requestingAccessId === (req.item_id || req.id) ? 'Submitting...' : 'Request Dispatch Access'}
+                                                                <Truck size={12} /> Dispatch Now
                                                               </button>
                                                             </div>
                                                           )}
                                                         </div>
-                                                      ) : hasSubmittedQuote ? (
-                                                        renderTransporterNegotiationCell(myExistingBid, req)
-                                                      ) : (isAwarded && !req.can_dispatch) ? (
-                                                        <span style={{
-                                                          fontSize: '0.8rem',
-                                                          background: '#f1f5f9',
-                                                          color: '#64748b',
-                                                          border: '1px solid #cbd5e1',
-                                                          padding: '5px 12px',
-                                                          borderRadius: '8px',
-                                                          fontWeight: '800',
-                                                          display: 'inline-flex',
-                                                          alignItems: 'center',
-                                                          gap: '4px'
-                                                        }}>
-                                                          🔒 Not Selected
-                                                        </span>
                                                       ) : (
-                                                        <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
-                                                          <div style={{ position: 'relative' }}>
-                                                            <span style={{ position: 'absolute', left: '8px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', fontSize: '0.85rem' }}>₹</span>
-                                                            <input
-                                                              id={`rate_input_${req.item_id || req.sub_indent_no || req.id}`}
-                                                              type="number"
-                                                              inputMode="decimal"
-                                                              min="1"
-                                                              step="0.01"
-                                                              placeholder="Rate"
-                                                              aria-label={`Enter quote rate for ${displayCode}`}
-                                                              className="form-control"
-                                                              disabled={isSubmitting}
-                                                              value={currentInputRate}
-                                                              onChange={(e) => {
-                                                                const val = e.target.value;
-                                                                const key = getSubIndentKey(req);
-                                                                setQuickRates((prev) => ({
-                                                                  ...prev,
-                                                                  [key]: val,
-                                                                  [req.id]: val
-                                                                }));
-                                                              }}
-                                                              onKeyDown={(e) => {
-                                                                if (e.key === 'Enter') {
-                                                                  e.preventDefault();
-                                                                  e.stopPropagation();
-                                                                  handleExpressQuickSubmit(req, currentInputRate);
-                                                                }
-                                                              }}
-                                                              style={{ paddingLeft: '22px', fontSize: '0.86rem', fontWeight: '800', height: '36px', width: '110px' }}
-                                                            />
-                                                          </div>
-
-                                                          <button
-                                                            type="button"
-                                                            aria-label={`Submit quote for ${displayCode}`}
-                                                            className="btn btn-primary"
-                                                            disabled={isSubmitting}
-                                                            onClick={(e) => {
-                                                              e.preventDefault();
-                                                              e.stopPropagation();
-                                                              handleExpressQuickSubmit(req, currentInputRate);
-                                                            }}
-                                                            style={{
-                                                              padding: '6px 14px',
-                                                              fontSize: '0.8rem',
-                                                              whiteSpace: 'nowrap',
-                                                              height: '36px',
-                                                              borderRadius: '8px',
-                                                              fontWeight: '900',
-                                                              display: 'inline-flex',
-                                                              alignItems: 'center',
-                                                              gap: '4px',
-                                                              cursor: isSubmitting ? 'not-allowed' : 'pointer'
-                                                            }}
-                                                          >
-                                                            {isSubmitting ? '⏳ Submitting...' : '🚀 Quote'}
-                                                          </button>
-                                                        </div>
+                                                        renderTransporterNegotiationCell(myExistingBid, req)
                                                       )}
                                                     </td>
 
                                                     <td style={{ textAlign: 'right', padding: '10px 14px' }}>
-                                                      {req.is_fixed_rate_allocation ? (
+                                                      {!hasSubmittedQuote ? (
+                                                        <span className="badge badge-open" style={{ fontSize: '0.76rem', background: '#ecfdf5', color: '#059669', border: '1px solid #a7f3d0', padding: '5px 10px', borderRadius: '6px', fontWeight: '800' }}>
+                                                          ⚡ Ready to Quote
+                                                        </span>
+                                                      ) : req.is_fixed_rate_allocation ? (
                                                         <span className="badge badge-open" style={{
                                                           fontSize: '0.74rem',
                                                           background: '#e0f2fe',
@@ -2890,167 +2826,91 @@ export const TransporterPortal = () => {
                           </td>
 
                           <td>
-                            {req.is_fixed_rate_allocation ? (
-                              <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-                                {req.can_dispatch ? (
-                                  <>
-                                    <span style={{ fontSize: '0.88rem', fontWeight: '900', color: req.is_open_counter_dispatch ? '#0284c7' : '#059669', background: req.is_open_counter_dispatch ? '#e0f2fe' : '#dcfce7', border: req.is_open_counter_dispatch ? '1.5px solid #7dd3fc' : '1.5px solid #86efac', padding: '4px 10px', borderRadius: '8px' }}>
-                                      {req.is_open_counter_dispatch ? `⚡ Open Counter Dispatch — ₹${req.fixed_rate}/MT` : (req.allocation_status === 'WINNER_ACTIVE' || req.auth_status === 'WINNER' ? '🏆 Awarded to You' : '✅ Allocation Accepted') + ` — ₹${req.fixed_rate}/MT (Fixed)`}
+                            {!hasSubmittedQuote ? (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
+                                  <div style={{ position: 'relative' }}>
+                                    <span style={{ position: 'absolute', left: '8px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', fontSize: '0.85rem' }}>₹</span>
+                                    <input
+                                      id={`rate_input_${req.id}`}
+                                      type="number"
+                                      inputMode="decimal"
+                                      min="1"
+                                      step="0.01"
+                                      placeholder="Your Rate"
+                                      aria-label={`Enter quote rate for ${displayCode}`}
+                                      className="form-control"
+                                      disabled={isSubmitting}
+                                      value={currentInputRate}
+                                      onChange={(e) => setQuickRates({ ...quickRates, [req.id]: e.target.value })}
+                                      onKeyDown={(e) => {
+                                        if (e.key === 'Enter') {
+                                          e.preventDefault();
+                                          e.stopPropagation();
+                                          handleExpressQuickSubmit(req, currentInputRate);
+                                        }
+                                      }}
+                                      style={{ paddingLeft: '22px', fontSize: '0.86rem', fontWeight: '800', height: '36px', width: '110px' }}
+                                    />
+                                  </div>
+
+                                  <button
+                                    type="button"
+                                    aria-label={`Submit quote for ${displayCode}`}
+                                    className="btn btn-primary"
+                                    disabled={isSubmitting}
+                                    onClick={(e) => {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                      handleExpressQuickSubmit(req, currentInputRate);
+                                    }}
+                                    style={{
+                                      padding: '6px 14px',
+                                      fontSize: '0.8rem',
+                                      whiteSpace: 'nowrap',
+                                      height: '36px',
+                                      borderRadius: '8px',
+                                      fontWeight: '900',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '4px',
+                                      background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                                      color: '#ffffff',
+                                      border: 'none',
+                                      cursor: isSubmitting ? 'not-allowed' : 'pointer'
+                                    }}
+                                  >
+                                    {isSubmitting ? '⏳ Submitting...' : '🚀 Quote'}
+                                  </button>
+                                </div>
+
+                                {req.can_dispatch && req.fixed_rate && (
+                                  <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
+                                    <span style={{ fontSize: '0.78rem', fontWeight: '800', color: '#0369a1', background: '#e0f2fe', padding: '2px 8px', borderRadius: '6px', border: '1px solid #7dd3fc' }}>
+                                      ⚡ Or Dispatch @ ₹{req.fixed_rate}/MT
                                     </span>
-                                    {req.is_open_counter_dispatch && (
-                                      <span style={{ fontSize: '0.8rem', fontWeight: '800', color: '#b45309', background: '#fef3c7', padding: '4px 8px', borderRadius: '6px', border: '1px solid #fcd34d' }}>
-                                        Remaining: <strong>{req.remaining_quantity_mt} MT</strong>
-                                      </span>
-                                    )}
                                     <button
                                       type="button"
                                       onClick={() => handleOpenDispatchModal(req, req.finalized_bid || { final_rate: req.fixed_rate, acceptance_status: 'ACCEPTED' })}
                                       className="btn btn-primary"
-                                      style={{ padding: '6px 14px', fontSize: '0.82rem', fontWeight: '900', borderRadius: '8px', background: '#0284c7', color: '#ffffff', border: 'none', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                                      style={{ padding: '3px 10px', fontSize: '0.76rem', fontWeight: '900', borderRadius: '6px', background: '#0284c7', color: '#ffffff', border: 'none', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '3px' }}
                                     >
-                                      <Truck size={14} /> Dispatch Truck
-                                    </button>
-                                  </>
-                                ) : req.allocation_status === 'PREVIOUS_BIDDER_PENDING_ACCEPTANCE' || req.auth_status === 'AVAILABLE_FOR_ACCEPTANCE' ? (
-                                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-                                    <span style={{ fontSize: '0.84rem', fontWeight: '800', color: '#0369a1', background: '#e0f2fe', border: '1.5px solid #7dd3fc', padding: '4px 10px', borderRadius: '8px' }}>
-                                      🔒 ₹{req.fixed_rate}/MT (Fixed) | Status: Available for Acceptance
-                                    </span>
-                                    <button
-                                      type="button"
-                                      onClick={() => handleAcceptAllocation(req)}
-                                      disabled={requestingAccessId === (req.item_id || req.id)}
-                                      className="btn btn-primary"
-                                      style={{ padding: '6px 14px', fontSize: '0.82rem', fontWeight: '900', borderRadius: '8px', background: 'linear-gradient(135deg, #059669 0%, #10b981 100%)', color: '#ffffff', border: 'none', cursor: 'pointer' }}
-                                    >
-                                      {requestingAccessId === (req.item_id || req.id) ? 'Accepting...' : 'Accept Remaining Allocation'}
-                                    </button>
-                                  </div>
-                                ) : req.auth_status === 'PENDING' ? (
-                                  <span style={{ fontSize: '0.82rem', fontWeight: '900', color: '#b45309', background: '#fef3c7', border: '1.5px solid #f59e0b', padding: '5px 12px', borderRadius: '8px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                                    ⏳ Dispatch Access Request Pending (₹{req.fixed_rate}/MT Fixed)
-                                  </span>
-                                ) : req.auth_status === 'REJECTED' ? (
-                                  <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                                    <span style={{ fontSize: '0.8rem', fontWeight: '800', color: '#dc2626', background: '#fee2e2', border: '1px solid #f87171', padding: '4px 8px', borderRadius: '8px' }}>
-                                      ❌ Access Request Rejected (₹{req.fixed_rate}/MT)
-                                    </span>
-                                    <button
-                                      type="button"
-                                      onClick={() => handleRequestAccess(req)}
-                                      disabled={requestingAccessId === (req.item_id || req.id)}
-                                      className="btn btn-secondary"
-                                      style={{ padding: '4px 8px', fontSize: '0.75rem', fontWeight: '800', borderRadius: '6px' }}
-                                    >
-                                      {requestingAccessId === (req.item_id || req.id) ? 'Submitting...' : 'Re-apply'}
-                                    </button>
-                                  </div>
-                                ) : (
-                                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                                    <span style={{ fontSize: '0.84rem', fontWeight: '800', color: '#0369a1', background: '#e0f2fe', border: '1px solid #7dd3fc', padding: '4px 8px', borderRadius: '8px' }}>
-                                      🔒 ₹{req.fixed_rate}/MT (Fixed)
-                                    </span>
-                                    <button
-                                      type="button"
-                                      onClick={() => handleRequestAccess(req)}
-                                      disabled={requestingAccessId === (req.item_id || req.id)}
-                                      className="btn btn-secondary"
-                                      style={{ padding: '6px 12px', fontSize: '0.8rem', fontWeight: '900', borderRadius: '8px', background: '#0284c7', color: '#ffffff', border: 'none', cursor: 'pointer' }}
-                                    >
-                                      {requestingAccessId === (req.item_id || req.id) ? 'Submitting...' : 'Request Dispatch Access'}
+                                      <Truck size={12} /> Dispatch Now
                                     </button>
                                   </div>
                                 )}
                               </div>
-                            ) : (req.is_awarded_to_other || (!req.can_dispatch && req.fixed_rate !== null)) ? (
-                              <span style={{
-                                fontSize: '0.8rem',
-                                background: '#f1f5f9',
-                                color: '#64748b',
-                                border: '1px solid #cbd5e1',
-                                padding: '5px 12px',
-                                borderRadius: '8px',
-                                fontWeight: '800',
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '4px'
-                              }}>
-                                🔒 Awarded to Other Transporter
-                              </span>
-                            ) : hasSubmittedQuote ? (
-                              renderTransporterNegotiationCell(myExistingBid, req)
-                            ) : (isAwarded || (req.dispatch_status && req.dispatch_status !== 'PENDING')) ? (
-                              <span style={{
-                                fontSize: '0.8rem',
-                                background: '#f1f5f9',
-                                color: '#64748b',
-                                border: '1px solid #cbd5e1',
-                                padding: '5px 12px',
-                                borderRadius: '8px',
-                                fontWeight: '800',
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '4px'
-                              }}>
-                                🔒 Not Selected
-                              </span>
                             ) : (
-                              <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
-                                <div style={{ position: 'relative' }}>
-                                  <span style={{ position: 'absolute', left: '8px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', fontSize: '0.85rem' }}>₹</span>
-                                  <input
-                                    id={`rate_input_${req.id}`}
-                                    type="number"
-                                    inputMode="decimal"
-                                    min="1"
-                                    step="0.01"
-                                    placeholder="Rate"
-                                    aria-label={`Enter quote rate for ${displayCode}`}
-                                    className="form-control"
-                                    disabled={isSubmitting}
-                                    value={currentInputRate}
-                                    onChange={(e) => setQuickRates({ ...quickRates, [req.id]: e.target.value })}
-                                    onKeyDown={(e) => {
-                                      if (e.key === 'Enter') {
-                                        e.preventDefault();
-                                        e.stopPropagation();
-                                        handleExpressQuickSubmit(req, currentInputRate);
-                                      }
-                                    }}
-                                    style={{ paddingLeft: '22px', fontSize: '0.88rem', fontWeight: '700', height: '36px', width: '110px' }}
-                                  />
-                                </div>
-                                <button
-                                  type="button"
-                                  aria-label={`Submit quote for ${displayCode}`}
-                                  className="btn btn-primary"
-                                  disabled={isSubmitting}
-                                  onClick={(e) => {
-                                    e.preventDefault();
-                                    e.stopPropagation();
-                                    handleExpressQuickSubmit(req, currentInputRate);
-                                  }}
-                                  style={{
-                                    padding: '6px 14px',
-                                    fontSize: '0.8rem',
-                                    whiteSpace: 'nowrap',
-                                    height: '36px',
-                                    borderRadius: '8px',
-                                    fontWeight: '900',
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    gap: '4px',
-                                    cursor: isSubmitting ? 'not-allowed' : 'pointer'
-                                  }}
-                                >
-                                  {isSubmitting ? '⏳ Submitting...' : '🚀 Quote'}
-                                </button>
-                              </div>
+                              renderTransporterNegotiationCell(myExistingBid, req)
                             )}
                           </td>
 
                           <td style={{ textAlign: 'right' }}>
-                            {req.is_fixed_rate_allocation ? (
+                            {!hasSubmittedQuote ? (
+                              <span className="badge badge-open" style={{ fontSize: '0.76rem', background: '#ecfdf5', color: '#059669', border: '1px solid #a7f3d0', padding: '4px 8px', borderRadius: '6px', fontWeight: '800' }}>
+                                ⚡ Ready to Quote
+                              </span>
+                            ) : req.is_fixed_rate_allocation ? (
                               <span className="badge badge-open" style={{
                                 fontSize: '0.74rem',
                                 background: '#e0f2fe',
