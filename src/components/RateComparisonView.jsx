@@ -6,7 +6,7 @@ import { useAuth } from '../context/AuthContext';
 import { CheckCircle2, TrendingDown, Clock, Sparkles, MessageSquare, Snowflake, Send, X, AlertCircle, Lock, FileText, Printer } from 'lucide-react';
 import { ParticularBidReportModal } from './ParticularBidReportModal';
 import { NegotiationHistoryModal } from './NegotiationHistoryModal';
-import { getRequirementRates, awardRequirementRate, sendAdminCounter, finalizeBid } from '../api/rateSubmissionApi';
+import { getRequirementRates, awardRequirementRate, sendAdminCounter, sendAdminCounterAll, finalizeBid } from '../api/rateSubmissionApi';
 import { isBidFrozen } from '../utils/bidStatus';
 
 export const RateComparisonView = ({ rateRequest, onBack }) => {
@@ -105,8 +105,8 @@ export const RateComparisonView = ({ rateRequest, onBack }) => {
       )
     : null;
 
-  // Admin Sends Counter Rate
-  const handleSendCounterOffer = async (e, broadcastToAll = false) => {
+  // Admin Sends Counter Rate (Opens Collaborative Dispatch to All Bidders)
+  const handleSendCounterOffer = async (e) => {
     if (e) e.preventDefault();
 
     const counterRateVal = parseFloat(counterForm.counter_rate);
@@ -115,23 +115,28 @@ export const RateComparisonView = ({ rateRequest, onBack }) => {
       return;
     }
 
-    const noteText = counterForm.note || `Admin counter offer: ₹${counterRateVal}/MT`;
+    const noteText = counterForm.note || `Admin counter offer: ₹${counterRateVal}/MT (Open Dispatch to All Bidders)`;
 
     try {
-      if (activeCounterSub) {
+      const reqId = rateRequest?.id || rateRequest?.req_no || (activeCounterSub ? activeCounterSub.requirement_id : null);
+      const itmId = rateRequest?.item_id || rateRequest?.sub_indent_no || (activeCounterSub ? activeCounterSub.item_id : 'MAIN');
+
+      if (reqId && itmId) {
+        await sendAdminCounterAll(reqId, itmId, { counter_rate: counterRateVal, message: noteText });
+      } else if (activeCounterSub) {
         await sendAdminCounter(activeCounterSub.id, { counter_rate: counterRateVal, message: noteText });
-        setNotice(`📢 Counter Offer ₹${counterRateVal}/MT sent to ${activeCounterSub.transporter_name || activeCounterSub.transporter_id}!`);
       } else if (submissions.length > 0) {
         for (const sub of submissions) {
           if (sub.bid_status !== 'finalized') {
             await sendAdminCounter(sub.id, { counter_rate: counterRateVal, message: noteText }).catch(() => {});
           }
         }
-        setNotice(`📢 Counter Offer ₹${counterRateVal}/MT broadcasted to bidders!`);
       }
+
+      setNotice(`🚀 Counter Offer ₹${counterRateVal}/MT sent! Open Dispatch is now ACTIVE for all eligible transporters.`);
       setActiveCounterSub(null);
       setCounterForm({ counter_rate: '', note: '' });
-      setTimeout(() => setNotice(''), 5000);
+      setTimeout(() => setNotice(''), 6000);
       await safeRefreshRequirements();
     } catch (err) {
       alert(err.message || 'Failed to send counter offer.');
@@ -624,16 +629,19 @@ export const RateComparisonView = ({ rateRequest, onBack }) => {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <MessageSquare size={20} color="#f59e0b" />
-                <h3 style={{ fontSize: '1.1rem', fontWeight: '700' }}>Send Counter Rate to Transporter</h3>
+                <h3 style={{ fontSize: '1.1rem', fontWeight: '800' }}>⚡ Send Counter & Open Dispatch</h3>
               </div>
               <button onClick={() => setActiveCounterSub(null)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}>
                 <X size={18} />
               </button>
             </div>
 
-            <p style={{ fontSize: '0.82rem', color: 'var(--text-sub)', marginBottom: '16px' }}>
-              Transporter original quote: <strong>₹{activeCounterSub.original_rate || activeCounterSub.rate_per_unit}/MT</strong>. Enter your revised target rate to negotiate.
-            </p>
+            <div style={{ background: '#fef3c7', border: '1.5px solid #f59e0b', borderRadius: '10px', padding: '12px 14px', marginBottom: '16px', fontSize: '0.84rem', color: '#0f172a', lineHeight: 1.5 }}>
+              <div style={{ fontWeight: '800', color: '#b45309', marginBottom: '4px' }}>⚡ Collaborative Open Dispatch:</div>
+              <div>Admin target counter rate enter karein. Jaise hi aap ye rate bhejenge:</div>
+              <div>• <strong>Sabhi quote dene wale transporters</strong> ko turant <strong>Dispatch Truck</strong> button open ho jayega.</div>
+              <div>• Jo transporter jitna load karega, bacha hua remaining balance baki sabhi ke screen par <strong>live update</strong> hota rahega.</div>
+            </div>
 
             <form onSubmit={handleSendCounterOffer}>
               <div className="form-group">
@@ -653,8 +661,8 @@ export const RateComparisonView = ({ rateRequest, onBack }) => {
                 <button type="button" onClick={() => setActiveCounterSub(null)} className="btn btn-secondary">
                   Cancel
                 </button>
-                <button type="submit" className="btn btn-primary">
-                  <Send size={15} /> Send Counter Offer
+                <button type="submit" className="btn btn-primary" style={{ background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)', fontWeight: '900' }}>
+                  <Send size={15} /> 🚀 Send Counter & Open Dispatch to All
                 </button>
               </div>
             </form>

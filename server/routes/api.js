@@ -1520,10 +1520,74 @@ async function handleAdminCounter(req, res) {
       await conn.commit();
       conn.release();
 
+      // 🚀 MULTI-TRANSPORTER OPEN DISPATCH ACTIVATION:
+      // When Admin counters, set item counter_offer_rate and authorize all bidders on this item!
+      const [allBiddersOnItem] = await conn.query(
+        `SELECT DISTINCT transporter_id, id FROM rate_submissions
+         WHERE requirement_id = ? AND (item_id = ? OR item_id = 'MAIN')
+           AND UPPER(COALESCE(bid_status, '')) NOT IN ('FINALIZED', 'AWARDED')`,
+        [sub.requirement_id, sub.item_id || 'MAIN']
+      );
+
+      const targetBidders = allBiddersOnItem.length > 0 ? allBiddersOnItem : [{ transporter_id: sub.transporter_id, id: sub.id }];
+
+      for (const b of targetBidders) {
+        if (b.id !== sub.id) {
+          await conn.query(
+            `UPDATE rate_submissions
+             SET counter_offer_rate = ?, counter_offer_status = 'PENDING', bid_status = 'COUNTER_OFFERED', counter_offer_by = 'ADMIN', counter_message = ?, counter_offer_at = NOW(), updated_at = NOW()
+             WHERE id = ?`,
+            [counterRateVal, remText, b.id]
+          );
+        }
+        if (b.transporter_id) {
+          const authId = `auth_${sub.requirement_id}_${sub.item_id || 'MAIN'}_${b.transporter_id}`.replace(/[^a-zA-Z0-9_-]/g, '_');
+          await conn.query(
+            `INSERT INTO requirement_dispatch_authorizations 
+             (id, requirement_id, requirement_item_id, sub_indent_no, transporter_id, fixed_rate, authorization_status, approved_at, approved_by, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, 'APPROVED', NOW(), ?, NOW())
+             ON DUPLICATE KEY UPDATE
+               fixed_rate = VALUES(fixed_rate),
+               authorization_status = 'APPROVED',
+               approved_at = NOW(),
+               approved_by = VALUES(approved_by),
+               updated_at = NOW()`,
+            [authId, sub.requirement_id, sub.item_id || 'MAIN', sub.item_id || 'MAIN', b.transporter_id, counterRateVal, req.user.username || 'admin']
+          );
+
+          const allocId = `alloc_${sub.requirement_id}_${sub.item_id || 'MAIN'}_${b.transporter_id}`.replace(/[^a-zA-Z0-9_-]/g, '_');
+          await conn.query(
+            `INSERT INTO transporter_item_allocations
+             (id, requirement_id, requirement_item_id, sub_indent_no, transporter_id, finalized_rate, allocation_role, acceptance_status, accepted_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, 'ELIGIBLE_PREVIOUS_BIDDER', 'ACTIVE', NOW(), NOW())
+             ON DUPLICATE KEY UPDATE
+               finalized_rate = VALUES(finalized_rate),
+               acceptance_status = 'ACTIVE',
+               accepted_at = NOW(),
+               updated_at = NOW()`,
+            [allocId, sub.requirement_id, sub.item_id || 'MAIN', sub.item_id || 'MAIN', b.transporter_id, counterRateVal]
+          );
+        }
+      }
+
+      // Update requirement item with active counter rate
+      await conn.query(
+        `UPDATE transport_requirement_items 
+         SET counter_offer_rate = ?, remaining_finalized_rate = ?, updated_at = NOW() 
+         WHERE (requirement_id = ?) AND (id = ? OR sub_indent_no = ?)`,
+        [counterRateVal, counterRateVal, sub.requirement_id, sub.item_id || 'MAIN', sub.item_id || 'MAIN']
+      );
+      await conn.query(
+        `UPDATE transport_requirements 
+         SET counter_offer_rate = ?, remaining_finalized_rate = ?, updated_at = NOW() 
+         WHERE id = ?`,
+        [counterRateVal, counterRateVal, sub.requirement_id]
+      );
+
       const [updatedRows] = await pool.query('SELECT * FROM rate_submissions WHERE id = ? LIMIT 1', [id]);
       return res.json({
         success: true,
-        message: `Counter offer of ₹${counterRateVal}/MT sent successfully`,
+        message: `Counter offer of ₹${counterRateVal}/MT sent successfully! Multi-transporter dispatch opened.`,
         submission: updatedRows[0]
       });
     } catch (txErr) {
@@ -1658,6 +1722,52 @@ async function handleAdminCounterAll(req, res) {
         updatedCount++;
       }
 
+      // 🚀 MULTI-TRANSPORTER OPEN DISPATCH ACTIVATION:
+      // Authorize all distinct bidders on this item
+      const distinctTransporterIds = [...new Set(targetQuotes.map(q => q.transporter_id).filter(Boolean))];
+      for (const tid of distinctTransporterIds) {
+        const authId = `auth_${actualReqId}_${actualItemId}_${tid}`.replace(/[^a-zA-Z0-9_-]/g, '_');
+        await conn.query(
+          `INSERT INTO requirement_dispatch_authorizations 
+           (id, requirement_id, requirement_item_id, sub_indent_no, transporter_id, fixed_rate, authorization_status, approved_at, approved_by, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, 'APPROVED', NOW(), ?, NOW())
+           ON DUPLICATE KEY UPDATE
+             fixed_rate = VALUES(fixed_rate),
+             authorization_status = 'APPROVED',
+             approved_at = NOW(),
+             approved_by = VALUES(approved_by),
+             updated_at = NOW()`,
+          [authId, actualReqId, actualItemId, actualItemId, tid, counterRateVal, adminUser]
+        );
+
+        const allocId = `alloc_${actualReqId}_${actualItemId}_${tid}`.replace(/[^a-zA-Z0-9_-]/g, '_');
+        await conn.query(
+          `INSERT INTO transporter_item_allocations
+           (id, requirement_id, requirement_item_id, sub_indent_no, transporter_id, finalized_rate, allocation_role, acceptance_status, accepted_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, 'ELIGIBLE_PREVIOUS_BIDDER', 'ACTIVE', NOW(), NOW())
+           ON DUPLICATE KEY UPDATE
+             finalized_rate = VALUES(finalized_rate),
+             acceptance_status = 'ACTIVE',
+             accepted_at = NOW(),
+             updated_at = NOW()`,
+          [allocId, actualReqId, actualItemId, actualItemId, tid, counterRateVal]
+        );
+      }
+
+      // Update requirement item with active counter rate
+      await conn.query(
+        `UPDATE transport_requirement_items 
+         SET counter_offer_rate = ?, remaining_finalized_rate = ?, updated_at = NOW() 
+         WHERE (requirement_id = ? OR requirement_id IN (?)) AND (id = ? OR id = ? OR sub_indent_no = ? OR sub_indent_no = ?)`,
+        [counterRateVal, counterRateVal, actualReqId, [actualReqId], actualItemId, itemId, actualItemId, itemId]
+      );
+      await conn.query(
+        `UPDATE transport_requirements 
+         SET counter_offer_rate = ?, remaining_finalized_rate = ?, updated_at = NOW() 
+         WHERE id = ? OR req_no = ?`,
+        [counterRateVal, counterRateVal, actualReqId, actualReqId]
+      );
+
       await conn.commit();
       conn.release();
 
@@ -1665,7 +1775,7 @@ async function handleAdminCounterAll(req, res) {
         success: true,
         counter_rate: counterRateVal,
         affected_transporters: updatedCount,
-        message: `Counter offer of ₹${counterRateVal}/MT sent successfully to ${updatedCount} transporter(s)`
+        message: `Counter offer of ₹${counterRateVal}/MT sent successfully to ${updatedCount} transporter(s)! Multi-transporter dispatch opened.`
       });
     } catch (txErr) {
       await conn.rollback();
@@ -2350,12 +2460,80 @@ async function handleCreateTruckDispatch(req, res) {
     }
 
     if (!finalizedSub) {
+      // Priority 4: Check if Admin set an active Counter Rate on requirement item
+      const [itemCounterRows] = await conn.query(
+        `SELECT counter_offer_rate, remaining_finalized_rate FROM transport_requirement_items 
+         WHERE (requirement_id IN (?)) AND (id IN (?) OR sub_indent_no IN (?)) AND (counter_offer_rate > 0 OR remaining_finalized_rate > 0)
+         LIMIT 1`,
+        [resolvedReqIds, resolvedItemIds.length > 0 ? resolvedItemIds : ['MAIN'], resolvedItemIds.length > 0 ? resolvedItemIds : ['MAIN']]
+      );
+      if (itemCounterRows.length > 0) {
+        const cRate = parseFloat(itemCounterRows[0].counter_offer_rate || itemCounterRows[0].remaining_finalized_rate || 0);
+        if (cRate > 0) {
+          finalizedSub = {
+            final_rate: cRate,
+            rate_per_mt: cRate,
+            is_finalized: 1,
+            bid_status: 'COUNTER_OFFERED',
+            transporter_id: authTransporter.id
+          };
+        }
+      }
+    }
+
+    if (!finalizedSub) {
+      // Priority 5: Check if there is an approved authorization with fixed_rate
+      const [authRateRows] = await conn.query(
+        `SELECT fixed_rate FROM requirement_dispatch_authorizations 
+         WHERE requirement_id IN (?) 
+           AND (requirement_item_id IN (?) OR requirement_item_id = 'MAIN')
+           AND transporter_id IN (?)
+           AND authorization_status IN ('APPROVED', 'WINNER')
+           AND fixed_rate > 0
+         LIMIT 1`,
+        [resolvedReqIds, resolvedItemIds.length > 0 ? resolvedItemIds : ['MAIN'], transMatchIds]
+      );
+      if (authRateRows.length > 0) {
+        const cRate = parseFloat(authRateRows[0].fixed_rate);
+        finalizedSub = {
+          final_rate: cRate,
+          rate_per_mt: cRate,
+          is_finalized: 1,
+          bid_status: 'COUNTER_OFFERED',
+          transporter_id: authTransporter.id
+        };
+      }
+    }
+
+    if (!finalizedSub) {
+      // Priority 6: Check parent transport_requirements counter_offer_rate
+      const [parentCounterRows] = await conn.query(
+        `SELECT counter_offer_rate, remaining_finalized_rate FROM transport_requirements 
+         WHERE id IN (?) AND (counter_offer_rate > 0 OR remaining_finalized_rate > 0)
+         LIMIT 1`,
+        [resolvedReqIds]
+      );
+      if (parentCounterRows.length > 0) {
+        const cRate = parseFloat(parentCounterRows[0].counter_offer_rate || parentCounterRows[0].remaining_finalized_rate || 0);
+        if (cRate > 0) {
+          finalizedSub = {
+            final_rate: cRate,
+            rate_per_mt: cRate,
+            is_finalized: 1,
+            bid_status: 'COUNTER_OFFERED',
+            transporter_id: authTransporter.id
+          };
+        }
+      }
+    }
+
+    if (!finalizedSub) {
       await conn.rollback();
       conn.release();
       return res.status(400).json({
         success: false,
         code: 'RATE_NOT_FINALIZED',
-        error: 'Cannot dispatch truck: freight rate is not yet finalized by Admin for this item.'
+        error: 'Cannot dispatch truck: freight rate is not yet finalized or counter-offered by Admin for this item.'
       });
     }
 
@@ -2419,6 +2597,21 @@ async function handleCreateTruckDispatch(req, res) {
             code: 'TRANSPORTER_NOT_AUTHORIZED_FOR_DISPATCH',
             error: 'The remaining allocation for this item has been exclusively assigned to another transporter.'
           });
+        }
+      }
+
+      if (!isAuthorized) {
+        // Fallback: If item has an active counter rate and this transporter submitted a quote on it
+        const [transQuoteRows] = await conn.query(
+          `SELECT id FROM rate_submissions 
+           WHERE requirement_id IN (?) 
+             AND (item_id IN (?) OR item_id = 'MAIN')
+             AND transporter_id IN (?)
+           LIMIT 1`,
+          [resolvedReqIds, resolvedItemIds.length > 0 ? resolvedItemIds : ['MAIN'], transMatchIds]
+        );
+        if (transQuoteRows.length > 0 && finalizedSub && finalizedSub.final_rate > 0) {
+          isAuthorized = true;
         }
       }
 

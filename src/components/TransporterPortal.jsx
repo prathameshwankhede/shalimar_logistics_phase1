@@ -842,6 +842,16 @@ export const TransporterPortal = () => {
         return sReqMatch && sTransMatch;
       });
 
+      // 🚀 Priority 4: Active Admin Counter Rate (Collaborative Multi-Transporter Open Dispatch)
+      const itemCounterRate = Number(parentReq.counter_offer_rate || parentReq.remaining_finalized_rate || 0);
+      const myCounterRate = Number(myExistingBid?.counter_offer_rate || 0);
+      const activeCounterRate = itemCounterRate > 0 ? itemCounterRate : (myCounterRate > 0 ? myCounterRate : null);
+      const isOpenCounterDispatch = Boolean(activeCounterRate && activeCounterRate > 0 && remQty > 0);
+
+      if (fixedRate === null && activeCounterRate) {
+        fixedRate = activeCounterRate;
+      }
+
       const myAlloc = (myItemAllocations || []).find(a => 
         (String(a.requirement_id) === String(parentReq.id)) &&
         (String(a.requirement_item_id) === String(parentReq.id) || String(a.requirement_item_id) === 'MAIN')
@@ -2449,9 +2459,14 @@ export const TransporterPortal = () => {
                                                         <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
                                                           {req.can_dispatch ? (
                                                             <>
-                                                              <span style={{ fontSize: '0.88rem', fontWeight: '900', color: '#059669', background: '#dcfce7', border: '1.5px solid #86efac', padding: '4px 10px', borderRadius: '8px' }}>
-                                                                {req.allocation_status === 'WINNER_ACTIVE' || req.auth_status === 'WINNER' ? '🏆 Awarded to You' : '✅ Allocation Accepted'} — ₹{req.fixed_rate}/MT (Fixed)
+                                                              <span style={{ fontSize: '0.88rem', fontWeight: '900', color: req.is_open_counter_dispatch ? '#0284c7' : '#059669', background: req.is_open_counter_dispatch ? '#e0f2fe' : '#dcfce7', border: req.is_open_counter_dispatch ? '1.5px solid #7dd3fc' : '1.5px solid #86efac', padding: '4px 10px', borderRadius: '8px' }}>
+                                                                {req.is_open_counter_dispatch ? `⚡ Open Counter Dispatch — ₹${req.fixed_rate}/MT` : (req.allocation_status === 'WINNER_ACTIVE' || req.auth_status === 'WINNER' ? '🏆 Awarded to You' : '✅ Allocation Accepted') + ` — ₹${req.fixed_rate}/MT (Fixed)`}
                                                               </span>
+                                                              {req.is_open_counter_dispatch && (
+                                                                <span style={{ fontSize: '0.8rem', fontWeight: '800', color: '#b45309', background: '#fef3c7', padding: '4px 8px', borderRadius: '6px', border: '1px solid #fcd34d' }}>
+                                                                  Remaining: <strong>{req.remaining_quantity_mt} MT</strong>
+                                                                </span>
+                                                              )}
                                                               <button
                                                                 type="button"
                                                                 onClick={() => handleOpenDispatchModal(req, req.finalized_bid || { final_rate: req.fixed_rate, acceptance_status: 'ACCEPTED' })}
@@ -2827,9 +2842,14 @@ export const TransporterPortal = () => {
                               <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
                                 {req.can_dispatch ? (
                                   <>
-                                    <span style={{ fontSize: '0.88rem', fontWeight: '900', color: '#059669', background: '#dcfce7', border: '1.5px solid #86efac', padding: '4px 10px', borderRadius: '8px' }}>
-                                      {req.allocation_status === 'WINNER_ACTIVE' || req.auth_status === 'WINNER' ? '🏆 Awarded to You' : '✅ Allocation Accepted'} — ₹{req.fixed_rate}/MT (Fixed)
+                                    <span style={{ fontSize: '0.88rem', fontWeight: '900', color: req.is_open_counter_dispatch ? '#0284c7' : '#059669', background: req.is_open_counter_dispatch ? '#e0f2fe' : '#dcfce7', border: req.is_open_counter_dispatch ? '1.5px solid #7dd3fc' : '1.5px solid #86efac', padding: '4px 10px', borderRadius: '8px' }}>
+                                      {req.is_open_counter_dispatch ? `⚡ Open Counter Dispatch — ₹${req.fixed_rate}/MT` : (req.allocation_status === 'WINNER_ACTIVE' || req.auth_status === 'WINNER' ? '🏆 Awarded to You' : '✅ Allocation Accepted') + ` — ₹${req.fixed_rate}/MT (Fixed)`}
                                     </span>
+                                    {req.is_open_counter_dispatch && (
+                                      <span style={{ fontSize: '0.8rem', fontWeight: '800', color: '#b45309', background: '#fef3c7', padding: '4px 8px', borderRadius: '6px', border: '1px solid #fcd34d' }}>
+                                        Remaining: <strong>{req.remaining_quantity_mt} MT</strong>
+                                      </span>
+                                    )}
                                     <button
                                       type="button"
                                       onClick={() => handleOpenDispatchModal(req, req.finalized_bid || { final_rate: req.fixed_rate, acceptance_status: 'ACCEPTED' })}
