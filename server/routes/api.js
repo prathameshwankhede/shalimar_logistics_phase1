@@ -8,6 +8,7 @@ import { runApprovedProductionDrop } from '../services/dropRunner.js';
 import { runProductionCleanup } from '../../scratch/drop_all_current_application_tables.mjs';
 import { executeCreateTransportersTable } from '../services/createTransportersTable.js';
 import { verifyNoAutoRecreation } from '../services/verifyNoAutoRecreation.js';
+import { logger } from '../utils/logger.js';
 import { fetchTransportersList } from '../repositories/stateRepository.js';
 import {
   handleGetDashboard,
@@ -243,7 +244,7 @@ export async function ensureRequirementsTableExists() {
         UNIQUE KEY uq_req_item_transporter (requirement_id, requirement_item_id, transporter_id),
         INDEX idx_auth_lookup (requirement_id, requirement_item_id, authorization_status),
         INDEX idx_trans_status (transporter_id, authorization_status)
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
 
     await pool.query(`
@@ -262,8 +263,16 @@ export async function ensureRequirementsTableExists() {
         UNIQUE KEY uq_alloc_req_item_transporter (requirement_id, requirement_item_id, transporter_id),
         INDEX idx_alloc_lookup (requirement_id, requirement_item_id, acceptance_status),
         INDEX idx_alloc_trans (transporter_id, acceptance_status)
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
+
+    // Ensure collation alignment across MariaDB/MySQL environments to prevent mix of collations errors
+    await pool.query(
+      `ALTER TABLE requirement_dispatch_authorizations CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`
+    ).catch(() => {});
+    await pool.query(
+      `ALTER TABLE transporter_item_allocations CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`
+    ).catch(() => {});
 
     // Backfill existing finalized bids as WINNER authorizations and allocations
     await pool.query(`
@@ -3316,7 +3325,7 @@ async function handleGetTransporterDashboardSummary(req, res) {
       `SELECT COUNT(*) AS total_submitted_bids 
        FROM rate_submissions 
        WHERE transporter_id IN (?) 
-         AND (rate_per_mt IS NOT NULL OR rate_per_unit IS NOT NULL)`,
+         AND rate_per_mt IS NOT NULL`,
       [transIds]
     );
 
@@ -3345,7 +3354,7 @@ async function handleGetTransporterDashboardSummary(req, res) {
       contracts
     });
   } catch (err) {
-    console.error('❌ GET /api/transporter/dashboard-summary Error:', err.message);
+    logger.error('GET /api/transporter/dashboard-summary Error', err);
     return res.status(500).json({ success: false, error: { code: 'DATABASE_ERROR', message: err.message } });
   }
 }
@@ -3663,9 +3672,9 @@ router.get('/admin/dispatch-access-requests', authenticateToken, requireRole('ad
         t.mobile AS transporter_mobile,
         t.email AS transporter_email
       FROM requirement_dispatch_authorizations rda
-      LEFT JOIN transport_requirements tr ON rda.requirement_id = tr.id
-      LEFT JOIN transport_requirement_items tri ON rda.requirement_item_id = tri.id
-      LEFT JOIN transporters t ON rda.transporter_id = t.id
+      LEFT JOIN transport_requirements tr ON BINARY rda.requirement_id = BINARY tr.id
+      LEFT JOIN transport_requirement_items tri ON BINARY rda.requirement_item_id = BINARY tri.id
+      LEFT JOIN transporters t ON (BINARY rda.transporter_id = BINARY t.id OR BINARY rda.transporter_id = BINARY t.code OR BINARY rda.transporter_id = BINARY t.username)
       ORDER BY rda.created_at DESC
     `);
 
@@ -3674,8 +3683,8 @@ router.get('/admin/dispatch-access-requests', authenticateToken, requireRole('ad
       const [winRows] = await pool.query(`
         SELECT rda2.*, t2.company_name AS winner_name, t2.code AS winner_code
         FROM requirement_dispatch_authorizations rda2
-        LEFT JOIN transporters t2 ON rda2.transporter_id = t2.id
-        WHERE rda2.requirement_id = ? AND rda2.requirement_item_id = ? AND rda2.authorization_status = 'WINNER'
+        LEFT JOIN transporters t2 ON (BINARY rda2.transporter_id = BINARY t2.id OR BINARY rda2.transporter_id = BINARY t2.code OR BINARY rda2.transporter_id = BINARY t2.username)
+        WHERE BINARY rda2.requirement_id = BINARY ? AND BINARY rda2.requirement_item_id = BINARY ? AND rda2.authorization_status = 'WINNER'
         LIMIT 1
       `, [row.requirement_id, row.requirement_item_id]);
 
@@ -3692,7 +3701,7 @@ router.get('/admin/dispatch-access-requests', authenticateToken, requireRole('ad
 
     return res.json({ success: true, count: enriched.length, data: enriched });
   } catch (err) {
-    console.error('❌ GET /api/admin/dispatch-access-requests Error:', err.message);
+    logger.error('GET /api/admin/dispatch-access-requests Error', err);
     return res.status(500).json({ success: false, error: err.message });
   }
 });
