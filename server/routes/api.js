@@ -6554,4 +6554,116 @@ router.post('/admin/clean-orphan-data', authenticateToken, requireRole('admin'),
   }
 });
 
+// 🛡️ CONTROLLED DATABASE HARDENING MIGRATION ENDPOINT (ADMIN ONLY)
+router.post('/admin/database-hardening-migration', authenticateToken, requireRole('admin'), async (req, res) => {
+  const steps = [];
+  const conn = await pool.getConnection();
+
+  try {
+    // 1. Pre-cleanup orphan records to ensure FK integrity
+    await cleanupOrphanDatabaseRows();
+    steps.push({ step: 'pre_cleanup_orphans', status: 'SUCCESS' });
+
+    // 2. Collation Standardization (Convert 4 tables to utf8mb4_unicode_ci)
+    const collationTables = [
+      'products',
+      'company_units_plants',
+      'rate_negotiations',
+      'bid_negotiation_history'
+    ];
+
+    for (const t of collationTables) {
+      await conn.query(`ALTER TABLE \`${t}\` CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`);
+      steps.push({ step: `convert_collation_${t}`, status: 'SUCCESS', target: 'utf8mb4_unicode_ci' });
+    }
+
+    // 3. Covering Index on truck_dispatches
+    // Check if idx_dispatches_covering exists
+    const [existingIndexes] = await conn.query(`SHOW INDEX FROM truck_dispatches WHERE Key_name = 'idx_dispatches_covering'`);
+    if (existingIndexes.length === 0) {
+      await conn.query(`ALTER TABLE truck_dispatches ADD INDEX idx_dispatches_covering (requirement_id, requirement_item_id, loaded_quantity_mt)`);
+      steps.push({ step: 'add_covering_index_truck_dispatches', status: 'SUCCESS', index: 'idx_dispatches_covering' });
+    } else {
+      steps.push({ step: 'add_covering_index_truck_dispatches', status: 'ALREADY_EXISTS', index: 'idx_dispatches_covering' });
+    }
+
+    // 4. Foreign Key Constraints Hardening
+    // A. requirement_dispatch_authorizations -> transport_requirements (CASCADE)
+    const [fkAuthReq] = await conn.query(`
+      SELECT CONSTRAINT_NAME FROM information_schema.TABLE_CONSTRAINTS 
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'requirement_dispatch_authorizations' AND CONSTRAINT_NAME = 'fk_rda_req'
+    `);
+    if (fkAuthReq.length === 0) {
+      await conn.query(`
+        ALTER TABLE requirement_dispatch_authorizations
+        ADD CONSTRAINT fk_rda_req FOREIGN KEY (requirement_id) REFERENCES transport_requirements(id) ON DELETE CASCADE
+      `);
+      steps.push({ step: 'add_fk_rda_req', status: 'SUCCESS', on_delete: 'CASCADE' });
+    } else {
+      steps.push({ step: 'add_fk_rda_req', status: 'ALREADY_EXISTS' });
+    }
+
+    // B. transporter_item_allocations -> transport_requirements (CASCADE)
+    const [fkAllocReq] = await conn.query(`
+      SELECT CONSTRAINT_NAME FROM information_schema.TABLE_CONSTRAINTS 
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'transporter_item_allocations' AND CONSTRAINT_NAME = 'fk_tia_req'
+    `);
+    if (fkAllocReq.length === 0) {
+      await conn.query(`
+        ALTER TABLE transporter_item_allocations
+        ADD CONSTRAINT fk_tia_req FOREIGN KEY (requirement_id) REFERENCES transport_requirements(id) ON DELETE CASCADE
+      `);
+      steps.push({ step: 'add_fk_tia_req', status: 'SUCCESS', on_delete: 'CASCADE' });
+    } else {
+      steps.push({ step: 'add_fk_tia_req', status: 'ALREADY_EXISTS' });
+    }
+
+    // C. rate_negotiations -> transport_requirements (CASCADE)
+    const [fkNegReq] = await conn.query(`
+      SELECT CONSTRAINT_NAME FROM information_schema.TABLE_CONSTRAINTS 
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'rate_negotiations' AND CONSTRAINT_NAME = 'fk_rn_req'
+    `);
+    if (fkNegReq.length === 0) {
+      await conn.query(`
+        ALTER TABLE rate_negotiations
+        ADD CONSTRAINT fk_rn_req FOREIGN KEY (requirement_id) REFERENCES transport_requirements(id) ON DELETE CASCADE
+      `);
+      steps.push({ step: 'add_fk_rn_req', status: 'SUCCESS', on_delete: 'CASCADE' });
+    } else {
+      steps.push({ step: 'add_fk_rn_req', status: 'ALREADY_EXISTS' });
+    }
+
+    // D. bid_negotiation_history -> transport_requirements (CASCADE)
+    const [fkBnhReq] = await conn.query(`
+      SELECT CONSTRAINT_NAME FROM information_schema.TABLE_CONSTRAINTS 
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'bid_negotiation_history' AND CONSTRAINT_NAME = 'fk_bnh_req'
+    `);
+    if (fkBnhReq.length === 0) {
+      await conn.query(`
+        ALTER TABLE bid_negotiation_history
+        ADD CONSTRAINT fk_bnh_req FOREIGN KEY (requirement_id) REFERENCES transport_requirements(id) ON DELETE CASCADE
+      `);
+      steps.push({ step: 'add_fk_bnh_req', status: 'SUCCESS', on_delete: 'CASCADE' });
+    } else {
+      steps.push({ step: 'add_fk_bnh_req', status: 'ALREADY_EXISTS' });
+    }
+
+    conn.release();
+
+    return res.json({
+      success: true,
+      message: 'Database hardening migration completed successfully',
+      steps
+    });
+  } catch (err) {
+    conn.release();
+    console.error('❌ Database Hardening Migration Failure:', err);
+    return res.status(500).json({
+      success: false,
+      error: err.message,
+      executed_steps: steps
+    });
+  }
+});
+
 export default router;
