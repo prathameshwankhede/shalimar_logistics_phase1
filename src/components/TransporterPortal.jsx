@@ -650,14 +650,12 @@ export const TransporterPortal = () => {
           // Priority 2: Existing truck_dispatches recorded finalized_rate
           fixedRate = Number(dispatches[0].finalized_rate);
           winningTransporterId = dispatches[0].transporter_id;
-        } else if (item.counter_offer_rate || parentReq.counter_offer_rate || (totalDispatched > 0 && (item.remaining_finalized_rate || parentReq.remaining_finalized_rate))) {
-          // Priority 3: Active Admin Counter Rate or Remaining balance allocation rate after partial dispatch
-          fixedRate = Number(
-            item.counter_offer_rate ||
-            parentReq.counter_offer_rate ||
-            item.remaining_finalized_rate ||
-            parentReq.remaining_finalized_rate
-          );
+        } else if (Number(item.counter_offer_rate || parentReq.counter_offer_rate || 0) > 0) {
+          // Priority 3: Active Admin Counter Rate
+          fixedRate = Number(item.counter_offer_rate || parentReq.counter_offer_rate);
+        } else if (totalDispatched > 0 && Number(item.remaining_finalized_rate || parentReq.remaining_finalized_rate || 0) > 0) {
+          // Priority 4: Remaining balance allocation rate ONLY after partial dispatch
+          fixedRate = Number(item.remaining_finalized_rate || parentReq.remaining_finalized_rate);
         }
 
         const isWinningTransporter = Boolean(
@@ -859,8 +857,12 @@ export const TransporterPortal = () => {
       });
 
       // 🚀 Priority 4: Active Admin Counter Rate (Collaborative Multi-Transporter Open Dispatch)
-      const itemCounterRate = Number(parentReq.counter_offer_rate || parentReq.remaining_finalized_rate || 0);
-      const myCounterRate = Number(myExistingBid?.counter_offer_rate || 0);
+      const itemCounterRate = Number(parentReq.counter_offer_rate || (totalDispatched > 0 ? parentReq.remaining_finalized_rate : 0) || 0);
+      const myCounterRate = Number(
+        myExistingBid?.counter_offer_by === 'ADMIN' && myExistingBid?.counter_offer_status !== 'REJECTED'
+          ? myExistingBid?.counter_offer_rate
+          : 0
+      );
       const activeCounterRate = itemCounterRate > 0 ? itemCounterRate : (myCounterRate > 0 ? myCounterRate : null);
       const isOpenCounterDispatch = Boolean(activeCounterRate && activeCounterRate > 0 && remQty > 0);
 
@@ -1233,62 +1235,7 @@ export const TransporterPortal = () => {
     const isFinalized = Boolean(myExistingBid.is_finalized) || isBidFrozen(myExistingBid) || counterOfferStatus === 'ACCEPTED' || bidStatusUpper === 'COUNTER_ACCEPTED' || bidStatusUpper === 'FINALIZED' || Number(myExistingBid.final_rate) > 0;
     const isAccepted = String(myExistingBid.acceptance_status || '').toUpperCase() === 'ACCEPTED';
 
-    // ACTIVE RATE RESOLUTION FOR COLLABORATIVE DISPATCH
-    const activeRate = Number(
-      req.fixed_rate ||
-      req.counter_offer_rate ||
-      req.remaining_finalized_rate ||
-      currentRate ||
-      adminCounter ||
-      0
-    );
 
-    // If there is remaining quantity left on this requirement (e.g. 100 MT of 200 MT):
-    // ALL transporters (original winner AND other transporters) can dispatch trucks!
-    if (remQty > 0 && activeRate > 0) {
-      return (
-        <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
-          <span style={{ fontSize: '0.86rem', fontWeight: '900', color: '#0284c7', background: '#e0f2fe', border: '1.5px solid #7dd3fc', padding: '4px 10px', borderRadius: '8px' }}>
-            ⚡ Rate: ₹{activeRate}/MT
-          </span>
-          <span style={{ fontSize: '0.8rem', fontWeight: '800', color: '#b45309', background: '#fef3c7', padding: '4px 8px', borderRadius: '6px', border: '1px solid #fcd34d' }}>
-            Remaining: <strong>{remQty} MT</strong>
-          </span>
-          <button
-            type="button"
-            onClick={() => handleOpenDispatchModal(req, {
-              ...myExistingBid,
-              final_rate: activeRate,
-              rate_per_mt: activeRate,
-              acceptance_status: 'ACCEPTED'
-            })}
-            className="btn btn-primary"
-            style={{
-              padding: '6px 14px',
-              fontSize: '0.82rem',
-              fontWeight: '900',
-              borderRadius: '8px',
-              background: '#0284c7',
-              color: '#ffffff',
-              border: 'none',
-              cursor: 'pointer',
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '4px'
-            }}
-          >
-            <Truck size={14} /> Dispatch Truck
-          </button>
-          <button
-            type="button"
-            onClick={() => setSelectedHistorySub(myExistingBid)}
-            style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: '0.78rem', fontWeight: '700', textDecoration: 'underline' }}
-          >
-            📜 History
-          </button>
-        </div>
-      );
-    }
 
     // CASE 0 — AWARDED TO ANOTHER TRANSPORTER (NON-WINNING TRANSPORTER VIEW ONLY WHEN NO REMAINING QTY)
     const isAwardedToOther = (
@@ -1453,7 +1400,7 @@ export const TransporterPortal = () => {
 
     // CASE A — DIRECT DISPATCH AT TARGET / COUNTER RATE 🔥🚚
     if (isCounteredByAdmin) {
-      const openRate = adminCounter || currentRate;
+      const openRate = Number(adminCounter || req.counter_offer_rate || 0);
       return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', background: '#e0f2fe', border: '1.5px solid #0284c7', padding: '12px 16px', borderRadius: '12px', minWidth: '270px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -2639,7 +2586,7 @@ export const TransporterPortal = () => {
                                                         <span className="badge badge-open" style={{ fontSize: '0.76rem', background: '#ecfdf5', color: '#059669', border: '1px solid #a7f3d0', padding: '5px 10px', borderRadius: '6px', fontWeight: '800' }}>
                                                           ⚡ Ready to Quote
                                                         </span>
-                                                      ) : req.is_fixed_rate_allocation ? (
+                                                      ) : (req.is_fixed_rate_allocation && req.can_dispatch) ? (
                                                         <span className="badge badge-open" style={{
                                                           fontSize: '0.74rem',
                                                           background: '#e0f2fe',
@@ -2653,10 +2600,10 @@ export const TransporterPortal = () => {
                                                         </span>
                                                       ) : hasSubmittedQuote ? (
                                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'flex-end' }}>
-                                                          {Number(myExistingBid?.counter_offer_rate || req.admin_counter_rate || 0) > 0 ? (
+                                                          {Number(myExistingBid?.counter_offer_rate || req.counter_offer_rate || 0) > 0 && req.can_dispatch ? (
                                                             <button
                                                               type="button"
-                                                              onClick={() => handleOpenDispatchModal(req, { ...myExistingBid, final_rate: Number(myExistingBid?.counter_offer_rate || req.admin_counter_rate), rate_per_mt: Number(myExistingBid?.counter_offer_rate || req.admin_counter_rate), acceptance_status: 'ACCEPTED' })}
+                                                              onClick={() => handleOpenDispatchModal(req, { ...myExistingBid, final_rate: Number(myExistingBid?.counter_offer_rate || req.counter_offer_rate), rate_per_mt: Number(myExistingBid?.counter_offer_rate || req.counter_offer_rate), acceptance_status: 'ACCEPTED' })}
                                                               className="btn btn-primary"
                                                               style={{
                                                                 padding: '6px 14px',
@@ -2977,7 +2924,7 @@ export const TransporterPortal = () => {
                               <span className="badge badge-open" style={{ fontSize: '0.76rem', background: '#ecfdf5', color: '#059669', border: '1px solid #a7f3d0', padding: '4px 8px', borderRadius: '6px', fontWeight: '800' }}>
                                 ⚡ Ready to Quote
                               </span>
-                            ) : req.is_fixed_rate_allocation ? (
+                            ) : (req.is_fixed_rate_allocation && req.can_dispatch) ? (
                               <span className="badge badge-open" style={{
                                 fontSize: '0.74rem',
                                 background: '#e0f2fe',
@@ -2991,10 +2938,10 @@ export const TransporterPortal = () => {
                               </span>
                             ) : hasSubmittedQuote ? (
                               <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'flex-end' }}>
-                                {Number(myExistingBid?.counter_offer_rate || req.admin_counter_rate || 0) > 0 ? (
+                                {Number(myExistingBid?.counter_offer_rate || req.counter_offer_rate || 0) > 0 && req.can_dispatch ? (
                                   <button
                                     type="button"
-                                    onClick={() => handleOpenDispatchModal(req, { ...myExistingBid, final_rate: Number(myExistingBid?.counter_offer_rate || req.admin_counter_rate), rate_per_mt: Number(myExistingBid?.counter_offer_rate || req.admin_counter_rate), acceptance_status: 'ACCEPTED' })}
+                                    onClick={() => handleOpenDispatchModal(req, { ...myExistingBid, final_rate: Number(myExistingBid?.counter_offer_rate || req.counter_offer_rate), rate_per_mt: Number(myExistingBid?.counter_offer_rate || req.counter_offer_rate), acceptance_status: 'ACCEPTED' })}
                                     className="btn btn-primary"
                                     style={{
                                       padding: '6px 14px',
