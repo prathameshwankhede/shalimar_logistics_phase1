@@ -5478,7 +5478,7 @@ export const AdminDashboard = () => {
 
       {/* 🔄 ADMIN RELEASE REMAINING QUANTITY FOR RE-QUOTE MODAL */}
       {releaseRequoteModal.isOpen && (
-        <div className="modal-overlay" style={{
+        <div style={{
           position: 'fixed',
           top: 0,
           left: 0,
@@ -5492,7 +5492,7 @@ export const AdminDashboard = () => {
           backdropFilter: 'blur(4px)'
         }}>
           <div className="modal-content" style={{
-            background: '#0f172a',
+            background: '#ffffff',
             border: '1.5px solid #f59e0b',
             borderRadius: '16px',
             padding: '24px',
@@ -5506,8 +5506,8 @@ export const AdminDashboard = () => {
                   <RefreshCw size={20} color="#ffffff" />
                 </div>
                 <div>
-                  <h3 style={{ fontSize: '1.1rem', fontWeight: '900', color: '#ffffff', margin: 0 }}>Release Remaining Quantity?</h3>
-                  <span style={{ fontSize: '0.78rem', color: '#fbbf24', fontFamily: 'monospace', fontWeight: '800' }}>
+                  <h3 style={{ fontSize: '1.15rem', fontWeight: '900', color: 'var(--text-main, #0f172a)', margin: 0 }}>Release Remaining Quantity?</h3>
+                  <span style={{ fontSize: '0.8rem', color: '#d97706', fontFamily: 'monospace', fontWeight: '800' }}>
                     {releaseRequoteModal.item?.sub_indent_no || releaseRequoteModal.req?.req_no}
                   </span>
                 </div>
@@ -5515,20 +5515,20 @@ export const AdminDashboard = () => {
               <button
                 type="button"
                 onClick={() => setReleaseRequoteModal(prev => ({ ...prev, isOpen: false }))}
-                style={{ background: 'transparent', border: 'none', color: '#94a3b8', fontSize: '1.4rem', cursor: 'pointer' }}
+                style={{ background: 'transparent', border: 'none', color: 'var(--text-muted, #64748b)', fontSize: '1.4rem', cursor: 'pointer' }}
               >
                 ✕
               </button>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '14px', background: 'rgba(0,0,0,0.3)', padding: '14px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.08)' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '14px', background: '#0f172a', padding: '14px', borderRadius: '10px', border: '1.5px solid #334155' }}>
               <div>
-                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Already Dispatched</div>
-                <div style={{ fontSize: '1.2rem', fontWeight: '800', color: '#38bdf8' }}>{releaseRequoteModal.dispatchedQty} MT</div>
+                <div style={{ fontSize: '0.78rem', color: '#94a3b8', fontWeight: '700' }}>Already Dispatched</div>
+                <div style={{ fontSize: '1.25rem', fontWeight: '900', color: '#38bdf8' }}>{releaseRequoteModal.dispatchedQty} MT</div>
               </div>
               <div>
-                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Remaining Balance</div>
-                <div style={{ fontSize: '1.2rem', fontWeight: '900', color: '#fbbf24' }}>{releaseRequoteModal.remainingQty} MT</div>
+                <div style={{ fontSize: '0.78rem', color: '#94a3b8', fontWeight: '700' }}>Remaining Balance</div>
+                <div style={{ fontSize: '1.25rem', fontWeight: '900', color: '#fbbf24' }}>{releaseRequoteModal.remainingQty} MT</div>
               </div>
             </div>
 
@@ -5612,19 +5612,39 @@ export const AdminDashboard = () => {
               </div>
             </div>
 
-            <div style={{ background: 'rgba(245, 158, 11, 0.08)', border: '1px solid rgba(245, 158, 11, 0.25)', borderRadius: '10px', padding: '12px 14px', marginBottom: '16px', fontSize: '0.82rem', color: '#f8fafc', lineHeight: 1.5 }}>
-              <div style={{ fontWeight: '800', color: '#fbbf24', marginBottom: '4px' }}>This will:</div>
-              <div>✓ Close remaining allocation for current transporter</div>
-              <div>✓ Preserve existing truck and LR history</div>
-              <div>✓ Create a new Sub-Indent for <strong style={{ color: '#38bdf8' }}>{releaseRequoteModal.customQty !== undefined ? releaseRequoteModal.customQty : releaseRequoteModal.remainingQty} MT</strong></div>
-              <div>✓ Open fresh bidding for eligible transporters</div>
-              <div style={{ marginTop: '6px', fontSize: '0.75rem', color: '#fca5a5' }}>
+            <div style={{
+              background: '#0f172a',
+              border: '1.5px solid #d97706',
+              borderRadius: '12px',
+              padding: '14px 16px',
+              marginBottom: '16px',
+              fontSize: '0.86rem',
+              color: '#f1f5f9',
+              lineHeight: 1.6,
+              boxShadow: '0 6px 18px rgba(0, 0, 0, 0.35)'
+            }}>
+              <div style={{ fontWeight: '900', color: '#f59e0b', fontSize: '0.94rem', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                📌 This will:
+              </div>
+              <div style={{ color: '#f1f5f9', fontWeight: '600', marginBottom: '6px' }}>
+                <span style={{ color: '#10b981', fontWeight: '900', marginRight: '8px', fontSize: '1rem' }}>✓</span> Close remaining allocation for current transporter
+              </div>
+              <div style={{ color: '#f1f5f9', fontWeight: '600', marginBottom: '6px' }}>
+                <span style={{ color: '#10b981', fontWeight: '900', marginRight: '8px', fontSize: '1rem' }}>✓</span> Preserve existing truck and LR history
+              </div>
+              <div style={{ color: '#f1f5f9', fontWeight: '600', marginBottom: '6px' }}>
+                <span style={{ color: '#10b981', fontWeight: '900', marginRight: '8px', fontSize: '1rem' }}>✓</span> Create a new Sub-Indent for <strong style={{ color: '#38bdf8', fontSize: '1rem', background: 'rgba(56, 189, 248, 0.25)', padding: '1px 8px', borderRadius: '4px', border: '1px solid #38bdf8' }}>{releaseRequoteModal.customQty !== undefined ? releaseRequoteModal.customQty : releaseRequoteModal.remainingQty} MT</strong>
+              </div>
+              <div style={{ color: '#f1f5f9', fontWeight: '600', marginBottom: '6px' }}>
+                <span style={{ color: '#10b981', fontWeight: '900', marginRight: '8px', fontSize: '1rem' }}>✓</span> Open fresh bidding for eligible transporters
+              </div>
+              <div style={{ marginTop: '10px', fontSize: '0.82rem', color: '#f87171', fontWeight: '800', borderTop: '1px solid rgba(255,255,255,0.12)', paddingTop: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                 ⚠️ This action cannot be undone automatically.
               </div>
             </div>
 
             <div style={{ marginBottom: '16px' }}>
-              <label style={{ display: 'block', fontSize: '0.82rem', color: '#cbd5e1', fontWeight: '700', marginBottom: '6px' }}>
+              <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--text-main, #0f172a)', fontWeight: '800', marginBottom: '6px' }}>
                 Reason (Optional):
               </label>
               <textarea
