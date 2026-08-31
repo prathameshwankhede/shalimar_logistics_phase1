@@ -1367,48 +1367,56 @@ export const TransporterPortal = () => {
       );
     }
 
-    // CASE A — OTHER TRANSPORTER QUOTED LOWER RATE (L1)
+    // CASE A — DIRECT DISPATCH AT TARGET / COUNTER RATE 🔥🚚
     if (isCounteredByAdmin) {
+      const openRate = adminCounter || currentRate;
       return (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', background: '#fffbeb', border: '1.5px solid #f59e0b', padding: '14px 18px', borderRadius: '12px', minWidth: '270px' }}>
-          <div style={{ fontSize: '0.82rem', color: '#78350f', fontWeight: '700' }}>
-            Your Original Bid: <strong style={{ color: '#92400e' }}>₹{origRate}/MT</strong>
-          </div>
-          <div style={{ fontSize: '0.92rem', fontWeight: '900', color: '#b45309', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
-            <span>🔥 OTHER TRANSPORTER QUOTED LOWER:</span>
-            <span style={{ background: '#fef3c7', padding: '4px 12px', borderRadius: '6px', border: '1.5px solid #f59e0b', fontSize: '1.1rem', color: '#92400e', fontWeight: '900' }}>
-              ₹{adminCounter}/MT
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', background: '#e0f2fe', border: '1.5px solid #0284c7', padding: '12px 16px', borderRadius: '12px', minWidth: '270px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: '0.82rem', color: '#0369a1', fontWeight: '700' }}>
+              Your Quote: ₹{origRate}/MT
+            </span>
+            <span style={{ background: '#0284c7', color: '#ffffff', padding: '3px 10px', borderRadius: '6px', fontSize: '0.94rem', fontWeight: '900' }}>
+              ₹{openRate}/MT (Target)
             </span>
           </div>
-          <div style={{ fontSize: '0.78rem', color: '#92400e', fontWeight: '600' }}>
-            Another transporter has submitted a lower rate. Match this rate to win the contract:
+          <div style={{ fontSize: '0.8rem', color: '#0369a1', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '4px' }}>
+            ⚡ Open Collaborative Dispatch Active!
+          </div>
+          <div style={{ fontSize: '0.76rem', color: '#075985', fontWeight: '600' }}>
+            Dispatched: <strong>{dispatchedQty} MT</strong> | Remaining: <strong>{remainingQty} MT</strong>
           </div>
 
-          <button
-            type="button"
-            disabled={isResponding}
-            onClick={handleAcceptAdminCounter}
-            className="btn btn-success"
-            style={{
-              padding: '10px 18px',
-              fontSize: '0.9rem',
-              fontWeight: '900',
-              borderRadius: '8px',
-              background: '#16a34a',
-              color: '#ffffff',
-              border: 'none',
-              cursor: isResponding ? 'not-allowed' : 'pointer',
-              width: '100%',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '6px',
-              boxShadow: '0 2px 8px rgba(22, 163, 74, 0.3)',
-              marginTop: '4px'
-            }}
-          >
-            {isResponding ? '⏳ Matching Rate...' : `✓ Match Lower Rate & Accept (₹${adminCounter})`}
-          </button>
+          {remainingQty <= 0 ? (
+            <span style={{ background: '#059669', color: '#ffffff', padding: '6px 12px', borderRadius: '8px', fontSize: '0.82rem', fontWeight: '900', textAlign: 'center' }}>
+              🎉 100% Fully Dispatched
+            </span>
+          ) : (
+            <button
+              type="button"
+              onClick={() => handleOpenDispatchModal(req, { ...myExistingBid, final_rate: openRate, rate_per_mt: openRate, acceptance_status: 'ACCEPTED' })}
+              className="btn btn-primary"
+              style={{
+                padding: '9px 18px',
+                fontSize: '0.9rem',
+                fontWeight: '900',
+                borderRadius: '8px',
+                background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)',
+                color: '#ffffff',
+                border: 'none',
+                cursor: 'pointer',
+                width: '100%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '6px',
+                boxShadow: '0 3px 10px rgba(2, 132, 199, 0.35)',
+                marginTop: '2px'
+              }}
+            >
+              <Truck size={16} /> 🚚 Dispatch Truck (₹{openRate}/MT)
+            </button>
+          )}
         </div>
       );
     }
@@ -2622,17 +2630,42 @@ export const TransporterPortal = () => {
                                                           ⚡ AVAILABLE FOR DISPATCH
                                                         </span>
                                                       ) : hasSubmittedQuote ? (
-                                                        <span className="badge badge-awarded" style={{
-                                                          fontSize: '0.76rem',
-                                                          padding: '6px 12px',
-                                                          background: '#dcfce7',
-                                                          color: '#047857',
-                                                          border: '1px solid #86efac',
-                                                          borderRadius: '8px',
-                                                          fontWeight: '900'
-                                                        }}>
-                                                          ✓ Quote Submitted
-                                                        </span>
+                                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'flex-end' }}>
+                                                          {Number(myExistingBid?.counter_offer_rate || req.admin_counter_rate || 0) > 0 ? (
+                                                            <button
+                                                              type="button"
+                                                              onClick={() => handleOpenDispatchModal(req, { ...myExistingBid, final_rate: Number(myExistingBid?.counter_offer_rate || req.admin_counter_rate), rate_per_mt: Number(myExistingBid?.counter_offer_rate || req.admin_counter_rate), acceptance_status: 'ACCEPTED' })}
+                                                              className="btn btn-primary"
+                                                              style={{
+                                                                padding: '6px 14px',
+                                                                fontSize: '0.82rem',
+                                                                fontWeight: '900',
+                                                                borderRadius: '8px',
+                                                                background: '#0284c7',
+                                                                color: '#ffffff',
+                                                                border: 'none',
+                                                                cursor: 'pointer',
+                                                                display: 'inline-flex',
+                                                                alignItems: 'center',
+                                                                gap: '4px'
+                                                              }}
+                                                            >
+                                                              <Truck size={14} /> Dispatch Truck
+                                                            </button>
+                                                          ) : (
+                                                            <span className="badge badge-awarded" style={{
+                                                              fontSize: '0.76rem',
+                                                              padding: '6px 12px',
+                                                              background: '#dcfce7',
+                                                              color: '#047857',
+                                                              border: '1px solid #86efac',
+                                                              borderRadius: '8px',
+                                                              fontWeight: '900'
+                                                            }}>
+                                                              ✓ Quote Submitted
+                                                            </span>
+                                                          )}
+                                                        </div>
                                                       ) : isAwarded ? (
                                                         <span className="badge" style={{ background: 'rgba(239, 68, 68, 0.15)', color: '#fca5a5', fontSize: '0.72rem' }}>
                                                           Closed
@@ -3011,17 +3044,42 @@ export const TransporterPortal = () => {
                                 ⚡ AVAILABLE FOR DISPATCH
                               </span>
                             ) : hasSubmittedQuote ? (
-                              <span className="badge badge-awarded" style={{
-                                fontSize: '0.76rem',
-                                padding: '6px 12px',
-                                background: '#dcfce7',
-                                color: '#047857',
-                                border: '1px solid #86efac',
-                                borderRadius: '8px',
-                                fontWeight: '900'
-                              }}>
-                                ✓ Quote Submitted
-                              </span>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'flex-end' }}>
+                                {Number(myExistingBid?.counter_offer_rate || req.admin_counter_rate || 0) > 0 ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenDispatchModal(req, { ...myExistingBid, final_rate: Number(myExistingBid?.counter_offer_rate || req.admin_counter_rate), rate_per_mt: Number(myExistingBid?.counter_offer_rate || req.admin_counter_rate), acceptance_status: 'ACCEPTED' })}
+                                    className="btn btn-primary"
+                                    style={{
+                                      padding: '6px 14px',
+                                      fontSize: '0.82rem',
+                                      fontWeight: '900',
+                                      borderRadius: '8px',
+                                      background: '#0284c7',
+                                      color: '#ffffff',
+                                      border: 'none',
+                                      cursor: 'pointer',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '4px'
+                                    }}
+                                  >
+                                    <Truck size={14} /> Dispatch Truck
+                                  </button>
+                                ) : (
+                                  <span className="badge badge-awarded" style={{
+                                    fontSize: '0.76rem',
+                                    padding: '6px 12px',
+                                    background: '#dcfce7',
+                                    color: '#047857',
+                                    border: '1px solid #86efac',
+                                    borderRadius: '8px',
+                                    fontWeight: '900'
+                                  }}>
+                                    ✓ Quote Submitted
+                                  </span>
+                                )}
+                              </div>
                             ) : isAwarded ? (
                               <span className="badge badge-open" style={{ opacity: 0.6 }}>Awarded</span>
                             ) : (
