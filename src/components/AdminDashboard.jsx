@@ -3132,26 +3132,7 @@ export const AdminDashboard = () => {
                             >
                               💬 📱 WhatsApp Broadcast
                             </button>
-                            <button
-                              type="button"
-                              onClick={() => setSelectedRequestForComparison(openedReq)}
-                              className="btn btn-success"
-                              style={{
-                                background: '#059669',
-                                border: 'none',
-                                padding: '8px 16px',
-                                fontSize: '0.85rem',
-                                borderRadius: '10px',
-                                fontWeight: '900',
-                                color: '#ffffff',
-                                cursor: 'pointer',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '6px'
-                              }}
-                            >
-                              📄 Batch Comparative Report ({reqNoStr})
-                            </button>
+
                             <button
                               type="button"
                               onClick={() => setOpenedBatchKey(null)}
