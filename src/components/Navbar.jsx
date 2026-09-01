@@ -13,7 +13,7 @@ export const Navbar = () => {
   }, []);
 
   return (
-    <nav className="glass-panel no-print" style={{ borderRadius: '0 0 16px 16px', marginBottom: '14px', padding: '8px 20px' }}>
+    <nav className="glass-panel no-print" style={{ borderRadius: '0 0 16px 16px', marginBottom: '16px', padding: '10px 22px' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
         
         {/* Pure Uploaded Brand Logo & Official Company Details */}
@@ -21,11 +21,11 @@ export const Navbar = () => {
           <img
             src={SHALIMAR_LOGO_BASE64}
             alt="Shalimar Group Logo"
-            style={{ height: '44px', width: 'auto', borderRadius: '8px', objectFit: 'contain' }}
+            style={{ height: '48px', width: 'auto', borderRadius: '8px', objectFit: 'contain' }}
           />
 
           <div style={{ borderLeft: '2px solid rgba(255, 255, 255, 0.15)', paddingLeft: '12px' }}>
-            <h1 style={{ fontSize: '1.12rem', fontWeight: '800', letterSpacing: '-0.02em', color: 'var(--text-main)', margin: 0 }}>
+            <h1 style={{ fontSize: '1.18rem', fontWeight: '800', letterSpacing: '-0.02em', color: 'var(--text-main)', margin: 0 }}>
               Shalimar Nutrients Pvt Ltd
             </h1>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '2px', flexWrap: 'wrap' }}>
