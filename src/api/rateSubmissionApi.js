@@ -53,6 +53,14 @@ export async function sendAdminCounterAll(requirementId, itemId, counterPayload)
   });
 }
 
+export async function sendAdminCounterBatch(requirementId, batchPayload) {
+  const reqId = encodeURIComponent(requirementId);
+  return apiClient(`/api/requirements/${reqId}/counter-offer-batch?_t=${Date.now()}`, {
+    method: 'POST',
+    body: JSON.stringify(batchPayload)
+  });
+}
+
 export async function submitTransporterResponse(submissionId, responsePayload) {
   return apiClient(`/api/rate-submissions/${submissionId}/respond-counter?_t=${Date.now()}`, {
     method: 'POST',
