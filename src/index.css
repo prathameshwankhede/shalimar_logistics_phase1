@@ -839,12 +839,6 @@ body {
     visibility: hidden !important;
   }
 
-  /* When printing, hide all main dashboard content except modal */
-  body.printing-report #root > div > main > *:not(.modal-overlay),
-  main > *:not(.modal-overlay) {
-    display: none !important;
-  }
-
   /* 3. Strip overlay wrappers completely so printable area sits right at the top of Page 1 */
   .modal-overlay {
     position: static !important;

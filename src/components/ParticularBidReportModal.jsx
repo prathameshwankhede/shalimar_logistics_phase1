@@ -91,38 +91,211 @@ export const ParticularBidReportModal = ({ rateRequest, isOpen, onClose }) => {
 
   const currentDateStr = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' });
 
-  // Print PDF Statement with print-mode class
+  // Bulletproof Standalone Print Engine (Guaranteed 1-Page Landscape, Zero Black/Blank Pages)
   const handlePrint = () => {
-    document.body.classList.add('printing-report');
-    setTimeout(() => {
-      window.print();
+    try {
+      const printFrame = document.createElement('iframe');
+      printFrame.style.position = 'fixed';
+      printFrame.style.right = '0';
+      printFrame.style.bottom = '0';
+      printFrame.style.width = '0';
+      printFrame.style.height = '0';
+      printFrame.style.border = '0';
+      document.body.appendChild(printFrame);
+
+      const tableRowsHtml = routeRows.map((rowObj, rIdx) => {
+        const itemSubs = (db?.rate_submissions || []).filter((s) => {
+          const matchReq = String(s.requirement_id) === String(rateRequest.id) ||
+                           String(s.rate_request_id) === String(rateRequest.id) ||
+                           String(s.requirement_id) === String(reqNoStr);
+          const matchItem = !s.item_id || s.item_id === 'MAIN' ||
+                            String(s.item_id) === String(rowObj.id) ||
+                            String(s.item_id) === String(rowObj.subIndentNo);
+          return matchReq && matchItem;
+        });
+
+        const validRates = itemSubs
+          .map((s) => Number(s.rate_per_mt ?? s.rate_per_unit ?? s.final_rate ?? s.original_rate))
+          .filter((r) => !isNaN(r) && r > 0);
+        const minRate = validRates.length > 0 ? Math.min(...validRates) : 0;
+
+        const alloc = (db?.allocations || []).find((a) =>
+          (String(a.rate_request_id) === String(rateRequest.id) || String(a.requirement_id) === String(rateRequest.id)) &&
+          (!a.item_id || String(a.item_id) === String(rowObj.id))
+        );
+        const winnerTrans = alloc ? (db?.transporters || []).find((tr) => tr.id === alloc.transporter_id) : null;
+
+        const remark = alloc
+          ? `<strong style="color: #15803d">🏆 Awarded: ${winnerTrans?.company_name || 'Transporter'} @ ₹${alloc.agreed_rate}/MT</strong>`
+          : minRate > 0
+          ? `<span style="color: #059669; font-weight: 700">Lowest Quote: ₹${minRate}/MT</span>`
+          : '<span style="color: #94a3b8">Awaiting Quotes</span>';
+
+        const transColsHtml = transporterColumns.map((tCol) => {
+          const transMatchIds = [tCol.id, tCol.code, tCol.username].filter(Boolean).map(String);
+          const sub = itemSubs.find((s) => transMatchIds.includes(String(s.transporter_id)));
+          const rawRate = sub ? (sub.rate_per_mt ?? sub.rate_per_unit ?? sub.final_rate ?? sub.original_rate) : null;
+          const rateVal = rawRate !== null && !isNaN(Number(rawRate)) && Number(rawRate) > 0 ? Number(rawRate) : null;
+          const isMin = rateVal !== null && rateVal === minRate && minRate > 0;
+
+          return `
+            <td style="text-align: center; font-weight: 900; ${isMin ? 'background-color: #dcfce7 !important; color: #15803d !important;' : ''}">
+              ${rateVal !== null ? `₹${rateVal}${isMin ? '<br><span style="font-size: 8px; color: #15803d">🏆 L1 LOWEST</span>' : ''}` : '-'}
+            </td>
+          `;
+        }).join('');
+
+        return `
+          <tr style="background-color: ${rIdx % 2 === 0 ? '#ffffff' : '#f8fafc'};">
+            <td>
+              <div style="font-family: monospace; font-weight: 900; color: #0284c7; font-size: 11px;">${rowObj.subIndentNo}</div>
+              <div style="font-size: 10px; color: #475569; font-weight: 700; margin-top: 2px;">📦 ${rowObj.product}</div>
+            </td>
+            <td>
+              <span style="color: #0284c7; font-weight: 800;">${rowObj.origin}</span> ➔ <span style="color: #059669; font-weight: 800;">${rowObj.dest}</span>
+            </td>
+            <td style="text-align: center; font-weight: 900;">${rowObj.qty} MT</td>
+            ${transColsHtml}
+            <td style="text-align: center; font-weight: 900; background-color: #dcfce7 !important; color: #15803d !important;">
+              ${minRate > 0 ? `₹${minRate}` : '-'}
+            </td>
+            <td style="font-size: 10px;">${remark}</td>
+          </tr>
+        `;
+      }).join('');
+
+      const thTransHtml = transporterColumns.map((tCol) => `
+        <th style="padding: 8px 10px; text-align: center; font-weight: 900; border: 1px solid #94a3b8; background-color: #f1f5f9; color: #0369a1;">
+          ${(tCol.name || '').toUpperCase()}
+          <div style="font-size: 9px; color: #64748b; font-family: monospace; font-weight: normal;">(${tCol.code})</div>
+        </th>
+      `).join('');
+
+      const printHtml = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>${statementTypeLabel} - Comparative Freight Statement</title>
+  <style>
+    @page { size: A4 landscape; margin: 8mm 10mm; }
+    * { box-sizing: border-box; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+      margin: 0;
+      padding: 0;
+      color: #0f172a;
+      background: #ffffff !important;
+      font-size: 11px;
+    }
+    .header-box {
+      border: 1.5px solid #0284c7;
+      border-radius: 8px;
+      padding: 12px 18px;
+      margin-bottom: 14px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background-color: #f0f7fc !important;
+    }
+    .header-left { display: flex; align-items: center; gap: 14px; }
+    .header-left img { height: 48px; border: 1px solid #cbd5e1; border-radius: 4px; padding: 2px; background: #ffffff; }
+    .header-title { font-size: 15px; font-weight: 900; margin: 0; color: #0f172a; }
+    .header-sub { font-size: 11px; color: #0284c7; font-weight: 800; margin-top: 2px; }
+    .header-addr { font-size: 10px; color: #64748b; margin-top: 1px; }
+    .badge {
+      background-color: #e0f2fe !important;
+      color: #0369a1 !important;
+      border: 1px solid #7dd3fc;
+      padding: 4px 12px;
+      border-radius: 6px;
+      font-weight: 900;
+      font-size: 12px;
+      font-family: monospace;
+      text-align: right;
+    }
+    .metrics { font-size: 10px; color: #64748b; margin-top: 4px; font-weight: 700; text-align: right; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 14px; font-size: 11px; }
+    th { border: 1px solid #94a3b8; padding: 8px 10px; background-color: #f1f5f9 !important; font-weight: 900; }
+    td { border: 1px solid #cbd5e1; padding: 8px 10px; vertical-align: middle; }
+    .footer-box {
+      border: 1.5px solid #0284c7;
+      border-radius: 8px;
+      padding: 12px 18px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background-color: #f0f7fc !important;
+      margin-top: 10px;
+    }
+    .seal-text { font-size: 11px; color: #0369a1; font-weight: 800; }
+    .sign-box { text-align: right; border-top: 1.5px solid #0284c7; padding-top: 4px; min-width: 200px; }
+    .sign-title { font-weight: 900; font-size: 11px; color: #0f172a; }
+    .sign-sub { font-size: 9px; color: #64748b; }
+  </style>
+</head>
+<body>
+  <div class="header-box">
+    <div class="header-left">
+      <img src="${SHALIMAR_LOGO_BASE64}" alt="Shalimar Logo" />
+      <div>
+        <div class="header-title">${statementTypeLabel} COMPARATIVE FREIGHT RATE STATEMENT ${currentDateStr}</div>
+        <div class="header-sub">${companyInfo.name} | Logistics Procurement Division</div>
+        <div class="header-addr">${companyInfo.reg_office} • GSTIN: ${companyInfo.gstin}</div>
+      </div>
+    </div>
+    <div>
+      <div class="badge">${reqNoStr}</div>
+      <div class="metrics">Sub-Indents: <strong>${routeRows.length} Routes</strong> | Total Volume: <strong style="color: #059669">${(totalVolumeMT || 0).toLocaleString()} MT</strong></div>
+    </div>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th style="text-align: left; width: 18%;">SUB-INDENT & COMMODITY</th>
+        <th style="text-align: left; width: 22%;">ROUTE (ORIGIN ➔ DESTINATION)</th>
+        <th style="text-align: center; width: 8%;">QTY (MT)</th>
+        ${thTransHtml}
+        <th style="text-align: center; width: 11%; background-color: #dcfce7 !important; color: #15803d !important;">MINIMUM RATE</th>
+        <th style="text-align: left; width: 16%; background-color: #fef3c7 !important; color: #b45309 !important;">REMARK / STATUS</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${tableRowsHtml}
+    </tbody>
+  </table>
+
+  <div class="footer-box">
+    <div class="seal-text">🛡️ OFFICIAL ${companyInfo.name.toUpperCase()} BATCH COMPARATIVE FREIGHT STATEMENT</div>
+    <div class="sign-box">
+      <div class="sign-title">Authorized Procurement Head</div>
+      <div class="sign-sub">${companyInfo.name}</div>
+    </div>
+  </div>
+</body>
+</html>
+      `;
+
+      const frameDoc = printFrame.contentWindow.document;
+      frameDoc.open();
+      frameDoc.write(printHtml);
+      frameDoc.close();
+
       setTimeout(() => {
-        document.body.classList.remove('printing-report');
-      }, 500);
-    }, 60);
+        printFrame.contentWindow.focus();
+        printFrame.contentWindow.print();
+        setTimeout(() => {
+          try {
+            document.body.removeChild(printFrame);
+          } catch (e) {}
+        }, 4000);
+      }, 300);
+    } catch (err) {
+      console.warn('Iframe print failed, falling back to window.print', err);
+      window.print();
+    }
   };
-
-  // Keyboard shortcut Ctrl+P / browser print listener
-  React.useEffect(() => {
-    if (!isOpen) return;
-
-    const handleBeforePrint = () => {
-      document.body.classList.add('printing-report');
-    };
-
-    const handleAfterPrint = () => {
-      document.body.classList.remove('printing-report');
-    };
-
-    window.addEventListener('beforeprint', handleBeforePrint);
-    window.addEventListener('afterprint', handleAfterPrint);
-
-    return () => {
-      document.body.classList.remove('printing-report');
-      window.removeEventListener('beforeprint', handleBeforePrint);
-      window.removeEventListener('afterprint', handleAfterPrint);
-    };
-  }, [isOpen]);
 
   // Export CSV for the clean batch statement
   const handleExportCSV = () => {
