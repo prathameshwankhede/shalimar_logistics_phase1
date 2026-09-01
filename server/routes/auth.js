@@ -122,6 +122,10 @@ router.post('/login', async (req, res) => {
         isPasswordValid = true;
         needsPasswordMigration = true;
       }
+    } else if (foundUser.role === 'transporter' && !storedHash && (cleanPass.toLowerCase() === cleanUser.toLowerCase())) {
+      // First-time transporter initialization: verifies identity against code and auto-upgrades to bcrypt
+      isPasswordValid = true;
+      needsPasswordMigration = true;
     }
 
     if (!isPasswordValid) {
