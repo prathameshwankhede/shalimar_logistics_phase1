@@ -2700,16 +2700,6 @@ export const AdminDashboard = () => {
                   >
                     <Plus size={15} /> ➕ Add Row ({bulkReqRows.length}/50)
                   </button>
-
-                  <button
-                    type="button"
-                    onClick={handleDuplicateLastRow}
-                    className="btn"
-                    style={{ background: 'rgba(168, 85, 247, 0.15)', color: '#9333ea', border: '1px solid #9333ea', padding: '8px 16px', fontSize: '0.82rem', fontWeight: '800', borderRadius: '10px' }}
-                    title="Duplicate parameters from last row"
-                  >
-                    📋 Duplicate Row
-                  </button>
                 </div>
 
                 <form onSubmit={handleBulkBroadcastRequirements}>
