@@ -1562,11 +1562,13 @@ export const AdminDashboard = () => {
       masterPickupCity.trim().length > 0;
 
     if (!isMasterPickupSelected) {
-      alert('🛑 MISSING MASTER PICKUP ORIGIN: Please select Master Pickup Origin from the dropdown before broadcasting.');
       if (masterPickupRef.current) {
         masterPickupRef.current.focus();
-        masterPickupRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        if (typeof masterPickupRef.current.reportValidity === 'function') {
+          masterPickupRef.current.reportValidity();
+        }
       }
+      alert('Please select a Master Pickup Origin before broadcasting.');
       return;
     }
 
@@ -2619,35 +2621,26 @@ export const AdminDashboard = () => {
                 }}>
                   {/* Master Pickup Origin */}
                   <div style={{
-                    background: !masterPickupCity ? 'rgba(239, 68, 68, 0.08)' : 'rgba(2, 132, 199, 0.1)',
-                    border: !masterPickupCity ? '1.5px solid #ef4444' : '1px solid #0284c7',
+                    background: 'rgba(2, 132, 199, 0.1)',
+                    border: '1px solid #0284c7',
                     borderRadius: '12px',
                     padding: '14px 18px',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'space-between',
                     gap: '16px',
-                    flexWrap: 'wrap',
-                    transition: 'all 0.2s ease'
+                    flexWrap: 'wrap'
                   }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                      <div style={{ background: !masterPickupCity ? '#ef4444' : '#0284c7', padding: '8px', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <div style={{ background: '#0284c7', padding: '8px', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                         <MapPin size={22} color="#ffffff" />
                       </div>
                       <div>
                         <div style={{ fontSize: '0.92rem', fontWeight: '900', color: 'var(--text-main)', letterSpacing: '0.04em', display: 'flex', alignItems: 'center', gap: '8px' }}>
                           📍 MASTER PICKUP ORIGIN (APPLIES TO ALL 50 ROWS)
-                          <span style={{ color: '#ef4444', fontWeight: '900', fontSize: '1.2rem' }}>*</span>
-                          {!masterPickupCity && (
-                            <span style={{ fontSize: '0.72rem', background: '#fee2e2', color: '#b91c1c', border: '1px solid #fca5a5', padding: '2px 8px', borderRadius: '4px', fontWeight: '800' }}>
-                              ⚠️ REQUIRED
-                            </span>
-                          )}
                         </div>
-                        <div style={{ fontSize: '0.75rem', color: !masterPickupCity ? '#b91c1c' : 'var(--text-muted)', fontWeight: '700' }}>
-                          {!masterPickupCity
-                            ? '⚠️ Pickup location select karna anivarya (mandatory) hai tabhi bid broadcast hogi!'
-                            : 'Set default pickup location here to apply to all 50 bulk rows below ⬇️'}
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: '600' }}>
+                          Set default pickup location here to apply to all 50 bulk rows below ⬇️
                         </div>
                       </div>
                     </div>
@@ -2655,17 +2648,18 @@ export const AdminDashboard = () => {
                     <div style={{ flex: 1, maxWidth: '520px' }}>
                       <select
                         ref={masterPickupRef}
+                        required
                         className="form-control"
                         value={masterPickupCity}
                         onChange={(e) => handleMasterPickupChange(e.target.value)}
                         style={{
                           fontSize: '0.9rem',
                           height: '44px',
-                          border: !masterPickupCity ? '2px solid #ef4444' : '1.5px solid #0284c7',
+                          border: '1.5px solid #0284c7',
                           color: 'var(--text-main)',
                           fontWeight: '800',
                           borderRadius: '8px',
-                          background: !masterPickupCity ? 'rgba(254, 226, 226, 0.4)' : 'var(--bg-card)'
+                          background: 'var(--bg-card)'
                         }}
                       >
                         {(() => {
