@@ -175,8 +175,8 @@ export const TransporterPortal = () => {
     }
   }, [activeTab]);
 
-  const [allocationFilter, setAllocationFilter] = useState('all'); // 'all', 'active', 'completed'
-  const [selectedMonth, setSelectedMonth] = useState('2026-08'); // Month filter for statement
+  const currentMonthInitial = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
+  const [selectedMonth, setSelectedMonth] = useState(currentMonthInitial); // Dynamic month filter for statement
   const [submittingItems, setSubmittingItems] = useState({});
 
   const [expandedBatches, setExpandedBatches] = useState({});
@@ -976,49 +976,119 @@ export const TransporterPortal = () => {
   // Count pending counter offers for badge notification
   const pendingCounterOffers = mySubmissions.filter((s) => (s.counter_offer_status === 'PENDING' || s.bid_status === 'COUNTER_OFFERED') && !isBidFrozen(s));
 
-  // MONTH-END CALCULATIONS
+  // MONTH-END CALCULATIONS & ADVANCED AUDIT SUITE
+  const getDispatchMonthKey = (d) => {
+    if (!d?.dispatched_at) return '';
+    try {
+      const dt = new Date(d.dispatched_at);
+      if (isNaN(dt.getTime())) return '';
+      const y = dt.getFullYear();
+      const m = String(dt.getMonth() + 1).padStart(2, '0');
+      return `${y}-${m}`;
+    } catch (e) {
+      return '';
+    }
+  };
+
+  // Helper to extract clean dispatch item metrics
+  const getDispatchMetrics = (d) => {
+    const qty = Number(d.loaded_quantity_mt ?? d.dispatched_qty ?? d.loaded_qty ?? 0) || 0;
+    const rate = Number(d.finalized_rate ?? d.freight_rate ?? 0) || 0;
+    const grossVal = Math.round(qty * rate * 100) / 100;
+    const gstVal = Math.round(grossVal * 0.05 * 100) / 100;
+    const totalInvoice = Math.round((grossVal + gstVal) * 100) / 100;
+    const truckNo = d.truck_number || d.truck_no || '-';
+    const cargo = d.product_name || d.material_type || 'Agri Cargo';
+    const route = (d.pickup_origin && d.drop_location)
+      ? `${d.pickup_origin} ➔ ${d.drop_location}`
+      : 'MIDC ➔ Destination';
+    const subIndent = d.sub_indent_no || d.req_no || '-';
+    const lrNo = d.lr_number || d.lr_no || d.id || '-';
+    const dateFormatted = d.dispatched_at
+      ? new Date(d.dispatched_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+      : '-';
+
+    return {
+      qty,
+      rate,
+      grossVal,
+      gstVal,
+      totalInvoice,
+      truckNo,
+      cargo,
+      route,
+      subIndent,
+      lrNo,
+      dateFormatted
+    };
+  };
+
+  const availableMonths = React.useMemo(() => {
+    const monthsSet = new Set();
+    const nowDt = new Date();
+    const currM = `${nowDt.getFullYear()}-${String(nowDt.getMonth() + 1).padStart(2, '0')}`;
+    monthsSet.add(currM);
+
+    myDispatches.forEach((d) => {
+      const m = getDispatchMonthKey(d);
+      if (m) monthsSet.add(m);
+    });
+
+    return Array.from(monthsSet).sort().reverse().map((mStr) => {
+      const [y, m] = mStr.split('-');
+      const dateObj = new Date(Number(y), Number(m) - 1, 1);
+      const label = dateObj.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+      return { value: mStr, label: `📅 ${label}` };
+    });
+  }, [myDispatches]);
+
   const filteredDispatchesForMonth = myDispatches.filter((d) => {
     if (!selectedMonth) return true;
-    return d.dispatched_at.startsWith(selectedMonth);
+    return getDispatchMonthKey(d) === selectedMonth;
   });
 
-  const monthTotalDispatchedQty = filteredDispatchesForMonth.reduce((acc, curr) => acc + (parseFloat(curr.dispatched_qty) || 0), 0);
+  const monthTotalDispatchedQty = filteredDispatchesForMonth.reduce(
+    (acc, curr) => acc + (Number(curr.loaded_quantity_mt ?? curr.dispatched_qty ?? curr.loaded_qty) || 0),
+    0
+  );
 
-  // Calculate gross freight amount earned this month
-  const monthTotalFreightBilling = filteredDispatchesForMonth.reduce((acc, curr) => {
-    const alloc = myAllocations.find((a) => a.id === curr.allocation_id);
-    const rate = alloc ? (parseFloat(alloc.agreed_rate) || 0) : 0;
-    return acc + (parseFloat(curr.dispatched_qty) * rate);
-  }, 0);
+  const monthTotalFreightBilling = filteredDispatchesForMonth.reduce(
+    (acc, curr) => {
+      const qty = Number(curr.loaded_quantity_mt ?? curr.dispatched_qty ?? curr.loaded_qty) || 0;
+      const rate = Number(curr.finalized_rate ?? curr.freight_rate) || 0;
+      return acc + (qty * rate);
+    },
+    0
+  );
 
+  const monthTotalGST = Math.round(monthTotalFreightBilling * 0.05);
+  const monthTotalInvoice = Math.round(monthTotalFreightBilling + monthTotalGST);
   const monthAdvanceCleared = Math.round(monthTotalFreightBilling * 0.7);
   const monthBalancePending = Math.round(monthTotalFreightBilling * 0.3);
 
   // 📥 DOWNLOAD MONTH-END STATEMENT AS CSV / EXCEL
   const handleDownloadMonthEndStatement = () => {
+    const transporterCode = currentTransporter?.code || currentTransporter?.username || 'transporter';
     let csv = 'data:text/csv;charset=utf-8,';
-    csv += `MONTH_END_STATEMENT_FOR_${currentTransporter.code}_(${selectedMonth})\n`;
-    csv += 'LR_NUMBER,DISPATCH_DATE,TRUCK_NUMBER,DRIVER_NAME,MATERIAL_TYPE,DESTINATION_CITY,LOADED_QTY_MT,AGREED_RATE_PER_MT,TOTAL_FREIGHT_VALUE,ESTIMATED_GST_5PERCENT,TOTAL_INVOICE_AMOUNT\n';
+    csv += `MONTH_END_STATEMENT_FOR_${transporterCode}_(${selectedMonth || 'ALL_TIME'})\n`;
+    csv += 'LR_NUMBER,DISPATCH_DATE,TRUCK_NUMBER,DRIVER_NAME,DRIVER_MOBILE,SUB_INDENT,PRODUCT_NAME,ORIGIN,DESTINATION,LOADED_QTY_MT,RATE_PER_MT,GROSS_FREIGHT_RS,ESTIMATED_GST_5PCT_RS,TOTAL_INVOICE_RS\n';
 
     filteredDispatchesForMonth.forEach((d) => {
-      const alloc = myAllocations.find((a) => a.id === d.allocation_id);
-      const req = alloc ? (db.rate_requests || []).find((r) => r.id === alloc.rate_request_id) : null;
-      const rate = alloc ? (parseFloat(alloc.agreed_rate) || 0) : 0;
-      const val = (parseFloat(d.dispatched_qty) || 0) * rate;
-      const gst = Math.round(val * 0.05);
-
-      csv += `${d.lr_number},${new Date(d.dispatched_at).toLocaleDateString()},${d.truck_number},"${d.driver_name}",${req?.material_type || 'Agri Cargo'},"${req?.dest_city || 'MIDC'}",${d.dispatched_qty},${rate},${val},${gst},${val + gst}\n`;
+      const m = getDispatchMetrics(d);
+      csv += `${m.lrNo},"${m.dateFormatted}",${m.truckNo},"${d.driver_name || ''}","${d.driver_mobile || ''}",${m.subIndent},"${m.cargo}","${d.pickup_origin || ''}","${d.drop_location || ''}",${m.qty},${m.rate},${m.grossVal},${m.gstVal},${m.totalInvoice}\n`;
     });
 
     csv += `\nTOTAL_DISPATCHED_TONNAGE,${monthTotalDispatchedQty}_MT\n`;
-    csv += `TOTAL_GROSS_FREIGHT,₹${monthTotalFreightBilling}\n`;
-    csv += `ADVANCE_RECEIVED_70PERCENT,₹${monthAdvanceCleared}\n`;
-    csv += `BALANCE_PENDING_30PERCENT,₹${monthBalancePending}\n`;
+    csv += `TOTAL_GROSS_FREIGHT,Rs_${monthTotalFreightBilling}\n`;
+    csv += `TOTAL_ESTIMATED_GST_5PCT,Rs_${monthTotalGST}\n`;
+    csv += `TOTAL_INVOICE_AMOUNT,Rs_${monthTotalInvoice}\n`;
+    csv += `ADVANCE_ESTIMATED_70PCT,Rs_${monthAdvanceCleared}\n`;
+    csv += `BALANCE_PENDING_30PCT,Rs_${monthBalancePending}\n`;
 
     const encodedUri = encodeURI(csv);
     const link = document.createElement('a');
     link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `MonthEnd_Statement_${currentTransporter?.code || 'transporter'}_${selectedMonth}.csv`);
+    link.setAttribute('download', `MonthEnd_Billing_Statement_${transporterCode}_${selectedMonth || 'AllTime'}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -3563,25 +3633,40 @@ export const TransporterPortal = () => {
               <h3 style={{ fontSize: '1.2rem', fontWeight: '800', color: '#34d399', display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <Calendar size={22} color="#34d399" /> Month-End Freight Billing Statement & Audit
               </h3>
-              <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+              <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginTop: '2px' }}>
                 Track monthly dispatches, total freight billing earnings, and 1-click export for GST filing & Shalimar accounting.
               </p>
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
               <select
                 className="form-control"
                 value={selectedMonth}
                 onChange={(e) => setSelectedMonth(e.target.value)}
-                style={{ background: 'rgba(15, 23, 42, 0.9)', color: '#ffffff', fontWeight: '700', width: 'auto' }}
+                style={{
+                  background: 'var(--bg-card, #0f172a)',
+                  color: 'var(--text-main, #f8fafc)',
+                  border: '1px solid var(--border-color, #334155)',
+                  fontWeight: '700',
+                  width: 'auto',
+                  padding: '8px 14px',
+                  borderRadius: '8px'
+                }}
               >
-                <option value="2026-08">📅 August 2026</option>
-                <option value="2026-07">📅 July 2026</option>
-                <option value="2026-09">📅 September 2026</option>
-                <option value="">📅 All Time Summary</option>
+                {availableMonths.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+                <option value="">📅 All Months / All-Time Summary</option>
               </select>
 
-              <button onClick={handleDownloadMonthEndStatement} className="btn btn-success" style={{ fontSize: '0.82rem', padding: '10px 16px' }}>
+              <button
+                type="button"
+                onClick={handleDownloadMonthEndStatement}
+                className="btn btn-success"
+                style={{ fontSize: '0.82rem', padding: '9px 16px', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: '800' }}
+              >
                 <Download size={16} /> Export Month-End CSV / Excel 📥
               </button>
             </div>
@@ -3589,23 +3674,29 @@ export const TransporterPortal = () => {
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '16px', marginBottom: '24px' }}>
             <div style={{ background: 'rgba(56, 189, 248, 0.12)', border: '1px solid rgba(56, 189, 248, 0.3)', padding: '16px', borderRadius: '12px' }}>
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>TOTAL DISPATCHED TRUCKS</div>
-              <div style={{ fontSize: '1.4rem', fontWeight: '800', color: '#38bdf8' }}>{filteredDispatchesForMonth.length} Trucks</div>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: '700' }}>TOTAL DISPATCHED TRUCKS</div>
+              <div style={{ fontSize: '1.5rem', fontWeight: '900', color: '#38bdf8', marginTop: '4px' }}>{filteredDispatchesForMonth.length} Trucks</div>
             </div>
 
             <div style={{ background: 'rgba(16, 185, 129, 0.12)', border: '1px solid rgba(16, 185, 129, 0.3)', padding: '16px', borderRadius: '12px' }}>
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>TOTAL TONNAGE DELIVERED</div>
-              <div style={{ fontSize: '1.4rem', fontWeight: '800', color: '#34d399' }}>{(monthTotalDispatchedQty || 0).toLocaleString()} MT</div>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: '700' }}>TOTAL TONNAGE DELIVERED</div>
+              <div style={{ fontSize: '1.5rem', fontWeight: '900', color: '#34d399', marginTop: '4px' }}>{(monthTotalDispatchedQty || 0).toLocaleString()} MT</div>
             </div>
 
             <div style={{ background: 'rgba(245, 158, 11, 0.12)', border: '1px solid rgba(245, 158, 11, 0.3)', padding: '16px', borderRadius: '12px' }}>
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>GROSS FREIGHT BILLING</div>
-              <div style={{ fontSize: '1.4rem', fontWeight: '800', color: '#fbbf24' }}>₹{(monthTotalFreightBilling || 0).toLocaleString()}</div>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: '700' }}>GROSS FREIGHT BILLING</div>
+              <div style={{ fontSize: '1.5rem', fontWeight: '900', color: '#fbbf24', marginTop: '4px' }}>₹{(monthTotalFreightBilling || 0).toLocaleString()}</div>
+              <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+                Advance 70%: <strong style={{ color: '#38bdf8' }}>₹{monthAdvanceCleared.toLocaleString()}</strong> | Bal 30%: <strong style={{ color: '#34d399' }}>₹{monthBalancePending.toLocaleString()}</strong>
+              </div>
             </div>
 
             <div style={{ background: 'rgba(99, 102, 241, 0.12)', border: '1px solid rgba(99, 102, 241, 0.3)', padding: '16px', borderRadius: '12px' }}>
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>ESTIMATED 5% GST</div>
-              <div style={{ fontSize: '1.4rem', fontWeight: '800', color: '#818cf8' }}>₹{Math.round((monthTotalFreightBilling || 0) * 0.05).toLocaleString()}</div>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: '700' }}>ESTIMATED 5% GST</div>
+              <div style={{ fontSize: '1.5rem', fontWeight: '900', color: '#818cf8', marginTop: '4px' }}>₹{(monthTotalGST || 0).toLocaleString()}</div>
+              <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+                Total Inv: <strong style={{ color: '#34d399' }}>₹{monthTotalInvoice.toLocaleString()}</strong>
+              </div>
             </div>
           </div>
 
@@ -3617,50 +3708,75 @@ export const TransporterPortal = () => {
                   <th>Dispatch Date</th>
                   <th>Truck Number</th>
                   <th>Cargo Material & Route</th>
-                  <th>Loaded Qty (MT)</th>
-                  <th>Rate / MT</th>
-                  <th>Gross Freight (₹)</th>
-                  <th>5% GST (₹)</th>
-                  <th>Total Invoice (₹)</th>
+                  <th style={{ textAlign: 'center' }}>Loaded Qty (MT)</th>
+                  <th style={{ textAlign: 'center' }}>Rate / MT</th>
+                  <th style={{ textAlign: 'right' }}>Gross Freight (₹)</th>
+                  <th style={{ textAlign: 'right' }}>5% GST (₹)</th>
+                  <th style={{ textAlign: 'right' }}>Total Invoice (₹)</th>
+                  <th style={{ textAlign: 'center' }}>Action</th>
                 </tr>
               </thead>
               <tbody>
                 {filteredDispatchesForMonth.map((d) => {
-                  const alloc = myAllocations.find((a) => a.id === d.allocation_id);
-                  const req = alloc ? openRateRequests.find((r) => r.id === alloc.rate_request_id) : null;
-                  const rate = alloc ? (parseFloat(alloc.agreed_rate) || 0) : 0;
-                  const grossVal = (parseFloat(d.dispatched_qty) || 0) * rate;
-                  const gstVal = Math.round(grossVal * 0.05);
+                  const m = getDispatchMetrics(d);
 
                   return (
                     <tr key={d.id}>
                       <td>
-                        <span style={{ fontFamily: 'monospace', fontWeight: '800', color: '#38bdf8' }}>{d.lr_number}</span>
+                        <span style={{ fontFamily: 'monospace', fontWeight: '800', color: '#0284c7' }}>{m.lrNo}</span>
                       </td>
                       <td>
-                        <div style={{ fontSize: '0.8rem', color: 'var(--text-sub)' }}>{new Date(d.dispatched_at).toLocaleDateString()}</div>
+                        <div style={{ fontSize: '0.82rem', color: 'var(--text-sub)' }}>{m.dateFormatted}</div>
                       </td>
                       <td>
-                        <strong style={{ color: '#ffffff' }}>{d.truck_number}</strong>
+                        <strong style={{ color: 'var(--text-main, #0f172a)', fontSize: '0.9rem' }}>{m.truckNo}</strong>
                       </td>
                       <td>
-                        <div style={{ fontSize: '0.85rem', fontWeight: '700' }}>{req?.material_type}</div>
-                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>➔ {req?.dest_city}</div>
+                        <div style={{ fontSize: '0.85rem', fontWeight: '800', color: 'var(--text-main)' }}>📦 {m.cargo}</div>
+                        <div style={{ fontSize: '0.78rem', color: '#0284c7', marginTop: '2px', fontWeight: '700' }}>📍 {m.route}</div>
+                        {m.subIndent !== '-' && (
+                          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontFamily: 'monospace', marginTop: '1px' }}>
+                            Code: {m.subIndent}
+                          </div>
+                        )}
                       </td>
-                      <td>
-                        <strong style={{ color: '#34d399' }}>{d.dispatched_qty} MT</strong>
+                      <td style={{ textAlign: 'center' }}>
+                        <strong style={{ color: '#059669', fontSize: '0.92rem' }}>{m.qty} MT</strong>
                       </td>
-                      <td>
-                        <div style={{ fontSize: '0.85rem' }}>₹{rate}/MT</div>
+                      <td style={{ textAlign: 'center' }}>
+                        <div style={{ fontSize: '0.88rem', fontWeight: '700', color: 'var(--text-main)' }}>₹{m.rate}/MT</div>
                       </td>
-                      <td>
-                        <div style={{ fontWeight: '700', color: '#ffffff' }}>₹{(grossVal || 0).toLocaleString()}</div>
+                      <td style={{ textAlign: 'right' }}>
+                        <div style={{ fontWeight: '800', color: 'var(--text-main)', fontSize: '0.92rem' }}>₹{m.grossVal.toLocaleString()}</div>
                       </td>
-                      <td>
-                        <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>₹{(gstVal || 0).toLocaleString()}</div>
+                      <td style={{ textAlign: 'right' }}>
+                        <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>₹{m.gstVal.toLocaleString()}</div>
                       </td>
-                      <td>
-                        <div style={{ fontWeight: '800', color: '#34d399' }}>₹{((grossVal || 0) + (gstVal || 0)).toLocaleString()}</div>
+                      <td style={{ textAlign: 'right' }}>
+                        <div style={{ fontWeight: '900', color: '#059669', fontSize: '0.95rem' }}>₹{m.totalInvoice.toLocaleString()}</div>
+                      </td>
+                      <td style={{ textAlign: 'center' }}>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedDispatchSlip(d)}
+                          className="btn"
+                          style={{
+                            padding: '6px 12px',
+                            fontSize: '0.75rem',
+                            fontWeight: '800',
+                            borderRadius: '6px',
+                            border: '1px solid #0284c7',
+                            color: '#0284c7',
+                            background: 'rgba(2, 132, 199, 0.1)',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            cursor: 'pointer'
+                          }}
+                          title="Open & Download LR Dispatch Slip"
+                        >
+                          <Printer size={13} /> LR Slip
+                        </button>
                       </td>
                     </tr>
                   );
@@ -3668,8 +3784,8 @@ export const TransporterPortal = () => {
 
                 {filteredDispatchesForMonth.length === 0 && (
                   <tr>
-                    <td colSpan="9" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>
-                      No dispatches recorded for selected month ({selectedMonth}).
+                    <td colSpan="10" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>
+                      No dispatches recorded for selected month ({selectedMonth || 'All Time'}).
                     </td>
                   </tr>
                 )}
