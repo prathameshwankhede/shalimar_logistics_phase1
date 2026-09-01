@@ -3226,8 +3226,15 @@ export const AdminDashboard = () => {
                                     </td>
 
                                     <td style={{ padding: '14px 16px' }}>
-                                      <div style={{ fontSize: '0.82rem', color: '#cbd5e1', fontWeight: '700' }}>
-                                        📍 {item.pickup_origin || pickupStr} ➔ 🎯 <strong style={{ color: '#d97706', fontWeight: '900' }}>{item.drop_location || dropStr}</strong>
+                                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                        <div style={{ fontSize: '0.9rem', color: 'var(--text-main, #0f172a)', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                          <span>📍 {item.pickup_origin || pickupStr}</span>
+                                          <span style={{ color: 'var(--text-sub, #64748b)', fontSize: '0.85rem' }}>➔</span>
+                                          <span>🎯</span>
+                                        </div>
+                                        <div style={{ fontSize: '1.18rem', fontWeight: '900', color: '#c2410c', letterSpacing: '0.02em', textTransform: 'capitalize', lineHeight: '1.2' }}>
+                                          {item.drop_location || dropStr}
+                                        </div>
                                       </div>
                                     </td>
 
@@ -3245,7 +3252,7 @@ export const AdminDashboard = () => {
                                     </td>
 
                                     <td style={{ padding: '14px 16px' }}>
-                                      <div style={{ fontSize: '0.85rem', color: '#cbd5e1', fontWeight: '700' }}>
+                                      <div style={{ fontSize: '0.85rem', color: 'var(--text-main, #0f172a)', fontWeight: '700' }}>
                                         {bidsCount > 0 ? `${bidsCount} Transporter Bids` : 'No Bids Yet'}
                                       </div>
                                       {lowestRate && (
