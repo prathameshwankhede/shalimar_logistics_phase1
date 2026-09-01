@@ -25,8 +25,10 @@ import {
   Grid,
   History,
   FolderOpen,
-  Printer
+  Printer,
+  FileSpreadsheet
 } from 'lucide-react';
+import { exportMonthEndExcel } from '../utils/exportMonthEndExcel';
 
 export const TransporterPortal = () => {
   const { currentUser, currentTransporter, db, updateDB, updateLocalRateSubmission, quickSwitchUser, addSecurityLog, refreshRequirements, refreshDB } = useAuth();
@@ -178,6 +180,7 @@ export const TransporterPortal = () => {
 
   const currentMonthInitial = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
   const [selectedMonth, setSelectedMonth] = useState(currentMonthInitial); // Dynamic month filter for statement
+  const [isExportingExcel, setIsExportingExcel] = useState(false);
   const [submittingItems, setSubmittingItems] = useState({});
 
   const [expandedBatches, setExpandedBatches] = useState({});
@@ -1067,32 +1070,45 @@ export const TransporterPortal = () => {
   const monthAdvanceCleared = Math.round(monthTotalFreightBilling * 0.7);
   const monthBalancePending = Math.round(monthTotalFreightBilling * 0.3);
 
-  // 📥 DOWNLOAD MONTH-END STATEMENT AS CSV / EXCEL
-  const handleDownloadMonthEndStatement = () => {
-    const transporterCode = currentTransporter?.code || currentTransporter?.username || 'transporter';
-    let csv = 'data:text/csv;charset=utf-8,';
-    csv += `MONTH_END_STATEMENT_FOR_${transporterCode}_(${selectedMonth || 'ALL_TIME'})\n`;
-    csv += 'LR_NUMBER,DISPATCH_DATE,TRUCK_NUMBER,DRIVER_NAME,DRIVER_MOBILE,SUB_INDENT,PRODUCT_NAME,ORIGIN,DESTINATION,LOADED_QTY_MT,RATE_PER_MT,GROSS_FREIGHT_RS,ESTIMATED_GST_5PCT_RS,TOTAL_INVOICE_RS\n';
+  // 📥 DOWNLOAD EXECUTIVE MONTH-END STATEMENT AS ATTRACTIVE EXCEL (.xlsx)
+  const handleDownloadMonthEndStatement = async () => {
+    try {
+      setIsExportingExcel(true);
+      await exportMonthEndExcel({
+        dispatches: filteredDispatchesForMonth,
+        transporter: currentTransporter,
+        selectedMonth,
+        company: db?.company
+      });
+    } catch (err) {
+      console.warn('Executive Excel generation error, falling back to CSV:', err);
+      const transporterCode = currentTransporter?.code || currentTransporter?.username || 'transporter';
+      let csv = 'data:text/csv;charset=utf-8,';
+      csv += `MONTH_END_STATEMENT_FOR_${transporterCode}_(${selectedMonth || 'ALL_TIME'})\n`;
+      csv += 'LR_NUMBER,DISPATCH_DATE,TRUCK_NUMBER,DRIVER_NAME,DRIVER_MOBILE,SUB_INDENT,PRODUCT_NAME,ORIGIN,DESTINATION,LOADED_QTY_MT,RATE_PER_MT,GROSS_FREIGHT_RS,ESTIMATED_GST_5PCT_RS,TOTAL_INVOICE_RS\n';
 
-    filteredDispatchesForMonth.forEach((d) => {
-      const m = getDispatchMetrics(d);
-      csv += `${m.lrNo},"${m.dateFormatted}",${m.truckNo},"${d.driver_name || ''}","${d.driver_mobile || ''}",${m.subIndent},"${m.cargo}","${d.pickup_origin || ''}","${d.drop_location || ''}",${m.qty},${m.rate},${m.grossVal},${m.gstVal},${m.totalInvoice}\n`;
-    });
+      filteredDispatchesForMonth.forEach((d) => {
+        const m = getDispatchMetrics(d);
+        csv += `${m.lrNo},"${m.dateFormatted}",${m.truckNo},"${d.driver_name || ''}","${d.driver_mobile || ''}",${m.subIndent},"${m.cargo}","${d.pickup_origin || ''}","${d.drop_location || ''}",${m.qty},${m.rate},${m.grossVal},${m.gstVal},${m.totalInvoice}\n`;
+      });
 
-    csv += `\nTOTAL_DISPATCHED_TONNAGE,${monthTotalDispatchedQty}_MT\n`;
-    csv += `TOTAL_GROSS_FREIGHT,Rs_${monthTotalFreightBilling}\n`;
-    csv += `TOTAL_ESTIMATED_GST_5PCT,Rs_${monthTotalGST}\n`;
-    csv += `TOTAL_INVOICE_AMOUNT,Rs_${monthTotalInvoice}\n`;
-    csv += `ADVANCE_ESTIMATED_70PCT,Rs_${monthAdvanceCleared}\n`;
-    csv += `BALANCE_PENDING_30PCT,Rs_${monthBalancePending}\n`;
+      csv += `\nTOTAL_DISPATCHED_TONNAGE,${monthTotalDispatchedQty}_MT\n`;
+      csv += `TOTAL_GROSS_FREIGHT,Rs_${monthTotalFreightBilling}\n`;
+      csv += `TOTAL_ESTIMATED_GST_5PCT,Rs_${monthTotalGST}\n`;
+      csv += `TOTAL_INVOICE_AMOUNT,Rs_${monthTotalInvoice}\n`;
+      csv += `ADVANCE_ESTIMATED_70PCT,Rs_${monthAdvanceCleared}\n`;
+      csv += `BALANCE_PENDING_30PCT,Rs_${monthBalancePending}\n`;
 
-    const encodedUri = encodeURI(csv);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `MonthEnd_Billing_Statement_${transporterCode}_${selectedMonth || 'AllTime'}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+      const encodedUri = encodeURI(csv);
+      const link = document.createElement('a');
+      link.setAttribute('href', encodedUri);
+      link.setAttribute('download', `MonthEnd_Billing_Statement_${transporterCode}_${selectedMonth || 'AllTime'}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } finally {
+      setIsExportingExcel(false);
+    }
   };
 
   const handleOpenDispatchModal = (req, myBid, parentReq = null) => {
@@ -3665,10 +3681,24 @@ export const TransporterPortal = () => {
               <button
                 type="button"
                 onClick={handleDownloadMonthEndStatement}
+                disabled={isExportingExcel}
                 className="btn btn-success"
-                style={{ fontSize: '0.82rem', padding: '9px 16px', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: '800' }}
+                style={{
+                  fontSize: '0.82rem',
+                  padding: '9px 18px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  fontWeight: '800',
+                  background: 'linear-gradient(135deg, #059669 0%, #047857 100%)',
+                  boxShadow: '0 4px 14px rgba(5, 150, 105, 0.35)',
+                  cursor: isExportingExcel ? 'wait' : 'pointer',
+                  opacity: isExportingExcel ? 0.7 : 1
+                }}
+                title="Download Executive Formatted Excel Statement (.xlsx)"
               >
-                <Download size={16} /> Export Month-End CSV / Excel 📥
+                <FileSpreadsheet size={17} />
+                {isExportingExcel ? 'Generating Excel (.xlsx)...' : 'Export Executive Excel (.xlsx) 📊'}
               </button>
             </div>
           </div>
