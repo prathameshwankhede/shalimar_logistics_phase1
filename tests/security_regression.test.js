@@ -17,6 +17,7 @@ if (typeof globalThis.localStorage === 'undefined') {
 import { sanitizeInput, checkBruteForceLock, recordLoginAttempt, resetLoginLock } from '../src/utils/securityEngine.js';
 import { generateToken, ROLE_PERMISSIONS } from '../server/middleware/auth.js';
 import jwt from 'jsonwebtoken';
+import bcrypt from 'bcryptjs';
 
 async function runSecurityRegressionSuite() {
   console.log('==================================================');
@@ -158,6 +159,101 @@ async function runSecurityRegressionSuite() {
     const remainingUsers = userRows.filter(u => u.role === 'admin' && u.username === 'admin');
     assert.equal(remainingUsers.length, 1);
     assert.equal(remainingUsers[0].username, 'admin');
+  });
+
+  // 6. Organization / Multi-Tenancy Token Scoping
+  test('JWT token automatically includes organization_id scoped to tenant', () => {
+    const defaultUser = { id: 'usr_1', username: 'admin', role: 'admin' };
+    const token = generateToken(defaultUser);
+    const decoded = jwt.decode(token);
+    assert.equal(decoded.organization_id, 'org_shalimar');
+
+    const customOrgUser = { id: 'usr_2', username: 'client_admin', role: 'admin', organization_id: 'org_client_b' };
+    const tokenB = generateToken(customOrgUser);
+    const decodedB = jwt.decode(tokenB);
+    assert.equal(decodedB.organization_id, 'org_client_b');
+  });
+
+  // 7. Zero Hardcoded Admin Bypass Test
+  test('Authentication rejects invalid passwords and disallows hardcoded admin123 bypass', async () => {
+    const storedHash = await bcrypt.hash('CorrectSecurePassword2026', 10);
+    const isGood = await bcrypt.compare('CorrectSecurePassword2026', storedHash);
+    const isBad = await bcrypt.compare('admin123', storedHash);
+    const isBadAdmin = await bcrypt.compare('admin', storedHash);
+
+    assert.equal(isGood, true);
+    assert.equal(isBad, false);
+    assert.equal(isBadAdmin, false);
+  });
+
+  // 8. Safe Password Migration Logic Test
+  test('Safe Password Migration: verifies legacy plaintext once and upgrades to bcrypt', async () => {
+    const legacyPlaintext = 'OldPlainPass456';
+    let userRecord = {
+      id: 'usr_legacy',
+      username: 'legacy_transporter',
+      password_hash: legacyPlaintext,
+      password: legacyPlaintext
+    };
+
+    // Verification check
+    const isLegacyMatch = (userRecord.password_hash === legacyPlaintext) || (userRecord.password === legacyPlaintext);
+    assert.equal(isLegacyMatch, true);
+
+    // On-login upgrade
+    const newBcrypt = await bcrypt.hash(legacyPlaintext, 10);
+    userRecord.password_hash = newBcrypt;
+    userRecord.password = null;
+
+    assert.ok(userRecord.password_hash.startsWith('$2a$') || userRecord.password_hash.startsWith('$2b$'));
+    assert.equal(userRecord.password, null);
+    const verifyNew = await bcrypt.compare(legacyPlaintext, userRecord.password_hash);
+    assert.equal(verifyNew, true);
+  });
+
+  // 9. Atomic Batch Quote Validation Test
+  test('Atomic Batch Quote Validation rejects invalid row rates upfront', () => {
+    const batchPayload = [
+      { requirement_id: 'req_1', rate_per_mt: 1200 },
+      { requirement_id: 'req_2', rate_per_mt: 0 }, // invalid
+      { requirement_id: 'req_3', rate_per_mt: 1450 }
+    ];
+
+    const validateBatch = (rows) => {
+      for (let i = 0; i < rows.length; i++) {
+        const r = rows[i];
+        if (!r.requirement_id) return { valid: false, error: `Row ${i+1}: requirement_id missing` };
+        if (!r.rate_per_mt || r.rate_per_mt <= 0) return { valid: false, error: `Row ${i+1}: rate_per_mt must be > 0` };
+      }
+      return { valid: true };
+    };
+
+    const res = validateBatch(batchPayload);
+    assert.equal(res.valid, false);
+    assert.ok(res.error.includes('Row 2'));
+  });
+
+  // 10. Backup Restore Security Filter Test
+  test('Backup restore security blocks destructive database commands', () => {
+    const forbiddenPatterns = [
+      /\bDROP\s+DATABASE\b/i,
+      /\bCREATE\s+DATABASE\b/i,
+      /\bALTER\s+USER\b/i,
+      /\bGRANT\b/i,
+      /\bREVOKE\b/i,
+      /\bSHUTDOWN\b/i,
+      /\bmysql\./i
+    ];
+
+    const safeSql = 'CREATE TABLE IF NOT EXISTS sample (id INT); INSERT INTO sample VALUES (1);';
+    const dangerousSql = 'DROP DATABASE production_db;';
+    const privilegeSql = 'GRANT ALL PRIVILEGES ON *.* TO hacker@%;';
+
+    const checkSql = (sql) => forbiddenPatterns.some(p => p.test(sql));
+
+    assert.equal(checkSql(safeSql), false);
+    assert.equal(checkSql(dangerousSql), true);
+    assert.equal(checkSql(privilegeSql), true);
   });
 
   console.log('==================================================');

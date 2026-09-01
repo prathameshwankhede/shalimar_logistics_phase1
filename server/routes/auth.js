@@ -55,34 +55,28 @@ router.post('/login', async (req, res) => {
   try {
     let foundUser = null;
 
-    // 1. Instant in-memory match for seed admin
-    if (cleanUser === 'admin') {
-      foundUser = SEED_USERS.find(u => u.username.toLowerCase() === cleanUser);
-    }
+    // 1. Search transporters table first
+    try {
+      const [transRows] = await pool.query(
+        'SELECT id, company_name, code, username, password_hash, status FROM transporters WHERE LOWER(username) = ? OR LOWER(code) = ? OR id = ?',
+        [cleanUser, cleanUser, cleanUser]
+      );
+      if (transRows.length > 0) {
+        const t = transRows[0];
+        foundUser = {
+          id: t.id,
+          username: t.username || t.code,
+          password_hash: t.password_hash,
+          name: t.company_name,
+          role: 'transporter',
+          transporter_id: t.id,
+          status: t.status || 'Active',
+          _sourceTable: 'transporters'
+        };
+      }
+    } catch (dbErr) {}
 
-    // 2. Search transporters table for vendor code / username / id
-    if (!foundUser) {
-      try {
-        const [transRows] = await pool.query(
-          'SELECT id, company_name, code, username, password_hash, status FROM transporters WHERE LOWER(username) = ? OR LOWER(code) = ? OR id = ?',
-          [cleanUser, cleanUser, cleanUser]
-        );
-        if (transRows.length > 0) {
-          const t = transRows[0];
-          foundUser = {
-            id: t.id,
-            username: t.username || t.code,
-            password_hash: t.password_hash,
-            name: t.company_name,
-            role: 'transporter',
-            transporter_id: t.id,
-            status: t.status || 'Active'
-          };
-        }
-      } catch (dbErr) {}
-    }
-
-    // 3. If not found in transporters table, search users table
+    // 2. If not found in transporters table, search users table
     if (!foundUser) {
       try {
         const [userRows] = await pool.query(
@@ -90,13 +84,20 @@ router.post('/login', async (req, res) => {
           [cleanUser]
         );
         if (userRows.length > 0) {
-          foundUser = userRows[0];
+          foundUser = {
+            ...userRows[0],
+            _sourceTable: 'users'
+          };
         }
       } catch (dbErr) {}
     }
 
-    if (!foundUser) {
-      foundUser = SEED_USERS.find(u => u.username.toLowerCase() === cleanUser);
+    // 3. Fallback to seed admin ONLY if users table is empty/unseeded
+    if (!foundUser && cleanUser === 'admin') {
+      foundUser = {
+        ...SEED_USERS.find(u => u.username.toLowerCase() === cleanUser),
+        _sourceTable: 'seed'
+      };
     }
 
     if (!foundUser) {
@@ -109,22 +110,55 @@ router.post('/login', async (req, res) => {
     }
 
     let isPasswordValid = false;
-    if (foundUser.password_hash) {
-      if (foundUser.password_hash.startsWith('$2a$') || foundUser.password_hash.startsWith('$2b$')) {
-        isPasswordValid = await bcrypt.compare(cleanPass, foundUser.password_hash);
-      } else {
-        isPasswordValid = foundUser.password_hash === cleanPass;
-      }
-    } else if (foundUser.password) {
-      isPasswordValid = foundUser.password === cleanPass;
-    }
+    let needsPasswordMigration = false;
+    const storedHash = String(foundUser.password_hash || foundUser.password || '');
+    const isBcrypt = storedHash.startsWith('$2a$') || storedHash.startsWith('$2b$') || storedHash.startsWith('$2y$');
 
-    if (!isPasswordValid && foundUser.role === 'admin' && (cleanPass === 'admin123' || cleanPass === 'admin')) {
-      isPasswordValid = true;
+    if (isBcrypt) {
+      isPasswordValid = await bcrypt.compare(cleanPass, storedHash);
+    } else if (storedHash) {
+      // Safe Legacy Migration: Verify plaintext password once upon valid login
+      if (storedHash === cleanPass) {
+        isPasswordValid = true;
+        needsPasswordMigration = true;
+      }
     }
 
     if (!isPasswordValid) {
+      try {
+        await pool.query(
+          `INSERT INTO security_audit_logs (id, action, username, role, ip, status, timestamp)
+           VALUES (?, 'LOGIN_FAILED', ?, ?, ?, 'REJECTED_BAD_CREDENTIALS', NOW())`,
+          [`audit_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`, cleanUser, foundUser?.role || 'unknown', req.ip || '']
+        ).catch(() => {});
+      } catch (e) {}
       return res.status(401).json({ error: 'Invalid Username or Password' });
+    }
+
+    // Immediately migrate legacy plaintext to strong bcrypt hash
+    if (needsPasswordMigration) {
+      try {
+        const upgradedHash = await bcrypt.hash(cleanPass, 10);
+        if (foundUser._sourceTable === 'transporters' || foundUser.transporter_id) {
+          await pool.query('UPDATE transporters SET password_hash = ? WHERE id = ?', [upgradedHash, foundUser.id]).catch(() => {});
+        }
+        if (foundUser._sourceTable === 'users') {
+          await pool.query('UPDATE users SET password_hash = ?, password = NULL WHERE id = ? OR username = ?', [upgradedHash, foundUser.id, foundUser.username]).catch(async () => {
+            await pool.query('UPDATE users SET password_hash = ? WHERE id = ?', [upgradedHash, foundUser.id]).catch(() => {});
+          });
+        }
+        foundUser.password_hash = upgradedHash;
+        delete foundUser.password;
+
+        await pool.query(
+          `INSERT INTO security_audit_logs (id, action, username, role, ip, status, timestamp)
+           VALUES (?, 'PASSWORD_UPGRADE_BCRYPT', ?, ?, ?, 'SUCCESS', NOW())`,
+          [`audit_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`, cleanUser, foundUser?.role || 'user', req.ip || '']
+        ).catch(() => {});
+        console.log(`🔒 [SECURITY] Legacy password migrated to bcrypt for user: ${cleanUser}`);
+      } catch (migErr) {
+        console.warn('Notice during password migration:', migErr.message);
+      }
     }
 
     const rawRole = String(foundUser.role || foundUser.user_type || foundUser.account_type || '').trim().toLowerCase();
@@ -248,6 +282,59 @@ router.post('/switch-transporter', async (req, res) => {
 // GET /api/auth/me — Fetch current authenticated user session DTO
 router.get('/me', authenticateToken, (req, res) => {
   return res.json({ success: true, user: req.user });
+});
+
+// POST /api/auth/verify-password — Authenticated check to verify admin/user password before critical actions
+router.post('/verify-password', authenticateToken, async (req, res) => {
+  const { password } = req.body || {};
+  if (!password) {
+    return res.status(400).json({ success: false, error: 'Password is required' });
+  }
+
+  try {
+    const cleanPass = String(password).trim();
+    const userId = req.user.id;
+    const username = req.user.username;
+
+    let storedHash = null;
+    const [userRows] = await pool.query('SELECT password_hash, password FROM users WHERE id = ? OR username = ? LIMIT 1', [userId, username]).catch(() => [[]]);
+    if (userRows.length > 0) {
+      storedHash = userRows[0].password_hash || userRows[0].password;
+    } else {
+      const [transRows] = await pool.query('SELECT password_hash FROM transporters WHERE id = ? OR username = ? LIMIT 1', [userId, username]).catch(() => [[]]);
+      if (transRows.length > 0) {
+        storedHash = transRows[0].password_hash;
+      }
+    }
+
+    if (!storedHash && username === 'admin') {
+      storedHash = SEED_USERS[0].password_hash;
+    }
+
+    if (!storedHash) {
+      return res.status(401).json({ success: false, error: 'User record not found' });
+    }
+
+    let isValid = false;
+    if (storedHash.startsWith('$2a$') || storedHash.startsWith('$2b$') || storedHash.startsWith('$2y$')) {
+      isValid = await bcrypt.compare(cleanPass, storedHash);
+    } else {
+      isValid = storedHash === cleanPass;
+      if (isValid) {
+        // Upgrade legacy plaintext to bcrypt
+        const upgraded = await bcrypt.hash(cleanPass, 10);
+        await pool.query('UPDATE users SET password_hash = ?, password = NULL WHERE id = ? OR username = ?', [upgraded, userId, username]).catch(() => {});
+      }
+    }
+
+    if (!isValid) {
+      return res.status(401).json({ success: false, error: 'Invalid password' });
+    }
+
+    return res.json({ success: true, message: 'Password verified successfully' });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
 });
 
 export default router;

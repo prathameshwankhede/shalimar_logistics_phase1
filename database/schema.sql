@@ -175,7 +175,7 @@ CREATE TABLE IF NOT EXISTS `allocations` (
   PRIMARY KEY (`id`),
   KEY `idx_allocations_request` (`request_id`),
   KEY `idx_allocations_transporter` (`transporter_id`),
-  CONSTRAINT `fk_allocations_request` FOREIGN KEY (`request_id`) REFERENCES `rate_requests` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_allocations_request` FOREIGN KEY (`request_id`) REFERENCES `transport_requirements` (`id`) ON DELETE CASCADE,
   CONSTRAINT `fk_allocations_transporter` FOREIGN KEY (`transporter_id`) REFERENCES `transporters` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 

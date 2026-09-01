@@ -57,6 +57,84 @@ async function ensureColumnExists(tableName, columnName, columnDefinition) {
   }
 }
 
+// Safe Idempotent Organization & Performance Schema Initializer 🛡️
+export async function ensureOrganizationAndPerformanceSchema() {
+  try {
+    // 1. Create organizations table
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS organizations (
+        id VARCHAR(64) NOT NULL PRIMARY KEY,
+        name VARCHAR(255) NOT NULL,
+        status VARCHAR(50) NOT NULL DEFAULT 'Active',
+        created_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `).catch(() => {});
+
+    // 2. Seed default organization for existing Shalimar data
+    await pool.query(`
+      INSERT IGNORE INTO organizations (id, name, status)
+      VALUES ('org_shalimar', 'Shalimar Nutrients Pvt Ltd', 'Active')
+    `).catch(() => {});
+
+    // 3. Safely ensure organization_id column exists on core tables
+    const coreTables = [
+      'users',
+      'transport_requirements',
+      'transport_requirement_items',
+      'rate_submissions',
+      'truck_dispatches',
+      'transporters',
+      'company_settings',
+      'rate_negotiations',
+      'bid_negotiation_history',
+      'allocations',
+      'contracts'
+    ];
+
+    for (const table of coreTables) {
+      await ensureColumnExists(table, 'organization_id', "VARCHAR(64) NOT NULL DEFAULT 'org_shalimar'");
+      await pool.query(`UPDATE \`${table}\` SET organization_id = 'org_shalimar' WHERE organization_id IS NULL OR organization_id = ''`).catch(() => {});
+    }
+
+    // 4. Ensure audit columns exist
+    await ensureColumnExists('transport_requirements', 'created_by', 'VARCHAR(100) DEFAULT NULL');
+    await ensureColumnExists('transport_requirements', 'updated_by', 'VARCHAR(100) DEFAULT NULL');
+    await ensureColumnExists('rate_submissions', 'updated_by', 'VARCHAR(100) DEFAULT NULL');
+    await ensureColumnExists('truck_dispatches', 'created_by', 'VARCHAR(100) DEFAULT NULL');
+    await ensureColumnExists('truck_dispatches', 'updated_by', 'VARCHAR(100) DEFAULT NULL');
+
+    // 5. Ensure safe performance indexes exist
+    const indexesToCreate = [
+      { table: 'rate_submissions', name: 'idx_rs_trans_status', columns: 'transporter_id, bid_status' },
+      { table: 'rate_submissions', name: 'idx_rs_org', columns: 'organization_id' },
+      { table: 'transport_requirements', name: 'idx_tr_org', columns: 'organization_id' },
+      { table: 'truck_dispatches', name: 'idx_td_org', columns: 'organization_id' },
+      { table: 'truck_dispatches', name: 'idx_td_created_at', columns: 'created_at' },
+      { table: 'truck_dispatches', name: 'idx_td_dispatched_at', columns: 'dispatched_at' },
+      { table: 'truck_dispatches', name: 'idx_td_truck_no', columns: 'truck_number' }
+    ];
+
+    for (const idx of indexesToCreate) {
+      try {
+        const [existing] = await pool.query(
+          `SELECT INDEX_NAME FROM information_schema.statistics 
+           WHERE (TABLE_SCHEMA = ? OR TABLE_SCHEMA = DATABASE()) AND TABLE_NAME = ? AND INDEX_NAME = ? LIMIT 1`,
+          [pool?.pool?.config?.connectionConfig?.database || '', idx.table, idx.name]
+        ).catch(() => [[]]);
+        if (existing && existing.length === 0) {
+          await pool.query(`CREATE INDEX \`${idx.name}\` ON \`${idx.table}\` (${idx.columns})`).catch(() => {});
+        }
+      } catch (idxErr) {}
+    }
+  } catch (err) {
+    console.warn('Notice ensuring organization schema & performance indexes:', err.message);
+  }
+}
+
+// Call on startup safely
+ensureOrganizationAndPerformanceSchema().catch(() => {});
+
 // -------------------------------------------------------------
 // -------------------------------------------------------------
 // Production-Safe Dispatch Balance Reconciliation Engine 🚛📊
@@ -899,23 +977,19 @@ export async function ensureTruckDispatchesTableExists() {
   }
 }
 
-// Concurrency-safe LR Number Generator
+// Concurrency-safe Atomic LR Number Generator
 async function generateUniqueLrNumber(clientOrPool, customYear) {
   const year = customYear || new Date().getFullYear();
   const prefix = `LR-SNPL-${year}`;
 
   await clientOrPool.query(
-    `INSERT INTO lr_sequences (prefix, last_seq) VALUES (?, 1)
-     ON DUPLICATE KEY UPDATE last_seq = last_seq + 1`,
+    `INSERT INTO lr_sequences (prefix, last_seq) VALUES (?, LAST_INSERT_ID(1))
+     ON DUPLICATE KEY UPDATE last_seq = LAST_INSERT_ID(last_seq + 1)`,
     [prefix]
   );
 
-  const [rows] = await clientOrPool.query(
-    `SELECT last_seq FROM lr_sequences WHERE prefix = ? FOR UPDATE`,
-    [prefix]
-  );
-
-  const seq = Number(rows[0]?.last_seq || 1);
+  const [rows] = await clientOrPool.query('SELECT LAST_INSERT_ID() AS seq');
+  const seq = Number(rows[0]?.seq || 1);
   const formattedSeq = String(seq).padStart(5, '0');
   return `${prefix}-${formattedSeq}`;
 }
@@ -1446,6 +1520,159 @@ async function handleCreateRateSubmission(req, res) {
 }
 
 // -------------------------------------------------------------
+// POST /api/rate-submissions/batch — Atomic Transactional Bulk Rate Submission 🛡️⚡
+// -------------------------------------------------------------
+async function handleCreateBatchRateSubmissions(req, res) {
+  const rawSubmissions = Array.isArray(req.body) ? req.body : (req.body?.submissions || req.body?.bids || []);
+  if (!Array.isArray(rawSubmissions) || rawSubmissions.length === 0) {
+    return res.status(400).json({ success: false, error: 'Submissions array is required.' });
+  }
+
+  // Pre-validation pass: Validate all bids BEFORE database writes
+  for (let idx = 0; idx < rawSubmissions.length; idx++) {
+    const s = rawSubmissions[idx];
+    const targetReqId = (s.requirement_id || s.rate_request_id || s.request_id || '').trim();
+    if (!targetReqId) {
+      return res.status(400).json({ success: false, error: `Row ${idx + 1}: requirement_id is required.` });
+    }
+    const rateVal = parseFloat(s.rate_per_mt || s.rate_per_unit);
+    if (isNaN(rateVal) || rateVal <= 0) {
+      return res.status(400).json({ success: false, error: `Row ${idx + 1}: rate_per_mt must be a positive number greater than 0.` });
+    }
+  }
+
+  await ensureRateSubmissionsTableExists();
+  await ensureRequirementsTableExists();
+  await ensureBidNegotiationHistoryTableExists();
+  await ensureRateNegotiationsTableExists();
+
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+
+    const insertedResults = [];
+
+    for (let idx = 0; idx < rawSubmissions.length; idx++) {
+      const s = rawSubmissions[idx];
+      const targetReqId = (s.requirement_id || s.rate_request_id || s.request_id || '').trim();
+      const rateVal = parseFloat(s.rate_per_mt || s.rate_per_unit);
+
+      // Verify requirement exists
+      const [reqRows] = await conn.query(
+        'SELECT id, req_no, status, organization_id FROM transport_requirements WHERE id = ? OR req_no = ? LIMIT 1',
+        [targetReqId, targetReqId]
+      );
+      if (reqRows.length === 0) {
+        throw new Error(`Row ${idx + 1}: Requirement '${targetReqId}' not found.`);
+      }
+      const reqRecord = reqRows[0];
+      const actualReqId = reqRecord.id;
+      if (reqRecord.status && ['ARCHIVED', 'CANCELLED', 'COMPLETED', 'CLOSED'].includes(String(reqRecord.status).toUpperCase())) {
+        throw new Error(`Row ${idx + 1}: Requirement '${reqRecord.req_no || targetReqId}' is closed and not accepting bids.`);
+      }
+
+      // Resolve Transporter identity
+      const candidateTransIds = [
+        s.transporter_id,
+        req.user?.transporter_id,
+        req.user?.username,
+        req.user?.id,
+        s.transporter_code,
+        s.transporter_name
+      ].filter(Boolean);
+
+      const [transRows] = await conn.query(
+        `SELECT id, company_name, code, username, organization_id FROM transporters 
+         WHERE id IN (?) OR code IN (?) OR username IN (?) OR company_name IN (?) LIMIT 1`,
+        [candidateTransIds, candidateTransIds, candidateTransIds, candidateTransIds]
+      );
+      const actualTransId = transRows[0]?.id || req.user?.transporter_id || req.user?.username || req.user?.id;
+      const orgId = reqRecord.organization_id || transRows[0]?.organization_id || req.user?.organization_id || 'org_shalimar';
+
+      // Resolve Item ID & Quantity
+      const rawItemId = (s.item_id || s.sub_indent_id || s.requirement_item_id || '').trim();
+      let actualItemId = rawItemId;
+      let totalCargoQty = 0;
+
+      const [itemRows] = await conn.query(
+        'SELECT id, quantity_mt FROM transport_requirement_items WHERE (id = ? OR sub_indent_no = ?) AND requirement_id = ? LIMIT 1',
+        [rawItemId, rawItemId, actualReqId]
+      );
+      if (itemRows.length > 0) {
+        actualItemId = itemRows[0].id;
+        totalCargoQty = parseFloat(itemRows[0].quantity_mt || 0);
+      } else {
+        const [childItems] = await conn.query(
+          'SELECT id, quantity_mt FROM transport_requirement_items WHERE requirement_id = ? ORDER BY id ASC LIMIT 1',
+          [actualReqId]
+        );
+        if (childItems.length > 0) {
+          actualItemId = childItems[0].id;
+          totalCargoQty = parseFloat(childItems[0].quantity_mt || 0);
+        }
+      }
+
+      const qtyVal = parseFloat(s.quoted_quantity_mt || s.required_qty) || totalCargoQty || null;
+      const totalAmount = qtyVal ? parseFloat((rateVal * qtyVal).toFixed(2)) : null;
+
+      const [existingQuotes] = await conn.query(
+        'SELECT id, rate_per_mt, bid_status FROM rate_submissions WHERE requirement_id = ? AND item_id = ? AND transporter_id = ? LIMIT 1',
+        [actualReqId, actualItemId, actualTransId]
+      );
+      const subId = existingQuotes[0]?.id || s.id || `rate_sub_${actualTransId}_${actualItemId}_${Date.now()}_${Math.random().toString(36).substring(2,7)}`;
+      const rem = (s.remarks || s.comments || s.notes || '').trim() || null;
+
+      await conn.query(
+        `INSERT INTO rate_submissions (id, requirement_id, item_id, transporter_id, organization_id, rate_per_mt, original_rate, quoted_quantity_mt, total_amount, remarks, bid_status, submitted_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'SUBMITTED', NOW(), NOW())
+         ON DUPLICATE KEY UPDATE
+         rate_per_mt = VALUES(rate_per_mt),
+         original_rate = COALESCE(original_rate, VALUES(original_rate)),
+         quoted_quantity_mt = VALUES(quoted_quantity_mt),
+         total_amount = VALUES(total_amount),
+         remarks = VALUES(remarks),
+         organization_id = VALUES(organization_id),
+         bid_status = 'SUBMITTED',
+         updated_at = NOW()`,
+        [subId, actualReqId, actualItemId, actualTransId, orgId, rateVal, rateVal, qtyVal, totalAmount, rem]
+      );
+
+      // Record negotiation history entry inside transaction
+      const [histCheck] = await conn.query(
+        'SELECT id FROM rate_negotiations WHERE rate_submission_id = ? AND action_type = "INITIAL_QUOTE" LIMIT 1',
+        [subId]
+      );
+      if (histCheck.length === 0) {
+        const negId = `neg_${Date.now()}_${Math.random().toString(36).substring(2,7)}`;
+        await conn.query(
+          `INSERT INTO rate_negotiations
+           (id, requirement_id, item_id, transporter_id, rate_submission_id, organization_id, action_type, offered_rate, remarks, created_by, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, 'INITIAL_QUOTE', ?, ?, ?, NOW())`,
+          [negId, actualReqId, actualItemId, actualTransId, subId, orgId, rateVal, rem || 'Batch quote submitted by transporter', actualTransId]
+        );
+      }
+
+      insertedResults.push({ id: subId, requirement_id: actualReqId, item_id: actualItemId, rate_per_mt: rateVal });
+    }
+
+    await conn.commit();
+    conn.release();
+
+    return res.json({
+      success: true,
+      message: `Successfully submitted ${insertedResults.length} quotes in an atomic transaction.`,
+      count: insertedResults.length,
+      data: insertedResults
+    });
+  } catch (err) {
+    await conn.rollback();
+    conn.release();
+    console.error('❌ Batch Rate Submission Transaction Aborted:', err.message);
+    return res.status(400).json({ success: false, error: err.message });
+  }
+}
+
+// -------------------------------------------------------------
 // ADMIN COUNTER OFFER API HANDLER 🛡️
 // -------------------------------------------------------------
 async function handleAdminCounter(req, res) {
@@ -1607,6 +1834,15 @@ async function handleAdminCounter(req, res) {
           [counterRateVal, sub.requirement_id]
         );
       }
+
+      await conn.commit();
+      conn.release();
+
+      await pool.query(
+        `INSERT INTO security_audit_logs (id, action, username, role, ip, status, timestamp)
+         VALUES (?, 'COUNTER_OFFER_SENT', ?, 'admin', ?, 'SUCCESS', NOW())`,
+        [`audit_${Date.now()}_${Math.random().toString(36).substring(2,7)}`, req.user?.username || 'admin', req.ip || '']
+      ).catch(() => {});
 
       const [updatedRows] = await pool.query('SELECT * FROM rate_submissions WHERE id = ? LIMIT 1', [id]);
       return res.json({
@@ -2309,6 +2545,11 @@ async function handleFinalizeBid(req, res) {
          updated_at = NOW()`,
       [allocId, sub.requirement_id, sub.item_id || 'MAIN', null, sub.transporter_id, agreedRate]
     ).catch(e => console.warn('Allocation insert notice:', e.message));
+    await pool.query(
+      `INSERT INTO security_audit_logs (id, action, username, role, ip, status, timestamp)
+       VALUES (?, 'BID_FINALIZED', ?, 'admin', ?, 'SUCCESS', NOW())`,
+      [`audit_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`, req.user?.username || 'admin', req.ip || '']
+    ).catch(() => {});
 
     const [updatedRows] = await pool.query('SELECT * FROM rate_submissions WHERE id = ? LIMIT 1', [id]);
     return res.json({
@@ -3817,11 +4058,11 @@ router.get('/rate-requests/:id/rates', authenticateToken, handleGetRequirementRa
 router.post('/requirements/:requirementId/items/:itemId/counter-offer-all', authenticateToken, requireRole('admin'), handleAdminCounterAll);
 router.post('/requirements/:requirementId/counter-offer-batch', authenticateToken, requireRole('admin'), handleAdminCounterBatch);
 router.post('/rate-submissions/counter-offer-all', authenticateToken, requireRole('admin'), handleAdminCounterAll);
-router.post('/rate-submissions/:id/counter-offer', authenticateToken, handleAdminCounter);
-router.post('/rate-submissions/:id/admin-counter', authenticateToken, handleAdminCounter);
+router.post('/rate-submissions/:id/counter-offer', authenticateToken, requireRole('admin'), handleAdminCounter);
+router.post('/rate-submissions/:id/admin-counter', authenticateToken, requireRole('admin'), handleAdminCounter);
 router.post('/rate-submissions/:id/respond-counter', authenticateToken, handleTransporterResponse);
 router.post('/rate-submissions/:id/transporter-response', authenticateToken, handleTransporterResponse);
-router.post('/rate-submissions/:id/finalize', authenticateToken, handleFinalizeBid);
+router.post('/rate-submissions/:id/finalize', authenticateToken, requireRole('admin'), handleFinalizeBid);
 router.post('/requirements/:requirementId/items/:itemId/accept-final-rate', authenticateToken, handleAcceptFinalRate);
 router.post('/rate-submissions/:id/accept-final-rate', authenticateToken, handleAcceptFinalRate);
 router.post('/requirements/:requirementId/items/:itemId/dispatch', authenticateToken, handleCreateTruckDispatch);
@@ -3841,13 +4082,14 @@ router.get('/requirements/:requirementId/items/:itemId/dispatches', authenticate
 router.get('/dispatches', authenticateToken, handleGetDispatches);
 router.get('/dispatches/:id', authenticateToken, handleGetDispatchById);
 router.get('/rate-submissions/:id/negotiation-history', authenticateToken, handleGetNegotiationHistory);
-router.get('/rate-submissions/:id/history', authenticateToken, handleGetNegotiationHistory);
 router.post('/rate-submissions', authenticateToken, handleCreateRateSubmission);
+router.post('/rate-submissions/batch', authenticateToken, handleCreateBatchRateSubmissions);
 router.post('/bids', authenticateToken, handleCreateRateSubmission);
+router.post('/bids/batch', authenticateToken, handleCreateBatchRateSubmissions);
 router.get('/rate-submissions', authenticateToken, handleGetRateSubmissions);
 router.get('/transporters', authenticateToken, handleGetTransporters);
 router.get('/master-data', authenticateToken, handleGetMasterData);
-router.get('/security/audit-logs', authenticateToken, async (req, res) => {
+router.get('/security/audit-logs', authenticateToken, requireRole('admin'), async (req, res) => {
   try {
     await ensureSecurityAuditLogsTableExists();
     const [rows] = await pool.query('SELECT * FROM security_audit_logs ORDER BY created_at DESC, timestamp DESC LIMIT 200');
@@ -6098,6 +6340,39 @@ router.post('/backup/restore', authenticateToken, requireRole('admin'), async (r
       .map(s => s.trim())
       .filter(s => s.length > 0);
 
+    // Security Check: Block dangerous commands or database escape sequences
+    const forbiddenPatterns = [
+      /\bDROP\s+DATABASE\b/i,
+      /\bCREATE\s+DATABASE\b/i,
+      /\bALTER\s+USER\b/i,
+      /\bGRANT\b/i,
+      /\bREVOKE\b/i,
+      /\bSHUTDOWN\b/i,
+      /\bINTO\s+OUTFILE\b/i,
+      /\bINTO\s+DUMPFILE\b/i,
+      /\bLOAD_FILE\b/i,
+      /\bmysql\./i,
+      /\binformation_schema\./i,
+      /\bperformance_schema\./i
+    ];
+
+    for (const rawStmt of statements) {
+      for (const pattern of forbiddenPatterns) {
+        if (pattern.test(rawStmt)) {
+          conn.release();
+          await pool.query(
+            `INSERT INTO security_audit_logs (id, action, username, role, ip, status, timestamp)
+             VALUES (?, 'RESTORE_ATTEMPT_BLOCKED', ?, 'admin', ?, 'BLOCKED_DANGEROUS_SQL', NOW())`,
+            [`audit_${Date.now()}_${Math.random().toString(36).substring(2,7)}`, req.user?.username || 'admin', req.ip || '']
+          ).catch(() => {});
+          return res.status(403).json({
+            success: false,
+            error: 'Security Violation: SQL contains unauthorized database manipulation operations.'
+          });
+        }
+      }
+    }
+
     let executedCount = 0;
     for (const rawStmt of statements) {
       const cleanStmt = rawStmt
@@ -6118,6 +6393,13 @@ router.post('/backup/restore', authenticateToken, requireRole('admin'), async (r
 
     await conn.query('SET FOREIGN_KEY_CHECKS = 1');
     conn.release();
+
+    // Log successful database restore
+    await pool.query(
+      `INSERT INTO security_audit_logs (id, action, username, role, ip, status, timestamp)
+       VALUES (?, 'DATABASE_RESTORE', ?, 'admin', ?, 'SUCCESS', NOW())`,
+      [`audit_${Date.now()}_${Math.random().toString(36).substring(2,7)}`, req.user?.username || 'admin', req.ip || '']
+    ).catch(() => {});
 
     return res.json({
       success: true,
@@ -6430,11 +6712,12 @@ async function syncNormalizedTables(data) {
   if (Array.isArray(data.users)) {
     for (const u of data.users) {
       if (u.id && u.username) {
+        const hashToSave = u.password_hash ? u.password_hash : (u.password ? bcrypt.hashSync(u.password, 10) : bcrypt.hashSync(Math.random().toString(36), 10));
         await pool.query(
           `INSERT INTO users (id, username, password_hash, name, role, transporter_id)
            VALUES (?, ?, ?, ?, ?, ?)
            ON DUPLICATE KEY UPDATE name = VALUES(name), role = VALUES(role), transporter_id = VALUES(transporter_id)`,
-          [u.id, u.username, u.password || u.password_hash || 'admin123', u.name || u.username, u.role || 'transporter', u.transporter_id || null]
+          [u.id, u.username, hashToSave, u.name || u.username, u.role || 'transporter', u.transporter_id || null]
         ).catch((err) => console.warn('MySQL sync users notice:', err.message));
       }
     }

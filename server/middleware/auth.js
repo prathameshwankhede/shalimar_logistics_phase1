@@ -1,6 +1,11 @@
 import jwt from 'jsonwebtoken';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'transflow_super_secret_jwt_key_2026';
+const isProduction = process.env.NODE_ENV === 'production';
+if (isProduction && !process.env.JWT_SECRET) {
+  console.error('💥 [CRITICAL SECURITY ERROR] JWT_SECRET environment variable is mandatory in production!');
+  throw new Error('JWT_SECRET must be defined in production environment');
+}
+export const JWT_SECRET = process.env.JWT_SECRET || 'transflow_development_secret_key_2026';
 
 // Role-Based Access Control (RBAC) Permission Matrix
 export const ROLE_PERMISSIONS = {
@@ -31,6 +36,7 @@ export function generateToken(user) {
   const rawRole = String(user.role || '').trim().toLowerCase();
   const canonicalRole = rawRole === 'admin' ? 'admin' : (rawRole === 'transporter' ? 'transporter' : 'user');
   const permissions = ROLE_PERMISSIONS[canonicalRole] || [];
+  const organizationId = user.organization_id || 'org_shalimar';
 
   return jwt.sign(
     {
@@ -39,6 +45,7 @@ export function generateToken(user) {
       name: user.name,
       role: canonicalRole,
       transporter_id: user.transporter_id || (canonicalRole === 'transporter' ? user.id : null),
+      organization_id: organizationId,
       permissions
     },
     JWT_SECRET,

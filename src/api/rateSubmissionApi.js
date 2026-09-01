@@ -22,6 +22,14 @@ export async function submitBid(bidPayload, options = {}) {
   });
 }
 
+export async function submitBatchBids(bidsArray, options = {}) {
+  return apiClient('/api/rate-submissions/batch', {
+    method: 'POST',
+    body: JSON.stringify(bidsArray),
+    ...options
+  });
+}
+
 export async function submitRateQuote(quotePayload, options = {}) {
   return apiClient('/api/rate-submissions', {
     method: 'POST',

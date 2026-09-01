@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { submitBid, submitTransporterResponse, fetchTransporterDashboardSummary } from '../api/rateSubmissionApi';
+import { submitBid, submitBatchBids, submitTransporterResponse, fetchTransporterDashboardSummary } from '../api/rateSubmissionApi';
 import { acceptFinalRate, createTruckDispatch, requestDispatchAccess, getTransporterDispatchAuthorizations, acceptRemainingAllocation, getTransporterItemAllocations } from '../api/rateRequestApi';
 import { NegotiationHistoryModal } from './NegotiationHistoryModal';
 import { ContractModal } from './ContractModal';
@@ -224,7 +224,7 @@ export const TransporterPortal = () => {
     const transId = currentTransporter?.id || currentTransporter?.code || currentTransporter?.username || 'transporter';
 
     try {
-      for (const req of filledItems) {
+      const batchPayload = filledItems.map((req) => {
         const key = getSubIndentKey(req);
         const rateVal = parseFloat(quickRates[key]);
         const parentReqId = req.requirement_id || req.id;
@@ -233,7 +233,7 @@ export const TransporterPortal = () => {
         const qtyVal = Number(req.required_qty || req.quantity_mt || 0);
         const totalCalcAmount = parseFloat((rateVal * qtyVal).toFixed(2));
 
-        await submitBid({
+        return {
           requirement_id: parentReqId,
           rate_request_id: parentReqId,
           item_id: targetItemId,
@@ -245,10 +245,20 @@ export const TransporterPortal = () => {
           quoted_quantity_mt: qtyVal,
           total_amount: totalCalcAmount,
           status: 'Submitted'
-        });
+        };
+      });
 
-        setQuickRates((prev) => ({ ...prev, [key]: '' }));
-      }
+      await submitBatchBids(batchPayload);
+
+      // Clear input rates atomically upon verified success
+      setQuickRates((prev) => {
+        const next = { ...prev };
+        filledItems.forEach((req) => {
+          const key = getSubIndentKey(req);
+          delete next[key];
+        });
+        return next;
+      });
 
       setSuccessNotice(`🚀 Submitted quotes for ${filledItems.length} items in Batch ${batchKey} successfully!`);
       setTimeout(() => setSuccessNotice(''), 4000);

@@ -8,6 +8,7 @@ import { sendAdminCounterAll, sendAdminCounterBatch, finalizeBid } from '../api/
 import { createTransporter, updateTransporterStatus, resetTransporterPassword, deleteTransporter } from '../api/transporterApi';
 import { createProduct, updateProduct, deleteProduct, createCompanyUnit, updateCompanyUnit, deleteCompanyUnit } from '../api/masterDataApi';
 import { downloadFullBackupApi, restoreBackupApi, downloadReportApi, clearAllDataApi } from '../api/backupApi';
+import { apiClient } from '../api/client';
 import { CreateRequirementModal } from './CreateRequirementModal';
 import { TransporterManagerModal } from './TransporterManagerModal';
 import { RateComparisonView } from './RateComparisonView';
@@ -1168,30 +1169,41 @@ export const AdminDashboard = () => {
     setEditingTransporterMaster(null);
   };
 
-  const handleVerifySecuritySubmit = (e) => {
+  const handleVerifySecuritySubmit = async (e) => {
     e.preventDefault();
-    const masterPass = 'SunilYede@katol';
-    const currentPass = currentUser?.password || 'admin123';
-    const validPasswords = [masterPass, currentPass, 'admin', 'admin123', 'SunilYede@katol', 'shalimar'];
-
-    if (!validPasswords.includes(enteredAuthPass.trim())) {
-      setAuthErrorMsg('🛑 ACCESS DENIED: Invalid Security Authorization Password!');
-      const updatedDb = addSecurityLog(
-        db,
-        `UNAUTHORIZED_BACKUP_ACCESS_ATTEMPT (${securityAuthModal.actionTitle})`,
-        currentUser?.username || 'admin',
-        'admin',
-        'ACCESS_DENIED 🛑'
-      );
-      updateDB(updatedDb);
+    const entered = enteredAuthPass.trim();
+    if (!entered) {
+      setAuthErrorMsg('Please enter your password.');
       return;
     }
 
-    const actionToRun = securityAuthModal.pendingAction;
-    setSecurityAuthModal({ isOpen: false, actionTitle: '', pendingAction: null });
-    setEnteredAuthPass('');
-    setAuthErrorMsg('');
-    if (actionToRun) actionToRun();
+    try {
+      const verifyRes = await apiClient('/api/auth/verify-password', {
+        method: 'POST',
+        body: JSON.stringify({ password: entered })
+      });
+
+      if (!verifyRes || !verifyRes.success) {
+        setAuthErrorMsg('🛑 ACCESS DENIED: Invalid Security Authorization Password!');
+        const updatedDb = addSecurityLog(
+          db,
+          `UNAUTHORIZED_BACKUP_ACCESS_ATTEMPT (${securityAuthModal.actionTitle})`,
+          currentUser?.username || 'admin',
+          'admin',
+          'ACCESS_DENIED 🛑'
+        );
+        updateDB(updatedDb);
+        return;
+      }
+
+      const actionToRun = securityAuthModal.pendingAction;
+      setSecurityAuthModal({ isOpen: false, actionTitle: '', pendingAction: null });
+      setEnteredAuthPass('');
+      setAuthErrorMsg('');
+      if (actionToRun) actionToRun();
+    } catch (err) {
+      setAuthErrorMsg(err.message || '🛑 ACCESS DENIED: Invalid Security Authorization Password!');
+    }
   };
 
   const handleDownloadDatabaseBackup = async () => {

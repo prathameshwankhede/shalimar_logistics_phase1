@@ -112,6 +112,29 @@ export const AuthProvider = ({ children }) => {
 
     runBootstrapSequence();
 
+    // Safe typing detection to prevent background synchronization from clobbering active form inputs 🛡️
+    const isUserActivelyTyping = () => {
+      if (typeof document === 'undefined') return false;
+      const active = document.activeElement;
+      if (!active) return false;
+      const tag = (active.tagName || '').toUpperCase();
+      return ['INPUT', 'TEXTAREA', 'SELECT'].includes(tag) || active.isContentEditable;
+    };
+
+    const safeApplyFreshData = (freshData) => {
+      if (!freshData || !isMounted) return;
+      if (isUserActivelyTyping()) {
+        // Postpone state swap so user typing and focus are strictly preserved
+        setTimeout(() => {
+          if (isMounted && !isUserActivelyTyping()) {
+            setDb(freshData);
+          }
+        }, 4000);
+        return;
+      }
+      setDb(freshData);
+    };
+
     // Listen to Storage & BroadcastChannel for real-time background sync
     let debounceTimer = null;
     const debouncedFetch = () => {
@@ -119,7 +142,7 @@ export const AuthProvider = ({ children }) => {
       debounceTimer = setTimeout(() => {
         if (isMounted && getAuthToken()) {
           loadDBFromSupabase().then((data) => {
-            if (data && isMounted) setDb(data);
+            safeApplyFreshData(data);
           }).catch(() => {});
         }
       }, 1500);
@@ -145,9 +168,9 @@ export const AuthProvider = ({ children }) => {
 
     const interval = setInterval(() => {
       if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
-      if (getAuthToken()) {
+      if (getAuthToken() && !isUserActivelyTyping()) {
         loadDBFromSupabase().then((data) => {
-          if (data && isMounted) setDb(data);
+          safeApplyFreshData(data);
         }).catch(() => {});
       }
     }, 45000);
@@ -275,26 +298,7 @@ const updateDB = async (newDb) => {
       }
     } catch (err) {
       console.error('Login API Error:', err.message);
-      if (cleanUser === 'admin' && (cleanPass === 'admin123' || cleanPass === 'admin')) {
-        const adminUser = {
-          id: 'usr_admin',
-          username: 'admin',
-          name: 'Shalimar Admin (Logistics Head)',
-          role: 'admin',
-          permissions: {
-            canManageRequirements: true,
-            canApproveBids: true,
-            canAwardContracts: true,
-            canManageTransporters: true,
-            canAccessDatabase: true
-          }
-        };
-        setCurrentUser(adminUser);
-        sessionStorage.setItem(USER_SESSION_KEY, JSON.stringify(adminUser));
-        localStorage.setItem(USER_SESSION_KEY, JSON.stringify(adminUser));
-        return { success: true, user: adminUser };
-      }
-      return { success: false, error: 'Invalid Username or Password' };
+      return { success: false, error: err.message || 'Login connection error' };
     }
   };
 
