@@ -24,7 +24,8 @@ import {
   Zap,
   Grid,
   History,
-  FolderOpen
+  FolderOpen,
+  Printer
 } from 'lucide-react';
 
 export const TransporterPortal = () => {
