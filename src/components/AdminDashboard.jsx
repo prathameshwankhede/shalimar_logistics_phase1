@@ -365,7 +365,6 @@ export const AdminDashboard = () => {
   const [adminCounterInputs, setAdminCounterInputs] = useState({});
   const [isSendingCounter, setIsSendingCounter] = useState({});
   const [editingCounterKeys, setEditingCounterKeys] = useState({});
-  const [batchMasterCounterRate, setBatchMasterCounterRate] = useState('');
   const [isSendingBatchCounter, setIsSendingBatchCounter] = useState(false);
 
   const [counterModalState, setCounterModalState] = useState({
@@ -559,22 +558,6 @@ export const AdminDashboard = () => {
     }
   };
 
-  // Quick helper to fill all rows in this opened batch with the master counter rate
-  const handleApplyMasterRateToAllRows = (childItems, reqId) => {
-    const rateVal = parseFloat(batchMasterCounterRate);
-    if (isNaN(rateVal) || rateVal <= 0) {
-      alert('Please enter a valid counter rate (₹ / MT) in the "Same Rate" box to apply to all rows.');
-      return;
-    }
-    const newInputs = { ...adminCounterInputs };
-    (childItems || []).forEach((item) => {
-      const subCode = item.sub_indent_no || item.id;
-      newInputs[`${reqId}_${item.id}`] = String(rateVal);
-      newInputs[`${reqId}_${subCode}`] = String(rateVal);
-    });
-    setAdminCounterInputs(newInputs);
-  };
-
   // 🚀 SEND ALL COUNTER OFFERS API HANDLER
   const handleSendAllBatchCounters = async (openedReq, childItems) => {
     if (!openedReq || !childItems || childItems.length === 0) return;
@@ -586,7 +569,7 @@ export const AdminDashboard = () => {
       const subCode = item.sub_indent_no || item.id;
       const cellKey1 = `${reqId}_${item.id}`;
       const cellKey2 = `${reqId}_${subCode}`;
-      const enteredVal = adminCounterInputs[cellKey1] || adminCounterInputs[cellKey2] || batchMasterCounterRate;
+      const enteredVal = adminCounterInputs[cellKey1] || adminCounterInputs[cellKey2];
       const rateNum = parseFloat(enteredVal);
       if (!isNaN(rateNum) && rateNum > 0) {
         itemsPayload.push({
@@ -598,7 +581,7 @@ export const AdminDashboard = () => {
     }
 
     if (itemsPayload.length === 0) {
-      alert('Please enter a Counter Rate for at least one row, or type a rate in the "Same Rate (₹/MT)" box.');
+      alert('Please enter a Counter Rate in the table row(s) before clicking Send All.');
       return;
     }
 
@@ -3372,87 +3355,16 @@ export const AdminDashboard = () => {
                           </table>
                         </div>
 
-                        {/* ⚡ BATCH COUNTER OFFER FOOTER TOOLBAR ("Send All" Button & Quick Multi-Row Controls) */}
+                        {/* 💬 "SEND ALL" BUTTON AT BOTTOM */}
                         <div
                           style={{
                             marginTop: '16px',
-                            background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)',
-                            border: '1.5px solid rgba(56, 189, 248, 0.4)',
-                            borderRadius: '14px',
-                            padding: '14px 20px',
                             display: 'flex',
-                            justifyContent: 'space-between',
+                            justifyContent: 'flex-end',
                             alignItems: 'center',
-                            flexWrap: 'wrap',
-                            gap: '14px',
-                            boxShadow: '0 8px 30px rgba(0, 0, 0, 0.35)'
+                            padding: '4px 0'
                           }}
                         >
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                              <span style={{ fontSize: '1.3rem' }}>⚡</span>
-                              <div>
-                                <div style={{ fontSize: '0.9rem', fontWeight: '900', color: '#f8fafc', letterSpacing: '0.02em' }}>
-                                  BATCH COUNTER OFFER CONTROL
-                                </div>
-                                <div style={{ fontSize: '0.74rem', color: '#94a3b8', fontWeight: '600' }}>
-                                  Enter rates above, or fill master rate below to broadcast all in 1-Click
-                                </div>
-                              </div>
-                            </div>
-
-                            {/* Quick fill all rows input */}
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginLeft: '6px' }}>
-                              <div style={{ position: 'relative' }}>
-                                <span style={{ position: 'absolute', left: '8px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8', fontWeight: '800', fontSize: '0.8rem', pointerEvents: 'none' }}>₹</span>
-                                <input
-                                  type="number"
-                                  placeholder="Same Rate (₹/MT)"
-                                  value={batchMasterCounterRate}
-                                  onChange={(e) => setBatchMasterCounterRate(e.target.value)}
-                                  onKeyDown={(e) => {
-                                    if (e.key === 'Enter') {
-                                      e.preventDefault();
-                                      handleApplyMasterRateToAllRows(childItems, openedReq.id || reqNoStr);
-                                    }
-                                  }}
-                                  style={{
-                                    width: '160px',
-                                    padding: '7px 10px 7px 22px',
-                                    fontSize: '0.85rem',
-                                    fontWeight: '800',
-                                    borderRadius: '8px',
-                                    border: '1.5px solid #38bdf8',
-                                    background: '#0f172a',
-                                    color: '#ffffff',
-                                    outline: 'none'
-                                  }}
-                                  title="Enter a single rate to auto-fill all items in this batch"
-                                />
-                              </div>
-                              <button
-                                type="button"
-                                onClick={() => handleApplyMasterRateToAllRows(childItems, openedReq.id || reqNoStr)}
-                                className="btn"
-                                style={{
-                                  background: 'rgba(56, 189, 248, 0.15)',
-                                  border: '1px solid #38bdf8',
-                                  color: '#38bdf8',
-                                  padding: '7px 14px',
-                                  fontSize: '0.8rem',
-                                  fontWeight: '800',
-                                  borderRadius: '8px',
-                                  cursor: 'pointer',
-                                  whiteSpace: 'nowrap'
-                                }}
-                                title="Auto-fill this rate into all rows above"
-                              >
-                                📋 Apply to All Rows
-                              </button>
-                            </div>
-                          </div>
-
-                          {/* 💬 SEND ALL BUTTON WITH API */}
                           <button
                             type="button"
                             onClick={() => handleSendAllBatchCounters(openedReq, childItems)}
@@ -3461,20 +3373,20 @@ export const AdminDashboard = () => {
                             style={{
                               background: isSendingBatchCounter ? '#0284c7' : 'linear-gradient(135deg, #0284c7 0%, #2563eb 100%)',
                               color: '#ffffff',
-                              border: '1.5px solid #60a5fa',
-                              padding: '11px 26px',
-                              fontSize: '0.94rem',
+                              border: '1.5px solid #38bdf8',
+                              padding: '12px 32px',
+                              fontSize: '0.96rem',
                               fontWeight: '900',
                               borderRadius: '10px',
                               cursor: isSendingBatchCounter ? 'wait' : 'pointer',
                               display: 'inline-flex',
                               alignItems: 'center',
-                              gap: '8px',
-                              boxShadow: '0 4px 18px rgba(37, 99, 235, 0.45)',
+                              gap: '10px',
+                              boxShadow: '0 4px 20px rgba(37, 99, 235, 0.45)',
                               opacity: isSendingBatchCounter ? 0.75 : 1,
                               transition: 'all 0.2s ease'
                             }}
-                            title="Click to send counter offers for all rows in this batch via API"
+                            title="Click to send counter offers for all filled rows via API"
                           >
                             <Send size={18} />
                             <span>
