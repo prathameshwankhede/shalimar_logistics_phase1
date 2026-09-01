@@ -6207,33 +6207,44 @@ router.post('/backup/clear', authenticateToken, requireRole('admin'), async (req
     await conn.beginTransaction();
     await conn.query('SET FOREIGN_KEY_CHECKS = 0');
 
-    const safeClearSequence = [
-      'transport_requirement_items',
-      'transport_requirements',
-      'contracts',
-      'rate_submissions',
-      'products',
-      'company_units_plants',
-      'transporters'
-    ];
+    // 1. Fetch all tables dynamically from MySQL
+    const [allTablesResult] = await conn.query('SHOW TABLES');
+    const dbTables = allTablesResult.map(row => Object.values(row)[0]);
 
-    for (const tbl of safeClearSequence) {
+    // 2. Clear all operational, transactional, and master tables
+    for (const tbl of dbTables) {
+      if (tbl === 'schema_migrations') {
+        // preserve migration history
+        continue;
+      }
+      if (tbl === 'users') {
+        // preserve admin user account, delete all non-admin / transporter accounts
+        await conn.query("DELETE FROM `users` WHERE role != 'admin' AND username != 'admin'").catch(err => {
+          console.warn(`Notice deleting non-admin users:`, err.message);
+        });
+        continue;
+      }
+
       await conn.query(`DELETE FROM \`${tbl}\``).catch(err => {
-        if (err.code !== 'ER_NO_SUCH_TABLE') {
-          console.warn(`Notice clearing ${tbl}:`, err.message);
-        }
+        console.warn(`Notice clearing table ${tbl}:`, err.message);
       });
+
+      // Reset auto_increment to 1
+      await conn.query(`ALTER TABLE \`${tbl}\` AUTO_INCREMENT = 1`).catch(() => {});
     }
 
-    await conn.query("DELETE FROM users WHERE role != 'admin' AND username != 'admin'").catch(() => {});
+    // 3. Reset LR sequence counter
+    await conn.query(`INSERT INTO lr_sequences (id, prefix, current_sequence, year_prefix) VALUES (1, 'LR', 0, '26-27') ON DUPLICATE KEY UPDATE current_sequence = 0`).catch(() => {});
 
     await conn.query('SET FOREIGN_KEY_CHECKS = 1');
     await conn.commit();
     conn.release();
 
+    console.log('✅ [DATABASE_WIPE] All operational tables (requirements, dispatches, authorizations, bids, products, units) completely cleared from MySQL database.');
+
     return res.json({
       success: true,
-      message: 'All operational data successfully cleared from MySQL database. System admin account preserved.'
+      message: 'All operational data (requirements, bids, dispatches, authorizations, allocations, products, units) successfully cleared from MySQL database. System admin account preserved.'
     });
   } catch (err) {
     await conn.query('SET FOREIGN_KEY_CHECKS = 1').catch(() => {});
