@@ -1,13 +1,15 @@
 // src/components/ParticularBidReportModal.jsx
 // Clean Batch & Requirement "COMPARATIVE FREIGHT RATE STATEMENT" (Phase 1 Modern Schema) 📑📊✨
 
-import React from 'react';
+import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { X, Printer, Download, ShieldCheck, FileSpreadsheet, Building2, MapPin, Truck, CheckCircle2 } from 'lucide-react';
+import { X, Printer, Download, ShieldCheck, FileSpreadsheet, Building2, MapPin, Truck, CheckCircle2, Clock } from 'lucide-react';
 import { SHALIMAR_LOGO_BASE64 } from '../assets/logoBase64';
+import { exportComparativeStatementExcel } from '../utils/exportComparativeStatementExcel';
 
 export const ParticularBidReportModal = ({ rateRequest, isOpen, onClose }) => {
   const { db } = useAuth();
+  const [isExportingExcel, setIsExportingExcel] = useState(false);
 
   if (!isOpen || !rateRequest) return null;
 
@@ -364,6 +366,46 @@ export const ParticularBidReportModal = ({ rateRequest, isOpen, onClose }) => {
     document.body.removeChild(link);
   };
 
+  // 🚚 DISPATCH & LIFTING CHRONICLE CALCULATIONS ("Pehle vs Baad me vs Remaining")
+  const relevantDispatches = (db?.truck_dispatches || []).filter((d) => {
+    if (!d) return false;
+    const matchReqId = String(d.requirement_id || '') === String(rateRequest.id);
+    const matchReqNo = reqNoStr && (
+      String(d.req_no || '') === String(reqNoStr) ||
+      String(d.sub_indent_no || '').startsWith(String(reqNoStr)) ||
+      String(d.requirement_id || '') === String(reqNoStr)
+    );
+    return matchReqId || matchReqNo;
+  }).sort((a, b) => new Date(a.dispatched_at || 0) - new Date(b.dispatched_at || 0));
+
+  const totalDispatchedQty = relevantDispatches.reduce(
+    (acc, d) => acc + (Number(d.loaded_quantity_mt ?? d.dispatched_qty ?? d.loaded_qty) || 0),
+    0
+  );
+  const remainingBalanceQty = Math.max(0, totalVolumeMT - totalDispatchedQty);
+
+  // 📥 1-CLICK EXECUTIVE EXCEL WORKBOOK EXPORT (.xlsx)
+  const handleExportExcel = async () => {
+    try {
+      setIsExportingExcel(true);
+      await exportComparativeStatementExcel({
+        rateRequest,
+        routeRows,
+        transporterColumns,
+        submissions: db?.rate_submissions || [],
+        allocations: db?.allocations || [],
+        dispatches: db?.truck_dispatches || [],
+        company: companyInfo,
+        statementTypeLabel
+      });
+    } catch (err) {
+      console.warn('Executive Excel export failed, falling back to CSV:', err);
+      handleExportCSV();
+    } finally {
+      setIsExportingExcel(false);
+    }
+  };
+
   return (
     <div
       className="modal-overlay"
@@ -438,24 +480,28 @@ export const ParticularBidReportModal = ({ rateRequest, isOpen, onClose }) => {
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <button
               type="button"
-              onClick={handleExportCSV}
+              onClick={handleExportExcel}
+              disabled={isExportingExcel}
               className="btn"
               style={{
-                background: '#059669',
+                background: 'linear-gradient(135deg, #059669 0%, #047857 100%)',
                 color: '#ffffff',
                 border: 'none',
-                padding: '9px 16px',
+                padding: '9px 18px',
                 fontSize: '0.82rem',
                 fontWeight: '800',
                 borderRadius: '8px',
-                cursor: 'pointer',
+                cursor: isExportingExcel ? 'wait' : 'pointer',
                 display: 'flex',
                 alignItems: 'center',
                 gap: '6px',
-                boxShadow: '0 2px 6px rgba(5, 150, 105, 0.3)'
+                boxShadow: '0 4px 14px rgba(5, 150, 105, 0.35)',
+                opacity: isExportingExcel ? 0.7 : 1
               }}
+              title="Download High-Definition Executive Excel (.xlsx) with Lifting Audit"
             >
-              <Download size={16} /> Export Batch CSV
+              <FileSpreadsheet size={16} />
+              {isExportingExcel ? 'Generating Excel (.xlsx)...' : 'Export Executive Excel (.xlsx) 📊'}
             </button>
             <button
               type="button"
@@ -714,6 +760,150 @@ export const ParticularBidReportModal = ({ rateRequest, isOpen, onClose }) => {
                 })}
               </tbody>
             </table>
+          </div>
+
+          {/* ----------------------------------------------------
+             🚚 SECTION 2: MATERIAL LIFTING & DISPATCH CHRONICLE
+             ("Kisne kitna load kiya, pehle vs baad me vs remaining")
+          ---------------------------------------------------- */}
+          <div style={{ marginBottom: '24px' }}>
+            <div
+              style={{
+                background: '#f0f9ff',
+                border: '1.5px solid #bae6fd',
+                borderRadius: '12px',
+                padding: '16px 20px',
+                marginBottom: '14px',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                flexWrap: 'wrap',
+                gap: '12px'
+              }}
+            >
+              <div>
+                <h4 style={{ fontSize: '1.05rem', fontWeight: '900', color: '#0369a1', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Truck size={20} color="#0284c7" /> Material Lifting & Dispatch Chronicle
+                </h4>
+                <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: '3px' }}>
+                  Audit log of which transporter loaded how much cargo, initial dispatch (pehle) vs subsequent dispatches (baad me), and remaining balance tracking.
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                <div style={{ background: '#ffffff', border: '1px solid #bae6fd', borderRadius: '8px', padding: '6px 14px', textAlign: 'center' }}>
+                  <div style={{ fontSize: '0.68rem', color: '#64748b', fontWeight: '700' }}>TOTAL ORDER</div>
+                  <div style={{ fontSize: '0.95rem', fontWeight: '900', color: '#0f172a' }}>{totalVolumeMT.toFixed(3)} MT</div>
+                </div>
+
+                <div style={{ background: '#ffffff', border: '1px solid #7dd3fc', borderRadius: '8px', padding: '6px 14px', textAlign: 'center' }}>
+                  <div style={{ fontSize: '0.68rem', color: '#0284c7', fontWeight: '700' }}>TOTAL LIFTED</div>
+                  <div style={{ fontSize: '0.95rem', fontWeight: '900', color: '#0284c7' }}>{totalDispatchedQty.toFixed(3)} MT</div>
+                </div>
+
+                <div style={{ background: '#ffffff', border: `1px solid ${remainingBalanceQty <= 0.001 ? '#86efac' : '#fde047'}`, borderRadius: '8px', padding: '6px 14px', textAlign: 'center' }}>
+                  <div style={{ fontSize: '0.68rem', color: remainingBalanceQty <= 0.001 ? '#15803d' : '#b45309', fontWeight: '700' }}>REMAINING BALANCE</div>
+                  <div style={{ fontSize: '0.95rem', fontWeight: '900', color: remainingBalanceQty <= 0.001 ? '#15803d' : '#b45309' }}>
+                    {remainingBalanceQty.toFixed(3)} MT
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {relevantDispatches.length > 0 ? (
+              <div style={{ overflowX: 'auto', border: '1.5px solid #bae6fd', borderRadius: '12px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05)' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem', fontFamily: 'sans-serif' }}>
+                  <thead>
+                    <tr style={{ background: '#0f172a', color: '#ffffff' }}>
+                      <th style={{ padding: '10px 12px', textAlign: 'center', fontWeight: '800', width: '140px' }}>STAGE / PHASE</th>
+                      <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: '800', minWidth: '150px' }}>LR NUMBER</th>
+                      <th style={{ padding: '10px 12px', textAlign: 'center', fontWeight: '800', width: '110px' }}>DISPATCH DATE</th>
+                      <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: '800', minWidth: '150px' }}>TRANSPORTER (VENDOR)</th>
+                      <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: '800', minWidth: '120px' }}>TRUCK NO.</th>
+                      <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: '800', minWidth: '140px' }}>DRIVER & MOBILE</th>
+                      <th style={{ padding: '10px 12px', textAlign: 'center', fontWeight: '800', width: '120px' }}>LOADED QTY</th>
+                      <th style={{ padding: '10px 12px', textAlign: 'center', fontWeight: '800', width: '100px' }}>RATE / MT</th>
+                      <th style={{ padding: '10px 12px', textAlign: 'right', fontWeight: '800', width: '120px' }}>FREIGHT (₹)</th>
+                      <th style={{ padding: '10px 12px', textAlign: 'right', fontWeight: '800', width: '130px' }}>CUMULATIVE (MT)</th>
+                      <th style={{ padding: '10px 12px', textAlign: 'right', fontWeight: '800', width: '130px' }}>REMAINING (MT)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(() => {
+                      let cumul = 0;
+                      return relevantDispatches.map((d, idx) => {
+                        const qty = Number(d.loaded_quantity_mt ?? d.dispatched_qty ?? d.loaded_qty) || 0;
+                        const rate = Number(d.finalized_rate ?? d.freight_rate) || 0;
+                        const gross = Math.round(qty * rate * 100) / 100;
+                        cumul += qty;
+                        const rem = Math.max(0, totalVolumeMT - cumul);
+
+                        const isFirst = idx === 0;
+                        const dateStr = d.dispatched_at
+                          ? new Date(d.dispatched_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+                          : '-';
+
+                        return (
+                          <tr key={d.id || idx} style={{ background: idx % 2 === 0 ? '#ffffff' : '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+                            <td style={{ padding: '10px 12px', textAlign: 'center' }}>
+                              <span
+                                style={{
+                                  fontSize: '0.72rem',
+                                  fontWeight: '900',
+                                  padding: '3px 8px',
+                                  borderRadius: '6px',
+                                  background: isFirst ? '#e0f2fe' : '#dcfce7',
+                                  color: isFirst ? '#0369a1' : '#15803d',
+                                  border: `1px solid ${isFirst ? '#7dd3fc' : '#86efac'}`
+                                }}
+                              >
+                                {isFirst ? '1st Dispatch (Pehle)' : `${idx + 1}th Dispatch (Baad me)`}
+                              </span>
+                            </td>
+                            <td style={{ padding: '10px 12px', fontFamily: 'monospace', fontWeight: '800', color: '#0284c7' }}>
+                              {d.lr_number || d.lr_no || d.id}
+                            </td>
+                            <td style={{ padding: '10px 12px', textAlign: 'center', fontSize: '0.78rem', color: '#475569' }}>
+                              {dateStr}
+                            </td>
+                            <td style={{ padding: '10px 12px', fontWeight: '800', color: '#0f172a' }}>
+                              {d.transporter_name || 'Vendor'}
+                              <span style={{ fontSize: '0.7rem', color: '#64748b', marginLeft: '4px' }}>({d.transporter_code})</span>
+                            </td>
+                            <td style={{ padding: '10px 12px', fontWeight: '800', color: '#0f172a' }}>
+                              {d.truck_number || d.truck_no}
+                            </td>
+                            <td style={{ padding: '10px 12px', fontSize: '0.78rem' }}>
+                              <div style={{ fontWeight: '700', color: '#0f172a' }}>{d.driver_name || 'Driver'}</div>
+                              <div style={{ color: '#64748b', fontFamily: 'monospace', fontSize: '0.72rem' }}>{d.driver_mobile || '-'}</div>
+                            </td>
+                            <td style={{ padding: '10px 12px', textAlign: 'center', fontWeight: '900', color: '#059669', fontSize: '0.88rem' }}>
+                              {qty} MT
+                            </td>
+                            <td style={{ padding: '10px 12px', textAlign: 'center', fontWeight: '800', color: '#0f172a' }}>
+                              ₹{rate}
+                            </td>
+                            <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: '800', color: '#0f172a' }}>
+                              ₹{gross.toLocaleString()}
+                            </td>
+                            <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: '800', color: '#0284c7' }}>
+                              {cumul.toFixed(3)} MT
+                            </td>
+                            <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: '900', color: rem <= 0.001 ? '#059669' : '#d97706' }}>
+                              {rem.toFixed(3)} MT
+                            </td>
+                          </tr>
+                        );
+                      });
+                    })()}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div style={{ background: '#f8fafc', border: '1px dashed #cbd5e1', borderRadius: '12px', padding: '24px', textAlign: 'center', color: '#64748b', fontSize: '0.84rem' }}>
+                ⏳ <strong>No truck dispatches recorded yet for this requirement.</strong> Once the winning transporter dispatches trucks, full loading chronicle (pehle vs baad me vs remaining) will appear here.
+              </div>
+            )}
           </div>
 
           {/* Statement Audit Seal & Signature Footer */}
