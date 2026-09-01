@@ -446,7 +446,7 @@ export const AdminDashboard = () => {
       const itemId = item.id || item.sub_indent_no;
       const res = await releaseRemainingForRequote(reqId, itemId, reason, finalQty);
       if (res && res.success) {
-        alert(`✅ Successfully released ${finalQty} MT for fresh quotation. New Sub-Indent ${res.replacement_sub_indent_no} created.`);
+        alert(`✅ Successfully released ${finalQty} MT for fresh quotation on ${res.sub_indent_no || res.replacement_sub_indent_no || ''}.`);
         setReleaseRequoteModal({ isOpen: false, req: null, item: null, totalQty: 0, dispatchedQty: 0, remainingQty: 0, customQty: 0, reason: '', isSubmitting: false });
         if (typeof safeRefreshRequirements === 'function') {
           await safeRefreshRequirements();
@@ -3200,9 +3200,13 @@ export const AdminDashboard = () => {
                                     String(s.item_id) === String((subIdx + 1).toString().padStart(2, '0'))
                                   );
                                 });
-                                const validRates = bids.map(b => parseFloat(b.rate_per_mt || b.rate_per_unit || 0)).filter(r => r > 0);
+                                const isItemRequote = item.remaining_action === 'REQUOTE';
+                                const activeBids = isItemRequote
+                                  ? bids.filter(s => !s.is_previous_cycle && s.bid_status !== 'PREVIOUS_CYCLE')
+                                  : bids;
+                                const validRates = activeBids.map(b => parseFloat(b.rate_per_mt || b.rate_per_unit || 0)).filter(r => r > 0);
                                 const lowestRate = validRates.length > 0 ? Math.min(...validRates) : null;
-                                const bidsCount = bids.length;
+                                const bidsCount = activeBids.length;
                                 const alloc = (db.allocations || []).find((a) => String(a.requirement_id) === String(openedReq.id) || String(a.req_no) === String(reqNoStr));
                                 const awardedTransporter = alloc ? (alloc.transporter_name || alloc.transporter_id) : openedReq.awarded_transporter;
 
@@ -3217,9 +3221,9 @@ export const AdminDashboard = () => {
                                   ? Number(item.remaining_quantity_mt)
                                   : Math.max(0, totalItemQty - itemDispatchedQty);
 
-                                const isReleasedForRequote = item.dispatch_status === 'RELEASED_FOR_REQUOTE' || item.allocation_status === 'RELEASED_FOR_REQUOTE';
-                                const isPartiallyDispatched = !isReleasedForRequote && (item.dispatch_status === 'PARTIALLY_DISPATCHED' || (itemDispatchedQty > 0 && itemRemainingQty > 0));
-                                const isFullyDispatched = !isReleasedForRequote && (item.dispatch_status === 'FULLY_DISPATCHED' || (itemDispatchedQty > 0 && itemRemainingQty <= 0));
+                                const isReleasedForRequote = !isItemRequote && (item.dispatch_status === 'RELEASED_FOR_REQUOTE' || item.allocation_status === 'RELEASED_FOR_REQUOTE');
+                                const isPartiallyDispatched = !isReleasedForRequote && !isItemRequote && (item.dispatch_status === 'PARTIALLY_DISPATCHED' || (itemDispatchedQty > 0 && itemRemainingQty > 0));
+                                const isFullyDispatched = !isReleasedForRequote && !isItemRequote && (item.dispatch_status === 'FULLY_DISPATCHED' || (itemDispatchedQty > 0 && itemRemainingQty <= 0));
 
                                 return (
                                   <tr key={item.id || subIdx} style={{ background: subIdx % 2 === 0 ? '#0f172a' : '#1e293b', borderBottom: '1px solid rgba(255, 255, 255, 0.05)' }}>
@@ -3346,7 +3350,41 @@ export const AdminDashboard = () => {
                                     </td>
 
                                     <td className="finalize-rate-cell" style={{ padding: '14px 16px', textAlign: 'center' }}>
-                                      {isPartiallyDispatched ? (
+                                      {isItemRequote ? (
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', alignItems: 'center' }}>
+                                          <div style={{ fontSize: '0.74rem', color: '#fbbf24', fontWeight: '800' }}>
+                                            Remaining: {itemRemainingQty} MT (Re-Quote)
+                                          </div>
+                                          {bidsCount > 0 ? (
+                                            <button
+                                              type="button"
+                                              tabIndex={-1}
+                                              className="finalize-rate-btn btn btn-primary"
+                                              onClick={() => handleFinalizeRateForItem(openedReq, item, subCode, activeBids)}
+                                              disabled={isFinalizingKey === `${openedReq.id || reqNoStr}_${item.id || subCode}`}
+                                              style={{
+                                                padding: '6px 14px',
+                                                fontSize: '0.76rem',
+                                                fontWeight: '900',
+                                                background: 'linear-gradient(135deg, #059669 0%, #10b981 100%)',
+                                                border: '1px solid #34d399',
+                                                boxShadow: '0 2px 8px rgba(16, 185, 129, 0.35)',
+                                                color: '#ffffff',
+                                                borderRadius: '6px',
+                                                cursor: 'pointer',
+                                                whiteSpace: 'nowrap'
+                                              }}
+                                              title="Finalize agreed rate for remaining quantity"
+                                            >
+                                              🏅 Finalize Rate ({bidsCount})
+                                            </button>
+                                          ) : (
+                                            <span style={{ fontSize: '0.72rem', color: '#94a3b8', fontStyle: 'italic', background: 'rgba(245, 158, 11, 0.15)', padding: '3px 8px', borderRadius: '4px', border: '1px solid rgba(245, 158, 11, 0.3)' }}>
+                                              🔄 Awaiting Quotes ({itemRemainingQty} MT)
+                                            </span>
+                                          )}
+                                        </div>
+                                      ) : isPartiallyDispatched ? (
                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', alignItems: 'center' }}>
                                           <div style={{ fontSize: '0.74rem', color: '#fbbf24', fontWeight: '800' }}>
                                             Remaining: {itemRemainingQty} MT
@@ -5894,7 +5932,7 @@ export const AdminDashboard = () => {
                 <span style={{ color: '#16a34a', fontWeight: '900', marginRight: '8px', fontSize: '1.1rem' }}>✓</span> Preserve existing truck and LR history
               </div>
               <div style={{ color: '#0f172a', fontWeight: '800', marginBottom: '6px' }}>
-                <span style={{ color: '#16a34a', fontWeight: '900', marginRight: '8px', fontSize: '1.1rem' }}>✓</span> Create a new Sub-Indent for <strong style={{ color: '#0369a1', fontSize: '1.05rem', background: '#e0f2fe', padding: '2px 8px', borderRadius: '6px', border: '1.5px solid #0284c7' }}>{releaseRequoteModal.customQty !== undefined ? releaseRequoteModal.customQty : releaseRequoteModal.remainingQty} MT</strong>
+                <span style={{ color: '#16a34a', fontWeight: '900', marginRight: '8px', fontSize: '1.1rem' }}>✓</span> Re-quote remaining balance on this Sub-Indent for <strong style={{ color: '#0369a1', fontSize: '1.05rem', background: '#e0f2fe', padding: '2px 8px', borderRadius: '6px', border: '1.5px solid #0284c7' }}>{releaseRequoteModal.customQty !== undefined ? releaseRequoteModal.customQty : releaseRequoteModal.remainingQty} MT</strong>
               </div>
               <div style={{ color: '#0f172a', fontWeight: '800', marginBottom: '6px' }}>
                 <span style={{ color: '#16a34a', fontWeight: '900', marginRight: '8px', fontSize: '1.1rem' }}>✓</span> Open fresh bidding for eligible transporters

@@ -1403,6 +1403,10 @@ async function handleCreateRateSubmission(req, res) {
        total_amount = VALUES(total_amount),
        remarks = VALUES(remarks),
        bid_status = 'SUBMITTED',
+       is_finalized = 0,
+       final_rate = NULL,
+       finalized_rate = NULL,
+       is_previous_cycle = 0,
        updated_at = NOW()`,
       [subId, actualReqId, actualItemId, actualTransId, rateVal, rateVal, qtyVal, totalAmount, rem]
     );
@@ -1633,6 +1637,10 @@ async function handleCreateBatchRateSubmissions(req, res) {
          remarks = VALUES(remarks),
          organization_id = VALUES(organization_id),
          bid_status = 'SUBMITTED',
+         is_finalized = 0,
+         final_rate = NULL,
+         finalized_rate = NULL,
+         is_previous_cycle = 0,
          updated_at = NOW()`,
         [subId, actualReqId, actualItemId, actualTransId, orgId, rateVal, rateVal, qtyVal, totalAmount, rem]
       );
@@ -2495,6 +2503,7 @@ async function handleFinalizeBid(req, res) {
       await pool.query(
         `UPDATE transport_requirement_items
          SET dispatch_status = 'AWAITING_ACCEPTANCE',
+             remaining_action = NULL,
              updated_at = NOW()
          WHERE requirement_id = ? AND (id = ? OR sub_indent_no = ? OR sub_indent_no LIKE ?)`,
         [sub.requirement_id, sub.item_id, sub.item_id, `%/${sub.item_id}`]
@@ -3566,77 +3575,53 @@ async function handleReleaseRemainingForRequote(req, res) {
       });
     }
 
-    // 7. Concurrency-Safe Next Sub-Indent Number Generation
-    const [allItems] = await conn.query(
-      `SELECT id, sub_indent_no FROM transport_requirement_items WHERE requirement_id = ? FOR UPDATE`,
-      [actualReqId]
-    );
+    // 7. Calculate new total item quantity and extra quantity if increased
+    const extraQty = targetReleaseQty > remainingQty ? parseFloat((targetReleaseQty - remainingQty).toFixed(3)) : 0;
+    const newTotalItemQty = parseFloat((totalDispatched + targetReleaseQty).toFixed(3));
+    const currentSubIndentNo = originalItem.sub_indent_no || `${parentReq.req_no || actualReqId}/01`;
 
-    let maxSeq = 0;
-    allItems.forEach((i) => {
-      const match = String(i.sub_indent_no || '').match(/\/(\d+)$/);
-      if (match) {
-        const num = parseInt(match[1], 10);
-        if (!isNaN(num) && num > maxSeq) maxSeq = num;
-      }
-    });
-    if (maxSeq === 0) maxSeq = allItems.length;
-    const nextSeq = maxSeq + 1;
-    const nextSeqStr = String(nextSeq).padStart(2, '0');
-    const parentReqNo = parentReq.req_no || actualReqId;
-    const newSubIndentNo = `${parentReqNo}/${nextSeqStr}`;
-    const replacementItemId = `item_${actualReqId.replace(/[^a-zA-Z0-9_]/g, '')}_${nextSeqStr}_${Math.random().toString(36).substring(2, 6)}`;
-
-    // 8. Update Original Item: Mark RELEASED_FOR_REQUOTE and close remaining allocation
+    // 8. Update Original Item: Keep the SAME sub-indent, update remaining & total quantity, and reopen for fresh quotes!
     await conn.query(
       `UPDATE transport_requirement_items
-       SET dispatch_status = 'RELEASED_FOR_REQUOTE',
-           allocation_status = 'RELEASED_FOR_REQUOTE',
-           remaining_action = 'REQUOTE',
+       SET quantity_mt = ?,
+           remaining_quantity_mt = ?,
            dispatched_quantity_mt = ?,
-           remaining_quantity_mt = 0,
+           dispatch_status = 'PARTIALLY_DISPATCHED',
+           allocation_status = 'ACTIVE',
+           remaining_action = 'REQUOTE',
            released_for_requote_at = NOW(),
            released_for_requote_by = ?,
            released_for_requote_reason = ?,
-           replacement_item_id = ?,
            updated_at = NOW()
        WHERE id = ?`,
-      [totalDispatched, req.user.username || 'admin', reason, replacementItemId, actualItemId]
+      [newTotalItemQty, targetReleaseQty, totalDispatched, req.user.username || 'admin', reason, actualItemId]
     );
 
-    // 9. Insert Replacement Requirement Item for the exact remaining quantity
-    const targetDateVal = originalItem.target_date || parentReq.target_date || new Date();
+    // 9. Mark previous winning bid cycle as PREVIOUS_CYCLE so fresh bids can be submitted and finalized on the remaining quantity
     await conn.query(
-      `INSERT INTO transport_requirement_items (
-         id, requirement_id, sub_indent_no, product_name, quantity_mt, unit,
-         pickup_origin, drop_location, hsn_code, target_date,
-         dispatch_status, allocation_status, remaining_quantity_mt, dispatched_quantity_mt,
-         source_item_id, created_at, updated_at
-       ) VALUES (
-         ?, ?, ?, ?, ?, ?,
-         ?, ?, ?, ?,
-         'PENDING', 'ACTIVE', ?, 0,
-         ?, NOW(), NOW()
-       )`,
-      [
-        replacementItemId,
-        actualReqId,
-        newSubIndentNo,
-        originalItem.product_name,
-        targetReleaseQty,
-        originalItem.unit || 'MT',
-        originalItem.pickup_origin || parentReq.pickup_origin,
-        originalItem.drop_location || parentReq.drop_location,
-        originalItem.hsn_code || '',
-        targetDateVal,
-        targetReleaseQty,
-        actualItemId
-      ]
-    );
+      `UPDATE rate_submissions
+       SET is_previous_cycle = 1,
+           bid_status = 'PREVIOUS_CYCLE'
+       WHERE requirement_id = ? AND (item_id = ? OR item_id = 'MAIN') AND is_finalized = 1`,
+      [actualReqId, actualItemId]
+    ).catch(() => {});
+
+    await conn.query(
+      `UPDATE transporter_item_allocations
+       SET acceptance_status = 'SUPERSEDED_BY_REQUOTE'
+       WHERE requirement_id = ? AND (requirement_item_id = ? OR requirement_item_id = 'MAIN')`,
+      [actualReqId, actualItemId]
+    ).catch(() => {});
+
+    await conn.query(
+      `UPDATE requirement_dispatch_authorizations
+       SET authorization_status = 'SUPERSEDED_BY_REQUOTE'
+       WHERE requirement_id = ? AND (requirement_item_id = ? OR requirement_item_id = 'MAIN')`,
+      [actualReqId, actualItemId]
+    ).catch(() => {});
 
     // 10. Update Parent Requirement total quantity if increased
-    if (targetReleaseQty > remainingQty) {
-      const extraQty = targetReleaseQty - remainingQty;
+    if (extraQty > 0) {
       await conn.query(
         `UPDATE transport_requirements 
          SET total_quantity_mt = total_quantity_mt + ?,
@@ -3664,7 +3649,7 @@ async function handleReleaseRemainingForRequote(req, res) {
        VALUES (?, ?, ?, 'admin', ?, 'REQUOTE_RELEASED 🔄', NOW())`,
       [
         auditId,
-        `REMAINING_QUANTITY_RELEASED_FOR_REQUOTE (Orig: ${originalItem.sub_indent_no || actualItemId}, Released: ${targetReleaseQty} MT -> New: ${newSubIndentNo})`,
+        `REMAINING_QUANTITY_RELEASED_FOR_REQUOTE (Sub-Indent: ${currentSubIndentNo}, Released: ${targetReleaseQty} MT, Total: ${newTotalItemQty} MT)`,
         req.user.username || 'admin',
         clientIp
       ]
@@ -3675,13 +3660,16 @@ async function handleReleaseRemainingForRequote(req, res) {
 
     return res.json({
       success: true,
-      message: `Successfully released ${targetReleaseQty} MT for fresh quotation. New Sub-Indent ${newSubIndentNo} created.`,
+      message: `Successfully released ${targetReleaseQty} MT for fresh quotation on ${currentSubIndentNo}.`,
+      sub_indent_no: currentSubIndentNo,
+      replacement_sub_indent_no: currentSubIndentNo,
+      item_id: actualItemId,
       original_item_id: actualItemId,
-      original_sub_indent_no: originalItem.sub_indent_no,
+      original_sub_indent_no: currentSubIndentNo,
       dispatched_quantity_mt: totalDispatched,
       released_quantity_mt: targetReleaseQty,
-      replacement_item_id: replacementItemId,
-      replacement_sub_indent_no: newSubIndentNo
+      remaining_quantity_mt: targetReleaseQty,
+      total_quantity_mt: newTotalItemQty
     });
   } catch (err) {
     if (conn) {

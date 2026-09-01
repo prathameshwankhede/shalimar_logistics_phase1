@@ -375,6 +375,9 @@ export const TransporterPortal = () => {
 
     return submissionsList.find((bid) => {
       if (!bid) return false;
+      if (req?.is_requote && (bid.is_previous_cycle || bid.bid_status === 'PREVIOUS_CYCLE')) {
+        return false;
+      }
 
       const bidTransporterKeys = [
         bid.transporter_id,
@@ -755,15 +758,17 @@ export const TransporterPortal = () => {
           canDispatch = false;
         }
 
+        const isItemRequote = item.remaining_action === 'REQUOTE';
         const isPartiallyDispatchedWithRemaining = fixedRate !== null && totalDispatched > 0 && remQty > 0;
 
         // If normal finalized item with NO partial dispatch yet, only winning transporter can see it.
         // But if partially dispatched with remaining balance (e.g. 25 MT left), all eligible transporters can see it to accept!
-        if (fixedRate !== null && !isPartiallyDispatchedWithRemaining && !isWinningTransporter && !isCurrentTransporterAssigned && !isOpenCounterDispatch) {
+        // If released for re-quote, all eligible transporters can see it to submit fresh quotes!
+        if (fixedRate !== null && !isPartiallyDispatchedWithRemaining && !isWinningTransporter && !isCurrentTransporterAssigned && !isOpenCounterDispatch && !isItemRequote) {
           return;
         }
 
-        const isFixedRateAllocation = fixedRate !== null;
+        const isFixedRateAllocation = fixedRate !== null && !isItemRequote;
 
         openRateRequests.push({
           ...parentReq,
@@ -797,19 +802,19 @@ export const TransporterPortal = () => {
           is_reopened: Boolean(item.source_item_id),
           is_fixed_rate_allocation: isFixedRateAllocation,
           is_open_counter_dispatch: isOpenCounterDispatch,
-          can_dispatch: canDispatch,
+          can_dispatch: isItemRequote ? false : canDispatch,
           auth_status: authStatus,
           allocation_role: allocationRole,
           allocation_status: allocationStatus,
-          is_winning_transporter: isWinningTransporter,
-          is_awarded_to_other: Boolean(fixedRate !== null && !isWinningTransporter && !canDispatch && !isOpenCounterDispatch),
-          winning_transporter_id: winningTransporterId,
-          fixed_rate: fixedRate,
-          finalized_rate: fixedRate,
-          finalized_bid: myWinningBid || (fixedRate ? { final_rate: fixedRate, acceptance_status: 'ACCEPTED' } : null),
+          is_winning_transporter: isItemRequote ? false : isWinningTransporter,
+          is_awarded_to_other: isItemRequote ? false : Boolean(fixedRate !== null && !isWinningTransporter && !canDispatch && !isOpenCounterDispatch),
+          winning_transporter_id: isItemRequote ? null : winningTransporterId,
+          fixed_rate: isItemRequote ? null : fixedRate,
+          finalized_rate: isItemRequote ? null : fixedRate,
+          finalized_bid: isItemRequote ? null : (myWinningBid || (fixedRate ? { final_rate: fixedRate, acceptance_status: 'ACCEPTED' } : null)),
           rate_editable: false,
-          requires_new_bid: !isFixedRateAllocation && fixedRate === null,
-          is_requote: false
+          requires_new_bid: (!isFixedRateAllocation && fixedRate === null) || isItemRequote,
+          is_requote: isItemRequote
         });
       });
     } else {
@@ -2543,7 +2548,23 @@ export const TransporterPortal = () => {
                                                       }}>
                                                         {displayCode}
                                                       </div>
-                                                      {req.source_item_id && (
+                                                      {req.is_requote ? (
+                                                        <span className="badge badge-warning" style={{
+                                                          fontSize: '0.7rem',
+                                                          background: '#fef3c7',
+                                                          color: '#b45309',
+                                                          border: '1px solid #f59e0b',
+                                                          padding: '2px 6px',
+                                                          borderRadius: '4px',
+                                                          fontWeight: '800',
+                                                          display: 'inline-flex',
+                                                          alignItems: 'center',
+                                                          gap: '3px',
+                                                          marginTop: '2px'
+                                                        }}>
+                                                          🔄 RE-QUOTE REMAINING ({req.required_qty} MT)
+                                                        </span>
+                                                      ) : req.source_item_id && (
                                                         <span className="badge badge-warning" style={{
                                                           fontSize: '0.7rem',
                                                           background: '#fef3c7',
@@ -2878,7 +2899,23 @@ export const TransporterPortal = () => {
 
                           <td>
                             <div style={{ fontWeight: '700', color: '#ffffff', fontSize: '0.92rem' }}>{displayCode}</div>
-                            {req.is_fixed_rate_allocation ? (
+                            {req.is_requote ? (
+                              <span className="badge badge-warning" style={{
+                                fontSize: '0.7rem',
+                                background: '#fef3c7',
+                                color: '#b45309',
+                                border: '1px solid #f59e0b',
+                                padding: '2px 6px',
+                                borderRadius: '4px',
+                                fontWeight: '800',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '3px',
+                                marginTop: '2px'
+                              }}>
+                                🔄 RE-QUOTE REMAINING ({req.required_qty} MT)
+                              </span>
+                            ) : req.is_fixed_rate_allocation ? (
                               <span className="badge" style={{
                                 fontSize: '0.7rem',
                                 background: '#ecfdf5',
