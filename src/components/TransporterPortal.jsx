@@ -178,6 +178,7 @@ export const TransporterPortal = () => {
     }
   }, [activeTab]);
 
+  const [allocationFilter, setAllocationFilter] = useState('all'); // 'all', 'active', 'completed'
   const currentMonthInitial = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
   const [selectedMonth, setSelectedMonth] = useState(currentMonthInitial); // Dynamic month filter for statement
   const [isExportingExcel, setIsExportingExcel] = useState(false);
