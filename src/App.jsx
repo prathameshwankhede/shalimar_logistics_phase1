@@ -20,12 +20,12 @@ function MainApp() {
     }
   }, []);
 
-  // 1. Session Restoration Phase
-  if (authInitializing) {
+  // 1. Session Restoration Phase (only if no session found yet)
+  if (authInitializing && !currentUser) {
     return (
       <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: '#0a0f1d', color: '#f8fafc', fontFamily: 'Inter, sans-serif' }}>
-        <div style={{ width: '44px', height: '44px', border: '3px solid rgba(56, 189, 248, 0.2)', borderTop: '3px solid #38bdf8', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }}></div>
-        <p style={{ marginTop: '18px', fontSize: '1rem', fontWeight: 600, color: '#94a3b8', letterSpacing: '0.02em' }}>
+        <div style={{ width: '40px', height: '40px', border: '3px solid rgba(56, 189, 248, 0.2)', borderTop: '3px solid #38bdf8', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }}></div>
+        <p style={{ marginTop: '16px', fontSize: '0.95rem', fontWeight: 600, color: '#94a3b8' }}>
           Restoring secure session...
         </p>
       </div>
@@ -37,37 +37,24 @@ function MainApp() {
     return <LoginModal />;
   }
 
-  // 3. Initial Business Data Hydration Phase (Before Database Data Arrives)
-  if (isDataBootstrapping && (!db || !db._hasLoaded)) {
-    return (
-      <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: '#0a0f1d', color: '#f8fafc', fontFamily: 'Inter, sans-serif' }}>
-        <div style={{ width: '52px', height: '52px', border: '4px solid rgba(16, 185, 129, 0.2)', borderTop: '4px solid #10b981', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }}></div>
-        <h3 style={{ marginTop: '22px', fontSize: '1.25rem', fontWeight: 700, color: '#f1f5f9', letterSpacing: '-0.02em' }}>
-          Loading production data...
-        </h3>
-        <p style={{ marginTop: '6px', fontSize: '0.9rem', color: '#64748b' }}>
-          Hydrating live freight requirements, master commodities & plant directories
-        </p>
-        {bootstrapError && (
-          <div style={{ marginTop: '20px', padding: '16px 24px', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '8px', textAlign: 'center' }}>
-            <p style={{ color: '#fca5a5', fontSize: '0.9rem', margin: '0 0 12px 0' }}>
-              Connection delay: {bootstrapError}
-            </p>
-            <button
-              onClick={() => refreshDB()}
-              style={{ padding: '8px 20px', background: '#38bdf8', color: '#0f172a', border: 'none', borderRadius: '6px', fontWeight: 700, cursor: 'pointer', fontSize: '0.85rem' }}
-            >
-              🔄 Retry Data Load
-            </button>
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  // 4. Render Final Authenticated Application
+  // 3. Render Final Authenticated Application with Smooth Top Shimmer when hydrating
   return (
-    <div style={{ width: '100%', maxWidth: '100%', margin: '0', padding: '0 20px 40px 20px' }}>
+    <div style={{ width: '100%', maxWidth: '100%', margin: '0', padding: '0 20px 40px 20px', position: 'relative' }}>
+      {isDataBootstrapping && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            width: '100%',
+            height: '3px',
+            background: 'linear-gradient(90deg, #38bdf8, #10b981, #c084fc, #38bdf8)',
+            backgroundSize: '200% 100%',
+            animation: 'shimmerGradient 1.2s linear infinite',
+            zIndex: 100000
+          }}
+        />
+      )}
       <Navbar />
 
       <main>

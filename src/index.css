@@ -730,12 +730,23 @@ body {
 
 .modal-content {
   width: 100% !important;
-  max-width: 680px !important;
-  max-height: 90vh !important;
+  max-width: 680px;
+  max-height: 92vh !important;
   overflow-y: auto !important;
   margin: auto !important;
   border-radius: 20px !important;
   animation: modalPop 0.32s cubic-bezier(0.34, 1.56, 0.64, 1) forwards !important;
+}
+
+.modal-content.modal-wide,
+.modal-content.modal-report {
+  max-width: 1340px !important;
+  width: 95vw !important;
+}
+
+@keyframes shimmerGradient {
+  0% { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
 }
 
 @keyframes modalPop {
