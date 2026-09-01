@@ -1416,6 +1416,8 @@ export const AdminDashboard = () => {
   const [openedBatchKey, setOpenedBatchKey] = useState(null);
   const masterPickupRef = useRef(null);
   const dropLocationRefs = useRef({});
+  const isBroadcastingRef = useRef(false);
+  const [isBroadcasting, setIsBroadcasting] = useState(false);
 
   const toggleBatchExpand = (batchKey) => {
     setOpenedBatchKey((prev) => (prev === batchKey ? null : batchKey));
@@ -1550,6 +1552,8 @@ export const AdminDashboard = () => {
 
   const handleBulkBroadcastRequirements = async (e) => {
     if (e && e.preventDefault) e.preventDefault();
+    if (isBroadcastingRef.current) return;
+
     if (bulkReqRows.length > 50) {
       alert('🛑 MAXIMUM BATCH LIMIT EXCEEDED: A single batch broadcast can contain up to 50 cargo items.');
       return;
@@ -1613,108 +1617,117 @@ export const AdminDashboard = () => {
       }
     }
 
-    const defaultOrigin = masterPickupCity.trim();
-
-    const batchItems = bulkReqRows.map((row, i) => {
-      const prodVal = row.material_type.trim();
-      const qtyVal = parseFloat(row.required_qty);
-      const dateVal = (row.target_date || todayStr).trim() < todayStr ? todayStr : (row.target_date || todayStr).trim();
-      const matchedProd = (db.product_masters || []).find(
-        (p) => (p.name || '').trim().toLowerCase() === prodVal.toLowerCase()
-      );
-      const hsnCodeVal = matchedProd?.hsn_code || row.hsn_code || '15071000';
-
-      return {
-        product_name: prodVal,
-        quantity_mt: qtyVal,
-        unit: 'MT',
-        pickup_origin: row.origin_city.trim() || defaultOrigin,
-        drop_location: row.dest_city.trim(),
-        hsn_code: hsnCodeVal,
-        target_date: dateVal
-      };
-    });
-
-    const batchPayload = {
-      pickup_origin: batchItems[0].pickup_origin,
-      drop_location: batchItems[0].drop_location,
-      target_date: batchItems[0].target_date,
-      items: batchItems
-    };
-
-    let createdReq = null;
     try {
-      const apiRes = await createRequirement(batchPayload);
-      if (apiRes && apiRes.error) {
-        alert(`❌ Failed to save requirement to MySQL: ${typeof apiRes.error === 'string' ? apiRes.error : apiRes.error.message || 'Server error'}`);
+      isBroadcastingRef.current = true;
+      setIsBroadcasting(true);
+
+      const defaultOrigin = masterPickupCity.trim();
+
+      const batchItems = bulkReqRows.map((row, i) => {
+        const prodVal = row.material_type.trim();
+        const qtyVal = parseFloat(row.required_qty);
+        const dateVal = (row.target_date || todayStr).trim() < todayStr ? todayStr : (row.target_date || todayStr).trim();
+        const matchedProd = (db.product_masters || []).find(
+          (p) => (p.name || '').trim().toLowerCase() === prodVal.toLowerCase()
+        );
+        const hsnCodeVal = matchedProd?.hsn_code || row.hsn_code || '15071000';
+
+        return {
+          product_name: prodVal,
+          quantity_mt: qtyVal,
+          unit: 'MT',
+          pickup_origin: row.origin_city.trim() || defaultOrigin,
+          drop_location: row.dest_city.trim(),
+          hsn_code: hsnCodeVal,
+          target_date: dateVal
+        };
+      });
+
+      const batchPayload = {
+        pickup_origin: batchItems[0].pickup_origin,
+        drop_location: batchItems[0].drop_location,
+        target_date: batchItems[0].target_date,
+        items: batchItems
+      };
+
+      let createdReq = null;
+      try {
+        const apiRes = await createRequirement(batchPayload);
+        if (apiRes && apiRes.error) {
+          alert(`❌ Failed to save requirement to MySQL: ${typeof apiRes.error === 'string' ? apiRes.error : apiRes.error.message || 'Server error'}`);
+          return;
+        }
+        createdReq = apiRes.requirement || apiRes.data;
+      } catch (err) {
+        console.error('Direct rate requirement REST API error:', err.message);
+        alert(`❌ Error saving batch requirement: ${err.message}`);
         return;
       }
-      createdReq = apiRes.requirement || apiRes.data;
-    } catch (err) {
-      console.error('Direct rate requirement REST API error:', err.message);
-      alert(`❌ Error saving batch requirement: ${err.message}`);
-      return;
+
+      const batchCode = createdReq.req_no;
+
+      const newNotifications = [];
+      (db.transporters || []).forEach((transporter) => {
+        if (transporter.mobile) {
+          const notif = sendWhatsAppAlert({
+            db: db,
+            recipientPhone: transporter.mobile,
+            recipientName: transporter.company_name,
+            title: `🚨 New Freight Bid Broadcast: ${batchCode}`,
+            message: `🚨 *SHALIMAR LOGISTICS BID ALERT* 🚨\n\n📦 Batch: ${batchCode} (${batchItems.length} Items)\n📍 Route: ${createdReq.pickup_origin} ➔ ${createdReq.drop_location}\n⚖️ Volume: ${createdReq.total_quantity_mt || 0} MT\n📅 Target Date: ${createdReq.target_date}\n\nSubmit rates: ${typeof window !== 'undefined' ? window.location.origin : ''}/`
+          });
+          if (notif) newNotifications.push(notif);
+        }
+      });
+
+      const updatedDb = addSecurityLog(
+        {
+          ...db,
+          rate_requests: [createdReq, ...(db.rate_requests || []).filter((r) => r.id !== createdReq.id)],
+          transport_requirements: [createdReq, ...(db.transport_requirements || []).filter((r) => r.id !== createdReq.id)],
+          whatsapp_notifications: [...newNotifications, ...(db.whatsapp_notifications || [])]
+        },
+        `BULK_CREATE_RATE_REQUIREMENTS (${batchCode})`,
+        currentUser?.username || 'admin',
+        'admin',
+        `BATCH_BROADCAST (${batchCode} - ${batchItems.length} ITEMS) ⚡`
+      );
+
+      updateDB(updatedDb);
+
+      // Reset Bulk Form with 1 fresh row initialized for NEXT Batch
+      setBulkReqRows([createSingleReqRow(0)]);
+
+      // 📱 Open 1-Click WhatsApp Broadcast Modal Popup
+      setWhatsappModalData({
+        isOpen: true,
+        data: {
+          batchCode,
+          itemsCount: batchItems.length,
+          origin: createdReq.pickup_origin,
+          dest: createdReq.drop_location,
+          totalQty: createdReq.total_quantity_mt,
+          materialType: createdReq.product_name,
+          targetDate: createdReq.target_date
+        }
+      });
+
+      alert(`🎉 SUCCESS: Broadcasted Rate Requirement ${batchCode} with ${batchItems.length} Cargo Line(s)! Total Tonnage: ${createdReq.total_quantity_mt} MT.`);
+      setArchiveNotice(`🚀 Batch ${batchCode} broadcasted with instant WhatsApp Alerts!`);
+      setTimeout(() => setArchiveNotice(''), 5000);
+    } finally {
+      isBroadcastingRef.current = false;
+      setIsBroadcasting(false);
     }
-
-    const batchCode = createdReq.req_no;
-
-    const newNotifications = [];
-    (db.transporters || []).forEach((transporter) => {
-      if (transporter.mobile) {
-        const notif = sendWhatsAppAlert({
-          db: db,
-          recipientPhone: transporter.mobile,
-          recipientName: transporter.company_name,
-          title: `🚨 New Freight Bid Broadcast: ${batchCode}`,
-          message: `🚨 *SHALIMAR LOGISTICS BID ALERT* 🚨\n\n📦 Batch: ${batchCode} (${batchItems.length} Items)\n📍 Route: ${createdReq.pickup_origin} ➔ ${createdReq.drop_location}\n⚖️ Volume: ${createdReq.total_quantity_mt || 0} MT\n📅 Target Date: ${createdReq.target_date}\n\nSubmit rates: ${typeof window !== 'undefined' ? window.location.origin : ''}/`
-        });
-        if (notif) newNotifications.push(notif);
-      }
-    });
-
-    const updatedDb = addSecurityLog(
-      {
-        ...db,
-        rate_requests: [createdReq, ...(db.rate_requests || []).filter((r) => r.id !== createdReq.id)],
-        transport_requirements: [createdReq, ...(db.transport_requirements || []).filter((r) => r.id !== createdReq.id)],
-        whatsapp_notifications: [...newNotifications, ...(db.whatsapp_notifications || [])]
-      },
-      `BULK_CREATE_RATE_REQUIREMENTS (${batchCode})`,
-      currentUser?.username || 'admin',
-      'admin',
-      `BATCH_BROADCAST (${batchCode} - ${batchItems.length} ITEMS) ⚡`
-    );
-
-    updateDB(updatedDb);
-
-    // Reset Bulk Form with 1 fresh row initialized for NEXT Batch
-    setBulkReqRows([createSingleReqRow(0)]);
-
-    // 📱 Open 1-Click WhatsApp Broadcast Modal Popup
-    setWhatsappModalData({
-      isOpen: true,
-      data: {
-        batchCode,
-        itemsCount: batchItems.length,
-        origin: createdReq.pickup_origin,
-        dest: createdReq.drop_location,
-        totalQty: createdReq.total_quantity_mt,
-        materialType: createdReq.product_name,
-        targetDate: createdReq.target_date
-      }
-    });
-
-    alert(`🎉 SUCCESS: Broadcasted Rate Requirement ${batchCode} with ${batchItems.length} Cargo Line(s)! Total Tonnage: ${createdReq.total_quantity_mt} MT.`);
-    setArchiveNotice(`🚀 Batch ${batchCode} broadcasted with instant WhatsApp Alerts!`);
-    setTimeout(() => setArchiveNotice(''), 5000);
   };
 
   // ⌨️ SHORTCUT KEY: Ctrl + Enter / Cmd + Enter to Broadcast Rate Requests
   useEffect(() => {
     const handleKeyDown = (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-        if (activeTab === 'requirements' && !selectedRequestForComparison) {
+        if (activeTab === 'requirements' && !selectedRequestForComparison && !isBroadcastingRef.current) {
           e.preventDefault();
+          e.stopPropagation();
           handleBulkBroadcastRequirements(e);
         }
       }
@@ -2716,15 +2729,7 @@ export const AdminDashboard = () => {
                   </button>
                 </div>
 
-                <form
-                  onSubmit={handleBulkBroadcastRequirements}
-                  onKeyDown={(e) => {
-                    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-                      e.preventDefault();
-                      handleBulkBroadcastRequirements(e);
-                    }
-                  }}
-                >
+                <form onSubmit={handleBulkBroadcastRequirements}>
                   {/* Rows Grid List (HIGH-TECH GLASS CARDS) */}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', marginBottom: '24px' }}>
                     {bulkReqRows.map((row, idx) => (
@@ -2889,12 +2894,13 @@ export const AdminDashboard = () => {
                     </div>
                     <button
                       type="button"
+                      disabled={isBroadcasting}
                       onClick={(e) => handleBulkBroadcastRequirements(e)}
                       className="btn"
                       style={{
-                        background: 'linear-gradient(135deg, #059669 0%, #10b981 100%)',
+                        background: isBroadcasting ? '#047857' : 'linear-gradient(135deg, #059669 0%, #10b981 100%)',
                         color: '#ffffff',
-                        boxShadow: '0 0 25px rgba(16, 185, 129, 0.6), 0 0 50px rgba(16, 185, 129, 0.3)',
+                        boxShadow: isBroadcasting ? 'none' : '0 0 25px rgba(16, 185, 129, 0.6), 0 0 50px rgba(16, 185, 129, 0.3)',
                         padding: '14px 32px',
                         fontSize: '1.05rem',
                         fontWeight: '900',
@@ -2903,13 +2909,14 @@ export const AdminDashboard = () => {
                         display: 'flex',
                         alignItems: 'center',
                         gap: '10px',
-                        cursor: 'pointer',
-                        transform: 'scale(1.02)',
+                        cursor: isBroadcasting ? 'wait' : 'pointer',
+                        transform: isBroadcasting ? 'none' : 'scale(1.02)',
+                        opacity: isBroadcasting ? 0.75 : 1,
                         transition: 'all 0.25s ease'
                       }}
                       title="Click or press Ctrl + Enter to broadcast these rate requests"
                     >
-                      <Plus size={22} /> 🚀 Broadcast All {bulkReqRows.length} Rate Requests (1-Click)
+                      <Plus size={22} /> {isBroadcasting ? '🚀 Broadcasting...' : `🚀 Broadcast All ${bulkReqRows.length} Rate Requests (1-Click)`}
                       <span
                         style={{
                           background: 'rgba(0, 0, 0, 0.3)',

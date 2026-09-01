@@ -338,10 +338,10 @@ export async function ensureRequirementsTableExists() {
   }
 }
 
-async function generateNextReqNo(clientOrPool) {
+async function generateNextReqNo(clientOrPool, offset = 0) {
   try {
     const [rows] = await clientOrPool.query(
-      `SELECT req_no FROM transport_requirements ORDER BY created_at DESC, id DESC LIMIT 200`
+      `SELECT req_no FROM transport_requirements WHERE req_no LIKE '%REQ-%' ORDER BY id DESC LIMIT 500`
     );
 
     let maxSeq = 0;
@@ -354,7 +354,7 @@ async function generateNextReqNo(clientOrPool) {
       }
     }
 
-    const nextSeq = maxSeq + 1;
+    const nextSeq = maxSeq + 1 + (Number(offset) || 0);
     const seqPadded = String(nextSeq).padStart(4, '0');
     return `SNPL/26-27/REQ-${seqPadded}`;
   } catch (e) {
@@ -5013,60 +5013,79 @@ async function handleCreateRequirements(req, res) {
   if (!dropLocation && validChildItems[0]) dropLocation = validChildItems[0].drop_location;
 
   await ensureRequirementsTableExists();
-  const conn = await pool.getConnection();
-  try {
-    await conn.beginTransaction();
 
-    // 1. Generate ONE req_no for the entire batch
-    const nextReqNo = await generateNextReqNo(conn);
-    const parentId = `req_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
-    const titleStr = `${pickupOrigin} ➔ ${dropLocation}`;
-    const createdByVal = req.user?.username || 'admin';
+  let nextReqNo = '';
+  let parentId = '';
+  let retryCount = 0;
+  let inserted = false;
 
-    // 2. Insert ONE parent requirement
-    await conn.query(
-      `INSERT INTO transport_requirements
-       (id, req_no, title, pickup_origin, drop_location, target_date, status, approval_status, created_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [parentId, nextReqNo, titleStr, pickupOrigin, dropLocation, targetDate, 'Active', 'Pending', createdByVal]
-    );
+  while (retryCount < 5 && !inserted) {
+    const conn = await pool.getConnection();
+    try {
+      await conn.beginTransaction();
 
-    // 3. Insert N child requirement items with sub_indent_no (SNPL/26-27/REQ-0001/01, etc.)
-    for (let idx = 0; idx < validChildItems.length; idx++) {
-      const child = validChildItems[idx];
-      const itemId = `req_item_${Date.now()}_${idx}_${Math.random().toString(36).substring(2, 5)}`;
-      const subIdxStr = (idx + 1).toString().padStart(2, '0');
-      const subIndentNo = child.sub_indent_no || `${nextReqNo}/${subIdxStr}`;
-      const childTargetDate = child.target_date || targetDate;
+      // 1. Generate ONE req_no for the entire batch
+      nextReqNo = await generateNextReqNo(conn, retryCount);
+      parentId = `req_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+      const titleStr = `${pickupOrigin} ➔ ${dropLocation}`;
+      const createdByVal = req.user?.username || 'admin';
 
-      const itemQtyVal = parseFloat(child.quantity_mt || child.required_qty || 0);
+      // 2. Insert ONE parent requirement
       await conn.query(
-        `INSERT INTO transport_requirement_items
-         (id, requirement_id, sub_indent_no, product_name, quantity_mt, unit, pickup_origin, drop_location, hsn_code, target_date, dispatched_quantity_mt, remaining_quantity_mt, dispatch_status, allocation_status)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, 'PENDING', 'ACTIVE')`,
-        [itemId, parentId, subIndentNo, child.product_name, itemQtyVal, child.unit || 'MT', child.pickup_origin, child.drop_location, child.hsn_code || '', childTargetDate, itemQtyVal]
+        `INSERT INTO transport_requirements
+         (id, req_no, title, pickup_origin, drop_location, target_date, status, approval_status, created_by)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [parentId, nextReqNo, titleStr, pickupOrigin, dropLocation, targetDate, 'Active', 'Pending', createdByVal]
       );
+
+      // 3. Insert N child requirement items with sub_indent_no (SNPL/26-27/REQ-0001/01, etc.)
+      for (let idx = 0; idx < validChildItems.length; idx++) {
+        const child = validChildItems[idx];
+        const itemId = `req_item_${Date.now()}_${idx}_${Math.random().toString(36).substring(2, 5)}`;
+        const subIdxStr = (idx + 1).toString().padStart(2, '0');
+        const subIndentNo = child.sub_indent_no || `${nextReqNo}/${subIdxStr}`;
+        const childTargetDate = child.target_date || targetDate;
+
+        const itemQtyVal = parseFloat(child.quantity_mt || child.required_qty || 0);
+        await conn.query(
+          `INSERT INTO transport_requirement_items
+           (id, requirement_id, sub_indent_no, product_name, quantity_mt, unit, pickup_origin, drop_location, hsn_code, target_date, dispatched_quantity_mt, remaining_quantity_mt, dispatch_status, allocation_status)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, 'PENDING', 'ACTIVE')`,
+          [itemId, parentId, subIndentNo, child.product_name, itemQtyVal, child.unit || 'MT', child.pickup_origin, child.drop_location, child.hsn_code || '', childTargetDate, itemQtyVal]
+        );
+      }
+
+      await conn.commit();
+      conn.release();
+      inserted = true;
+    } catch (err) {
+      await conn.rollback();
+      conn.release();
+      if (err.code === 'ER_DUP_ENTRY' && err.message && err.message.includes('req_no')) {
+        console.warn(`⚠️ Duplicate req_no collision on attempt ${retryCount + 1}: ${err.message}. Retrying with next sequence...`);
+        retryCount++;
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      } else {
+        console.error('❌ POST /api/requirements Error:', err.message);
+        return res.status(500).json({ success: false, error: { code: 'DATABASE_ERROR', message: err.message } });
+      }
     }
-
-    await conn.commit();
-    conn.release();
-
-    const [pRows] = await pool.query('SELECT * FROM transport_requirements WHERE id = ?', [parentId]);
-    const [cRows] = await pool.query('SELECT * FROM transport_requirement_items WHERE requirement_id = ? ORDER BY id ASC', [parentId]);
-    const resultDto = formatParentRequirementDto(pRows[0], cRows, 0);
-
-    return res.json({
-      success: true,
-      message: `Batch Requirement ${nextReqNo} saved to MySQL (${validChildItems.length} cargo items)`,
-      data: resultDto,
-      requirement: resultDto
-    });
-  } catch (err) {
-    await conn.rollback();
-    conn.release();
-    console.error('❌ POST /api/requirements Error:', err.message);
-    return res.status(500).json({ success: false, error: { code: 'DATABASE_ERROR', message: err.message } });
   }
+
+  if (!inserted) {
+    return res.status(500).json({ success: false, error: { code: 'DATABASE_ERROR', message: 'Could not allocate unique requirement number after retries' } });
+  }
+
+  const [pRows] = await pool.query('SELECT * FROM transport_requirements WHERE id = ?', [parentId]);
+  const [cRows] = await pool.query('SELECT * FROM transport_requirement_items WHERE requirement_id = ? ORDER BY id ASC', [parentId]);
+  const resultDto = formatParentRequirementDto(pRows[0], cRows, 0);
+
+  return res.json({
+    success: true,
+    message: `Batch Requirement ${nextReqNo} saved to MySQL (${validChildItems.length} cargo items)`,
+    data: resultDto,
+    requirement: resultDto
+  });
 }
 
 router.post('/requirements', authenticateToken, requireRole('admin'), handleCreateRequirements);
