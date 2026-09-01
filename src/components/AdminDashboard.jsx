@@ -2274,7 +2274,7 @@ export const AdminDashboard = () => {
   return (
     <div>
       {/* Top Admin Summary Stats - Ultra-Attractive Glowing KPI Cards 💎 */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: '18px', marginBottom: '28px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '12px', marginBottom: '16px' }}>
         {/* CARD 1: RATE REQUESTS */}
         <button
           type="button"
@@ -2286,10 +2286,10 @@ export const AdminDashboard = () => {
           className="glass-panel stat-card-btn"
           aria-label="View Active Rate Requests Directory"
           style={{
-            padding: '20px',
+            padding: '10px 14px',
             display: 'flex',
             alignItems: 'center',
-            gap: '16px',
+            gap: '12px',
             background: (activeTab === 'requirements' && reqFilterTab === 'open')
               ? 'linear-gradient(135deg, rgba(56, 189, 248, 0.22) 0%, rgba(15, 23, 42, 0.85) 100%)'
               : 'linear-gradient(135deg, rgba(56, 189, 248, 0.1) 0%, rgba(15, 23, 42, 0.6) 100%)',
@@ -2297,51 +2297,47 @@ export const AdminDashboard = () => {
               ? '2px solid #38bdf8'
               : '1px solid rgba(56, 189, 248, 0.35)',
             boxShadow: (activeTab === 'requirements' && reqFilterTab === 'open')
-              ? '0 8px 32px 0 rgba(0, 0, 0, 0.45), 0 0 20px 0 rgba(56, 189, 248, 0.35)'
-              : '0 8px 32px 0 rgba(0, 0, 0, 0.36), 0 0 12px 0 rgba(56, 189, 248, 0.15)',
-            borderRadius: '16px',
+              ? '0 6px 20px 0 rgba(0, 0, 0, 0.35), 0 0 14px 0 rgba(56, 189, 248, 0.25)'
+              : '0 4px 16px 0 rgba(0, 0, 0, 0.25)',
+            borderRadius: '12px',
             position: 'relative',
             overflow: 'hidden',
             cursor: 'pointer',
             textAlign: 'left',
             width: '100%',
-            transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+            transition: 'all 0.2s ease',
             transform: 'translateY(0)',
             outline: 'none'
           }}
           onMouseEnter={(e) => {
-            e.currentTarget.style.transform = 'translateY(-3px)';
-            e.currentTarget.style.boxShadow = '0 12px 36px 0 rgba(0, 0, 0, 0.45), 0 0 22px 0 rgba(56, 189, 248, 0.4)';
+            e.currentTarget.style.transform = 'translateY(-2px)';
           }}
           onMouseLeave={(e) => {
             e.currentTarget.style.transform = 'translateY(0)';
-            e.currentTarget.style.boxShadow = (activeTab === 'requirements' && reqFilterTab === 'open')
-              ? '0 8px 32px 0 rgba(0, 0, 0, 0.45), 0 0 20px 0 rgba(56, 189, 248, 0.35)'
-              : '0 8px 32px 0 rgba(0, 0, 0, 0.36), 0 0 12px 0 rgba(56, 189, 248, 0.15)';
           }}
         >
           <div style={{
             background: 'linear-gradient(135deg, #0284c7 0%, #38bdf8 100%)',
-            padding: '14px',
-            borderRadius: '14px',
-            boxShadow: '0 0 15px rgba(56, 189, 248, 0.4)',
+            padding: '8px',
+            borderRadius: '10px',
+            boxShadow: '0 0 10px rgba(56, 189, 248, 0.35)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             flexShrink: 0
           }}>
-            <Layers size={26} color="#ffffff" />
+            <Layers size={18} color="#ffffff" />
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-              <span style={{ fontSize: '0.74rem', color: 'var(--text-sub, #64748b)', fontWeight: '800', letterSpacing: '0.05em' }}>RATE REQUESTS</span>
-              <span style={{ fontSize: '0.65rem', background: 'rgba(56, 189, 248, 0.15)', color: '#0284c7', border: '1px solid rgba(56, 189, 248, 0.4)', padding: '1px 6px', borderRadius: '10px', fontWeight: '900' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2px' }}>
+              <span style={{ fontSize: '0.7rem', color: 'var(--text-sub, #64748b)', fontWeight: '800', letterSpacing: '0.04em' }}>RATE REQUESTS</span>
+              <span style={{ fontSize: '0.62rem', background: 'rgba(56, 189, 248, 0.15)', color: '#0284c7', border: '1px solid rgba(56, 189, 248, 0.4)', padding: '1px 5px', borderRadius: '8px', fontWeight: '900' }}>
                 ● LIVE
               </span>
             </div>
-            <div style={{ fontSize: '1.75rem', fontWeight: '900', color: 'var(--text-main, #0f172a)', letterSpacing: '-0.02em', display: 'flex', alignItems: 'baseline', gap: '8px' }}>
+            <div style={{ fontSize: '1.35rem', fontWeight: '900', color: 'var(--text-main, #0f172a)', letterSpacing: '-0.02em', display: 'flex', alignItems: 'baseline', gap: '6px' }}>
               <span>{summaryRequirementsCount}</span>
-              <span style={{ fontSize: '0.9rem', color: '#0284c7', fontWeight: '800' }}>Active</span>
+              <span style={{ fontSize: '0.8rem', color: '#0284c7', fontWeight: '800' }}>Active</span>
             </div>
           </div>
         </button>
@@ -2357,10 +2353,10 @@ export const AdminDashboard = () => {
           className="glass-panel stat-card-btn"
           aria-label="View Submitted Bids and Quotes"
           style={{
-            padding: '20px',
+            padding: '10px 14px',
             display: 'flex',
             alignItems: 'center',
-            gap: '16px',
+            gap: '12px',
             background: (activeTab === 'requirements' && reqFilterTab === 'all')
               ? 'linear-gradient(135deg, rgba(52, 211, 153, 0.22) 0%, rgba(15, 23, 42, 0.85) 100%)'
               : 'linear-gradient(135deg, rgba(52, 211, 153, 0.1) 0%, rgba(15, 23, 42, 0.6) 100%)',
@@ -2368,51 +2364,47 @@ export const AdminDashboard = () => {
               ? '2px solid #34d399'
               : '1px solid rgba(52, 211, 153, 0.35)',
             boxShadow: (activeTab === 'requirements' && reqFilterTab === 'all')
-              ? '0 8px 32px 0 rgba(0, 0, 0, 0.45), 0 0 20px 0 rgba(52, 211, 153, 0.35)'
-              : '0 8px 32px 0 rgba(0, 0, 0, 0.36), 0 0 12px 0 rgba(52, 211, 153, 0.15)',
-            borderRadius: '16px',
+              ? '0 6px 20px 0 rgba(0, 0, 0, 0.35), 0 0 14px 0 rgba(52, 211, 153, 0.25)'
+              : '0 4px 16px 0 rgba(0, 0, 0, 0.25)',
+            borderRadius: '12px',
             position: 'relative',
             overflow: 'hidden',
             cursor: 'pointer',
             textAlign: 'left',
             width: '100%',
-            transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+            transition: 'all 0.2s ease',
             transform: 'translateY(0)',
             outline: 'none'
           }}
           onMouseEnter={(e) => {
-            e.currentTarget.style.transform = 'translateY(-3px)';
-            e.currentTarget.style.boxShadow = '0 12px 36px 0 rgba(0, 0, 0, 0.45), 0 0 22px 0 rgba(52, 211, 153, 0.4)';
+            e.currentTarget.style.transform = 'translateY(-2px)';
           }}
           onMouseLeave={(e) => {
             e.currentTarget.style.transform = 'translateY(0)';
-            e.currentTarget.style.boxShadow = (activeTab === 'requirements' && reqFilterTab === 'all')
-              ? '0 8px 32px 0 rgba(0, 0, 0, 0.45), 0 0 20px 0 rgba(52, 211, 153, 0.35)'
-              : '0 8px 32px 0 rgba(0, 0, 0, 0.36), 0 0 12px 0 rgba(52, 211, 153, 0.15)';
           }}
         >
           <div style={{
             background: 'linear-gradient(135deg, #059669 0%, #34d399 100%)',
-            padding: '14px',
-            borderRadius: '14px',
-            boxShadow: '0 0 15px rgba(52, 211, 153, 0.4)',
+            padding: '8px',
+            borderRadius: '10px',
+            boxShadow: '0 0 10px rgba(52, 211, 153, 0.35)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             flexShrink: 0
           }}>
-            <TrendingDown size={26} color="#ffffff" />
+            <TrendingDown size={18} color="#ffffff" />
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-              <span style={{ fontSize: '0.74rem', color: 'var(--text-sub, #64748b)', fontWeight: '800', letterSpacing: '0.05em' }}>SUBMITTED BIDS</span>
-              <span style={{ fontSize: '0.65rem', background: 'rgba(52, 211, 153, 0.15)', color: '#059669', border: '1px solid rgba(52, 211, 153, 0.4)', padding: '1px 6px', borderRadius: '10px', fontWeight: '900' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2px' }}>
+              <span style={{ fontSize: '0.7rem', color: 'var(--text-sub, #64748b)', fontWeight: '800', letterSpacing: '0.04em' }}>SUBMITTED BIDS</span>
+              <span style={{ fontSize: '0.62rem', background: 'rgba(52, 211, 153, 0.15)', color: '#059669', border: '1px solid rgba(52, 211, 153, 0.4)', padding: '1px 5px', borderRadius: '8px', fontWeight: '900' }}>
                 ⚡ QUOTES
               </span>
             </div>
-            <div style={{ fontSize: '1.75rem', fontWeight: '900', color: 'var(--text-main, #0f172a)', letterSpacing: '-0.02em', display: 'flex', alignItems: 'baseline', gap: '8px' }}>
+            <div style={{ fontSize: '1.35rem', fontWeight: '900', color: 'var(--text-main, #0f172a)', letterSpacing: '-0.02em', display: 'flex', alignItems: 'baseline', gap: '6px' }}>
               <span>{summarySubmissionsCount}</span>
-              <span style={{ fontSize: '0.9rem', color: '#059669', fontWeight: '800' }}>Offers</span>
+              <span style={{ fontSize: '0.8rem', color: '#059669', fontWeight: '800' }}>Offers</span>
             </div>
           </div>
         </button>
@@ -2428,10 +2420,10 @@ export const AdminDashboard = () => {
           className="glass-panel stat-card-btn"
           aria-label="View Transporters and Logistics Vendors Directory"
           style={{
-            padding: '20px',
+            padding: '10px 14px',
             display: 'flex',
             alignItems: 'center',
-            gap: '16px',
+            gap: '12px',
             background: ((activeTab === 'title_masters' || activeTab === 'transporters') && masterFilterTab === 'transporters')
               ? 'linear-gradient(135deg, rgba(245, 158, 11, 0.22) 0%, rgba(15, 23, 42, 0.85) 100%)'
               : 'linear-gradient(135deg, rgba(245, 158, 11, 0.1) 0%, rgba(15, 23, 42, 0.6) 100%)',
@@ -2439,51 +2431,47 @@ export const AdminDashboard = () => {
               ? '2px solid #fbbf24'
               : '1px solid rgba(245, 158, 11, 0.35)',
             boxShadow: ((activeTab === 'title_masters' || activeTab === 'transporters') && masterFilterTab === 'transporters')
-              ? '0 8px 32px 0 rgba(0, 0, 0, 0.45), 0 0 20px 0 rgba(245, 158, 11, 0.35)'
-              : '0 8px 32px 0 rgba(0, 0, 0, 0.36), 0 0 12px 0 rgba(245, 158, 11, 0.15)',
-            borderRadius: '16px',
+              ? '0 6px 20px 0 rgba(0, 0, 0, 0.35), 0 0 14px 0 rgba(245, 158, 11, 0.25)'
+              : '0 4px 16px 0 rgba(0, 0, 0, 0.25)',
+            borderRadius: '12px',
             position: 'relative',
             overflow: 'hidden',
             cursor: 'pointer',
             textAlign: 'left',
             width: '100%',
-            transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+            transition: 'all 0.2s ease',
             transform: 'translateY(0)',
             outline: 'none'
           }}
           onMouseEnter={(e) => {
-            e.currentTarget.style.transform = 'translateY(-3px)';
-            e.currentTarget.style.boxShadow = '0 12px 36px 0 rgba(0, 0, 0, 0.45), 0 0 22px 0 rgba(245, 158, 11, 0.4)';
+            e.currentTarget.style.transform = 'translateY(-2px)';
           }}
           onMouseLeave={(e) => {
             e.currentTarget.style.transform = 'translateY(0)';
-            e.currentTarget.style.boxShadow = ((activeTab === 'title_masters' || activeTab === 'transporters') && masterFilterTab === 'transporters')
-              ? '0 8px 32px 0 rgba(0, 0, 0, 0.45), 0 0 20px 0 rgba(245, 158, 11, 0.35)'
-              : '0 8px 32px 0 rgba(0, 0, 0, 0.36), 0 0 12px 0 rgba(245, 158, 11, 0.15)';
           }}
         >
           <div style={{
             background: 'linear-gradient(135deg, #d97706 0%, #fbbf24 100%)',
-            padding: '14px',
-            borderRadius: '14px',
-            boxShadow: '0 0 15px rgba(245, 158, 11, 0.4)',
+            padding: '8px',
+            borderRadius: '10px',
+            boxShadow: '0 0 10px rgba(245, 158, 11, 0.35)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             flexShrink: 0
           }}>
-            <Building2 size={26} color="#ffffff" />
+            <Building2 size={18} color="#ffffff" />
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-              <span style={{ fontSize: '0.74rem', color: 'var(--text-sub, #64748b)', fontWeight: '800', letterSpacing: '0.05em' }}>TRANSPORTERS</span>
-              <span style={{ fontSize: '0.65rem', background: 'rgba(245, 158, 11, 0.15)', color: '#d97706', border: '1px solid rgba(245, 158, 11, 0.4)', padding: '1px 6px', borderRadius: '10px', fontWeight: '900' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2px' }}>
+              <span style={{ fontSize: '0.7rem', color: 'var(--text-sub, #64748b)', fontWeight: '800', letterSpacing: '0.04em' }}>TRANSPORTERS</span>
+              <span style={{ fontSize: '0.62rem', background: 'rgba(245, 158, 11, 0.15)', color: '#d97706', border: '1px solid rgba(245, 158, 11, 0.4)', padding: '1px 5px', borderRadius: '8px', fontWeight: '900' }}>
                 🛡️ VERIFIED
               </span>
             </div>
-            <div style={{ fontSize: '1.75rem', fontWeight: '900', color: 'var(--text-main, #0f172a)', letterSpacing: '-0.02em', display: 'flex', alignItems: 'baseline', gap: '8px' }}>
+            <div style={{ fontSize: '1.35rem', fontWeight: '900', color: 'var(--text-main, #0f172a)', letterSpacing: '-0.02em', display: 'flex', alignItems: 'baseline', gap: '6px' }}>
               <span>{summaryTransportersCount}</span>
-              <span style={{ fontSize: '0.9rem', color: '#d97706', fontWeight: '800' }}>Vendors</span>
+              <span style={{ fontSize: '0.8rem', color: '#d97706', fontWeight: '800' }}>Vendors</span>
             </div>
           </div>
         </button>
@@ -2509,8 +2497,8 @@ export const AdminDashboard = () => {
       )}
 
       {/* Main Tab Navigation & Actions */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '14px' }}>
-        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '10px' }}>
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
           <button
             onClick={() => {
               setActiveTab('requirements');
@@ -2526,18 +2514,17 @@ export const AdminDashboard = () => {
                 ? '2px solid #7dd3fc'
                 : '1px solid rgba(255, 255, 255, 0.15)',
               boxShadow: (activeTab === 'requirements' || selectedRequestForComparison)
-                ? '0 0 22px rgba(56, 189, 248, 0.6), 0 0 45px rgba(56, 189, 248, 0.3)'
+                ? '0 0 16px rgba(56, 189, 248, 0.4)'
                 : 'none',
               fontWeight: (activeTab === 'requirements' || selectedRequestForComparison) ? '900' : '700',
-              transform: (activeTab === 'requirements' || selectedRequestForComparison) ? 'scale(1.05)' : 'scale(1)',
-              padding: '10px 18px',
-              fontSize: '0.88rem',
-              borderRadius: '12px',
-              transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+              padding: '8px 14px',
+              fontSize: '0.84rem',
+              borderRadius: '10px',
+              transition: 'all 0.2s ease',
               cursor: 'pointer'
             }}
           >
-            <Layers size={17} /> {selectedRequestForComparison ? `🔍 Comparing Rates: ${selectedRequestForComparison.request_no}` : 'Rate Requests & Comparison'}
+            <Layers size={16} /> {selectedRequestForComparison ? `🔍 Comparing Rates: ${selectedRequestForComparison.request_no}` : 'Rate Requests & Comparison'}
           </button>
 
           <button
@@ -2555,18 +2542,17 @@ export const AdminDashboard = () => {
                 ? '2px solid #7dd3fc'
                 : '1px solid rgba(255, 255, 255, 0.15)',
               boxShadow: (activeTab === 'contracts' && !selectedRequestForComparison)
-                ? '0 0 22px rgba(56, 189, 248, 0.6), 0 0 45px rgba(56, 189, 248, 0.3)'
+                ? '0 0 16px rgba(56, 189, 248, 0.4)'
                 : 'none',
               fontWeight: (activeTab === 'contracts' && !selectedRequestForComparison) ? '900' : '700',
-              transform: (activeTab === 'contracts' && !selectedRequestForComparison) ? 'scale(1.05)' : 'scale(1)',
-              padding: '10px 18px',
-              fontSize: '0.88rem',
-              borderRadius: '12px',
-              transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+              padding: '8px 14px',
+              fontSize: '0.84rem',
+              borderRadius: '10px',
+              transition: 'all 0.2s ease',
               cursor: 'pointer'
             }}
           >
-            <FileText size={17} /> Awarded Contracts & PO Settlement
+            <FileText size={16} /> Awarded Contracts & PO Settlement
           </button>
 
           <button
@@ -2584,18 +2570,17 @@ export const AdminDashboard = () => {
                 ? '2px solid #7dd3fc'
                 : '1px solid rgba(255, 255, 255, 0.15)',
               boxShadow: ((activeTab === 'title_masters' || activeTab === 'transporters') && !selectedRequestForComparison)
-                ? '0 0 22px rgba(56, 189, 248, 0.6), 0 0 45px rgba(56, 189, 248, 0.3)'
+                ? '0 0 16px rgba(56, 189, 248, 0.4)'
                 : 'none',
               fontWeight: ((activeTab === 'title_masters' || activeTab === 'transporters') && !selectedRequestForComparison) ? '900' : '700',
-              transform: ((activeTab === 'title_masters' || activeTab === 'transporters') && !selectedRequestForComparison) ? 'scale(1.05)' : 'scale(1)',
-              padding: '10px 18px',
-              fontSize: '0.88rem',
-              borderRadius: '12px',
-              transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+              padding: '8px 14px',
+              fontSize: '0.84rem',
+              borderRadius: '10px',
+              transition: 'all 0.2s ease',
               cursor: 'pointer'
             }}
           >
-            <Bookmark size={17} /> 📑 Master Directories
+            <Bookmark size={16} /> 📑 Master Directories
           </button>
 
           <button
@@ -2613,21 +2598,20 @@ export const AdminDashboard = () => {
                 ? '2px solid #7dd3fc'
                 : '1px solid rgba(255, 255, 255, 0.15)',
               boxShadow: (activeTab === 'db_backup' && !selectedRequestForComparison)
-                ? '0 0 22px rgba(56, 189, 248, 0.6), 0 0 45px rgba(56, 189, 248, 0.3)'
+                ? '0 0 16px rgba(56, 189, 248, 0.4)'
                 : 'none',
               fontWeight: (activeTab === 'db_backup' && !selectedRequestForComparison) ? '900' : '700',
-              transform: (activeTab === 'db_backup' && !selectedRequestForComparison) ? 'scale(1.05)' : 'scale(1)',
-              padding: '10px 18px',
-              fontSize: '0.88rem',
-              borderRadius: '12px',
-              transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+              padding: '8px 14px',
+              fontSize: '0.84rem',
+              borderRadius: '10px',
+              transition: 'all 0.2s ease',
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
               gap: '6px'
             }}
           >
-            <Database size={17} /> 🗄️ System Backup & Restore
+            <Database size={16} /> 🗄️ System Backup & Restore
           </button>
 
           <button
@@ -2645,33 +2629,32 @@ export const AdminDashboard = () => {
                 ? '2px solid #7dd3fc'
                 : '1px solid rgba(255, 255, 255, 0.15)',
               boxShadow: (activeTab === 'dispatch_requests' && !selectedRequestForComparison)
-                ? '0 0 22px rgba(56, 189, 248, 0.6), 0 0 45px rgba(56, 189, 248, 0.3)'
+                ? '0 0 16px rgba(56, 189, 248, 0.4)'
                 : 'none',
               fontWeight: (activeTab === 'dispatch_requests' && !selectedRequestForComparison) ? '900' : '700',
-              transform: (activeTab === 'dispatch_requests' && !selectedRequestForComparison) ? 'scale(1.05)' : 'scale(1)',
-              padding: '10px 18px',
-              fontSize: '0.88rem',
-              borderRadius: '12px',
-              transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+              padding: '8px 14px',
+              fontSize: '0.84rem',
+              borderRadius: '10px',
+              transition: 'all 0.2s ease',
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
               gap: '6px'
             }}
           >
-            <Truck size={17} /> 🚚 Transporter Dispatches & Folders
+            <Truck size={16} /> 🚚 Transporter Dispatches & Folders
             {allLiveDispatches.length > 0 && (
-              <span style={{ background: '#0284c7', color: '#ffffff', borderRadius: '12px', padding: '2px 8px', fontSize: '0.74rem', fontWeight: '900', marginLeft: '4px' }}>
+              <span style={{ background: '#0284c7', color: '#ffffff', borderRadius: '12px', padding: '1px 7px', fontSize: '0.72rem', fontWeight: '900', marginLeft: '4px' }}>
                 {allLiveDispatches.length}
               </span>
             )}
             {dispatchAccessRequests.filter(r => r.authorization_status === 'PENDING').length > 0 && (
-              <span style={{ background: '#ef4444', color: '#ffffff', borderRadius: '50%', padding: '2px 7px', fontSize: '0.74rem', fontWeight: '900', marginLeft: '4px' }}>
+              <span style={{ background: '#ef4444', color: '#ffffff', borderRadius: '50%', padding: '1px 6px', fontSize: '0.72rem', fontWeight: '900', marginLeft: '4px' }}>
                 {dispatchAccessRequests.filter(r => r.authorization_status === 'PENDING').length}
               </span>
             )}
           </button>
-      </div>
+        </div>
       </div>
 
       {/* VIEW 1: Rate Comparison Sub-View */}
@@ -2697,28 +2680,28 @@ export const AdminDashboard = () => {
               
               {/* ⚡ RATE REQUEST BULK MULTI-INDENT COMMAND CENTER (UP TO 50 AT ONCE) ⚡ */}
               <div className="glass-panel-glow" style={{
-                borderRadius: '24px',
-                padding: '26px 30px',
-                marginBottom: '36px'
+                borderRadius: '16px',
+                padding: '16px 20px',
+                marginBottom: '20px'
               }}>
                 {/* Header & Status Indicator Bar */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '1px solid var(--border-color)', paddingBottom: '16px', flexWrap: 'wrap', gap: '14px' }}>
-                  <div style={{ fontSize: '1.25rem', fontWeight: '900', color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '12px', letterSpacing: '-0.01em' }}>
-                    <div style={{ background: 'linear-gradient(135deg, #0284c7 0%, #38bdf8 100%)', padding: '10px 14px', borderRadius: '12px', boxShadow: '0 0 20px rgba(56, 189, 248, 0.5)' }}>
-                      <Sparkles size={22} color="#ffffff" />
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', borderBottom: '1px solid var(--border-color)', paddingBottom: '12px', flexWrap: 'wrap', gap: '10px' }}>
+                  <div style={{ fontSize: '1.1rem', fontWeight: '900', color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '10px', letterSpacing: '-0.01em' }}>
+                    <div style={{ background: 'linear-gradient(135deg, #0284c7 0%, #38bdf8 100%)', padding: '7px 10px', borderRadius: '10px', boxShadow: '0 0 14px rgba(56, 189, 248, 0.4)' }}>
+                      <Sparkles size={18} color="#ffffff" />
                     </div>
                     <div>
                       <span style={{ fontWeight: '900', color: 'var(--text-main)' }}>
                         ⚡ Rate Request (Batch Bulk Creator - Up to 50)
                       </span>
-                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: '600', marginTop: '2px' }}>
+                      <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: '600', marginTop: '1px' }}>
                         Create & broadcast up to 50 active freight indents in 1-Click!
                       </div>
                     </div>
                   </div>
 
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <span style={{ fontSize: '0.82rem', background: 'rgba(56, 189, 248, 0.15)', color: '#0284c7', border: '1px solid rgba(56, 189, 248, 0.4)', padding: '6px 14px', borderRadius: '20px', fontWeight: '800' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ fontSize: '0.76rem', background: 'rgba(56, 189, 248, 0.15)', color: '#0284c7', border: '1px solid rgba(56, 189, 248, 0.4)', padding: '4px 10px', borderRadius: '14px', fontWeight: '800' }}>
                       🚀 {bulkReqRows.length} / 50 Active Rows
                     </span>
                   </div>
@@ -2726,25 +2709,25 @@ export const AdminDashboard = () => {
 
                 {/* 📍 HIGH-TECH MASTER PICKUP CONTROL HUB ⚡ */}
                 <div className="glass-panel-subtle" style={{
-                  borderRadius: '16px',
-                  padding: '16px 22px',
-                  marginBottom: '22px'
+                  borderRadius: '12px',
+                  padding: '10px 14px',
+                  marginBottom: '14px'
                 }}>
                   {/* Master Pickup Origin */}
                   <div style={{
                     background: 'rgba(2, 132, 199, 0.1)',
                     border: '1px solid #0284c7',
-                    borderRadius: '12px',
-                    padding: '14px 18px',
+                    borderRadius: '10px',
+                    padding: '10px 14px',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'space-between',
-                    gap: '16px',
+                    gap: '12px',
                     flexWrap: 'wrap'
                   }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                      <div style={{ background: '#0284c7', padding: '8px', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <MapPin size={22} color="#ffffff" />
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <div style={{ background: '#0284c7', padding: '6px', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <MapPin size={18} color="#ffffff" />
                       </div>
                       <div>
                         <div style={{ fontSize: '0.92rem', fontWeight: '900', color: 'var(--text-main)', letterSpacing: '0.04em', display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -3232,7 +3215,7 @@ export const AdminDashboard = () => {
                                           <span style={{ color: 'var(--text-sub, #64748b)', fontSize: '0.85rem' }}>➔</span>
                                           <span>🎯</span>
                                         </div>
-                                        <div style={{ fontSize: '1.18rem', fontWeight: '900', color: '#c2410c', letterSpacing: '0.02em', textTransform: 'capitalize', lineHeight: '1.2' }}>
+                                        <div style={{ fontSize: '1.02rem', fontWeight: '900', color: '#c2410c', letterSpacing: '0.02em', textTransform: 'capitalize', lineHeight: '1.2' }}>
                                           {item.drop_location || dropStr}
                                         </div>
                                       </div>
