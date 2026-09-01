@@ -1,7 +1,4 @@
-// src/components/ParticularBidReportModal.jsx
-// Clean Batch & Requirement "COMPARATIVE FREIGHT RATE STATEMENT" (Phase 1 Modern Schema) 📑📊✨
-
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { X, Printer, Download, ShieldCheck, FileSpreadsheet, Building2, MapPin, Truck, CheckCircle2, Clock } from 'lucide-react';
 import { SHALIMAR_LOGO_BASE64 } from '../assets/logoBase64';
@@ -10,6 +7,8 @@ import { exportComparativeStatementExcel } from '../utils/exportComparativeState
 export const ParticularBidReportModal = ({ rateRequest, isOpen, onClose }) => {
   const { db } = useAuth();
   const [isExportingExcel, setIsExportingExcel] = useState(false);
+  const [isDownloadingPDF, setIsDownloadingPDF] = useState(false);
+  const printableAreaRef = useRef(null);
 
   if (!isOpen || !rateRequest) return null;
 
@@ -93,7 +92,25 @@ export const ParticularBidReportModal = ({ rateRequest, isOpen, onClose }) => {
 
   const currentDateStr = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' });
 
-  // Bulletproof Standalone Print Engine (Guaranteed 1-Page Landscape, Zero Black/Blank Pages)
+  // 🚚 DISPATCH & LIFTING CHRONICLE CALCULATIONS ("Pehle vs Baad me vs Remaining")
+  const relevantDispatches = (db?.truck_dispatches || []).filter((d) => {
+    if (!d) return false;
+    const matchReqId = String(d.requirement_id || '') === String(rateRequest.id);
+    const matchReqNo = reqNoStr && (
+      String(d.req_no || '') === String(reqNoStr) ||
+      String(d.sub_indent_no || '').startsWith(String(reqNoStr)) ||
+      String(d.requirement_id || '') === String(reqNoStr)
+    );
+    return matchReqId || matchReqNo;
+  }).sort((a, b) => new Date(a.dispatched_at || 0) - new Date(b.dispatched_at || 0));
+
+  const totalDispatchedQty = relevantDispatches.reduce(
+    (acc, d) => acc + (Number(d.loaded_quantity_mt ?? d.dispatched_qty ?? d.loaded_qty) || 0),
+    0
+  );
+  const remainingBalanceQty = Math.max(0, totalVolumeMT - totalDispatchedQty);
+
+  // 🖨️ COMPLETE MULTI-PAGE A4 LANDSCAPE PRINT ENGINE (ZERO CUTOFFS)
   const handlePrint = () => {
     try {
       const printFrame = document.createElement('iframe');
@@ -167,73 +184,148 @@ export const ParticularBidReportModal = ({ rateRequest, isOpen, onClose }) => {
       }).join('');
 
       const thTransHtml = transporterColumns.map((tCol) => `
-        <th style="padding: 8px 10px; text-align: center; font-weight: 900; border: 1px solid #94a3b8; background-color: #f1f5f9; color: #0369a1;">
+        <th style="padding: 6px 8px; text-align: center; font-weight: 900; border: 1px solid #94a3b8; background-color: #f1f5f9; color: #0369a1;">
           ${(tCol.name || '').toUpperCase()}
-          <div style="font-size: 9px; color: #64748b; font-family: monospace; font-weight: normal;">(${tCol.code})</div>
+          <div style="font-size: 8.5px; color: #64748b; font-family: monospace; font-weight: normal;">(${tCol.code})</div>
         </th>
       `).join('');
+
+      // Build Section 2: Material Lifting & Dispatch Chronicle HTML
+      let runningTotalLoaded = 0;
+      const dispatchesRowsHtml = relevantDispatches.map((d, idx) => {
+        const qty = Number(d.loaded_quantity_mt ?? d.dispatched_qty ?? d.loaded_qty) || 0;
+        const rate = Number(d.finalized_rate ?? d.freight_rate) || 0;
+        const gross = Math.round(qty * rate * 100) / 100;
+        runningTotalLoaded += qty;
+        const rem = Math.max(0, totalVolumeMT - runningTotalLoaded);
+        const isFirst = idx === 0;
+        const dateStr = d.dispatched_at
+          ? new Date(d.dispatched_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+          : '-';
+
+        return `
+          <tr style="background-color: ${idx % 2 === 0 ? '#ffffff' : '#f8fafc'};">
+            <td style="text-align: center;">
+              <span style="font-size: 9px; font-weight: bold; padding: 2px 6px; border-radius: 4px; background: ${isFirst ? '#e0f2fe' : '#dcfce7'}; color: ${isFirst ? '#0369a1' : '#15803d'};">
+                ${isFirst ? '1st Dispatch (Pehle)' : `${idx + 1}th Dispatch (Baad me)`}
+              </span>
+            </td>
+            <td style="font-family: monospace; font-weight: bold; color: #0284c7;">${d.lr_number || d.lr_no || d.id}</td>
+            <td style="text-align: center;">${dateStr}</td>
+            <td><strong>${d.transporter_name || 'Vendor'}</strong> <span style="font-size: 9px; color: #64748b;">(${d.transporter_code})</span></td>
+            <td style="font-weight: bold;">${d.truck_number || d.truck_no}</td>
+            <td>${d.driver_name || 'Driver'} <span style="font-size: 9px; color: #64748b;">(${d.driver_mobile || '-'})</span></td>
+            <td style="text-align: center; font-weight: bold; color: #059669;">${qty} MT</td>
+            <td style="text-align: center;">₹${rate}</td>
+            <td style="text-align: right; font-weight: bold;">₹${gross.toLocaleString()}</td>
+            <td style="text-align: right; font-weight: bold; color: #0284c7;">${runningTotalLoaded.toFixed(3)} MT</td>
+            <td style="text-align: right; font-weight: bold; color: ${rem <= 0.001 ? '#059669' : '#d97706'};">${rem.toFixed(3)} MT</td>
+          </tr>
+        `;
+      }).join('');
+
+      const dispatchSectionHtml = relevantDispatches.length > 0 ? `
+        <div style="margin-top: 14px; page-break-inside: avoid;">
+          <div style="background-color: #f0f9ff; border: 1.5px solid #bae6fd; border-radius: 6px; padding: 8px 14px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
+            <div>
+              <strong style="color: #0369a1; font-size: 11.5px;">🚚 SECTION 2: MATERIAL LIFTING & DISPATCH CHRONICLE</strong>
+              <div style="font-size: 8.5px; color: #64748b;">Pehle kitna load kiya vs baad me remaining kitna kiya</div>
+            </div>
+            <div style="display: flex; gap: 8px;">
+              <span style="background: #ffffff; border: 1px solid #bae6fd; padding: 2px 8px; border-radius: 4px; font-size: 9.5px;">ORDER: <strong>${totalVolumeMT.toFixed(3)} MT</strong></span>
+              <span style="background: #ffffff; border: 1px solid #7dd3fc; padding: 2px 8px; border-radius: 4px; font-size: 9.5px; color: #0284c7;">LIFTED: <strong>${totalDispatchedQty.toFixed(3)} MT</strong></span>
+              <span style="background: #ffffff; border: 1px solid #86efac; padding: 2px 8px; border-radius: 4px; font-size: 9.5px; color: #15803d;">REMAINING: <strong>${remainingBalanceQty.toFixed(3)} MT</strong></span>
+            </div>
+          </div>
+
+          <table>
+            <thead>
+              <tr style="background-color: #1e293b; color: #ffffff;">
+                <th style="text-align: center; width: 13%;">STAGE / PHASE</th>
+                <th style="text-align: left; width: 14%;">LR NUMBER</th>
+                <th style="text-align: center; width: 9%;">DATE</th>
+                <th style="text-align: left; width: 12%;">TRANSPORTER</th>
+                <th style="text-align: left; width: 10%;">TRUCK NO.</th>
+                <th style="text-align: left; width: 13%;">DRIVER & MOBILE</th>
+                <th style="text-align: center; width: 8%;">LOADED</th>
+                <th style="text-align: center; width: 6%;">RATE</th>
+                <th style="text-align: right; width: 7%;">FREIGHT</th>
+                <th style="text-align: right; width: 8%;">CUMULATIVE</th>
+                <th style="text-align: right; width: 8%;">REMAINING</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${dispatchesRowsHtml}
+            </tbody>
+          </table>
+        </div>
+      ` : '';
 
       const printHtml = `
 <!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
-  <title>${statementTypeLabel} - Comparative Freight Statement</title>
+  <title>${statementTypeLabel} - Comparative Freight & Lifting Statement</title>
   <style>
-    @page { size: A4 landscape; margin: 8mm 10mm; }
+    @page { size: A4 landscape; margin: 6mm 8mm; }
     * { box-sizing: border-box; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-    body {
+    html, body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
       margin: 0;
       padding: 0;
       color: #0f172a;
       background: #ffffff !important;
-      font-size: 11px;
+      font-size: 10px;
+      line-height: 1.3;
     }
     .header-box {
       border: 1.5px solid #0284c7;
-      border-radius: 8px;
-      padding: 12px 18px;
-      margin-bottom: 14px;
+      border-radius: 6px;
+      padding: 10px 16px;
+      margin-bottom: 10px;
       display: flex;
       justify-content: space-between;
       align-items: center;
       background-color: #f0f7fc !important;
+      page-break-inside: avoid;
     }
-    .header-left { display: flex; align-items: center; gap: 14px; }
-    .header-left img { height: 48px; border: 1px solid #cbd5e1; border-radius: 4px; padding: 2px; background: #ffffff; }
-    .header-title { font-size: 15px; font-weight: 900; margin: 0; color: #0f172a; }
-    .header-sub { font-size: 11px; color: #0284c7; font-weight: 800; margin-top: 2px; }
-    .header-addr { font-size: 10px; color: #64748b; margin-top: 1px; }
+    .header-left { display: flex; align-items: center; gap: 12px; }
+    .header-left img { height: 44px; border: 1px solid #cbd5e1; border-radius: 4px; padding: 2px; background: #ffffff; }
+    .header-title { font-size: 14px; font-weight: 900; margin: 0; color: #0f172a; }
+    .header-sub { font-size: 10.5px; color: #0284c7; font-weight: 800; margin-top: 2px; }
+    .header-addr { font-size: 9px; color: #64748b; margin-top: 1px; }
     .badge {
       background-color: #e0f2fe !important;
       color: #0369a1 !important;
       border: 1px solid #7dd3fc;
-      padding: 4px 12px;
+      padding: 4px 10px;
       border-radius: 6px;
       font-weight: 900;
-      font-size: 12px;
+      font-size: 11px;
       font-family: monospace;
       text-align: right;
     }
-    .metrics { font-size: 10px; color: #64748b; margin-top: 4px; font-weight: 700; text-align: right; }
-    table { width: 100%; border-collapse: collapse; margin-bottom: 14px; font-size: 11px; }
-    th { border: 1px solid #94a3b8; padding: 8px 10px; background-color: #f1f5f9 !important; font-weight: 900; }
-    td { border: 1px solid #cbd5e1; padding: 8px 10px; vertical-align: middle; }
+    .metrics { font-size: 9.5px; color: #64748b; margin-top: 3px; font-weight: 700; text-align: right; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 8px; font-size: 9.5px; page-break-inside: auto; }
+    tr { page-break-inside: avoid; }
+    th { border: 1px solid #94a3b8; padding: 6px 8px; background-color: #f1f5f9 !important; font-weight: 900; }
+    td { border: 1px solid #cbd5e1; padding: 6px 8px; vertical-align: middle; }
     .footer-box {
       border: 1.5px solid #0284c7;
-      border-radius: 8px;
-      padding: 12px 18px;
+      border-radius: 6px;
+      padding: 10px 16px;
       display: flex;
       justify-content: space-between;
       align-items: center;
       background-color: #f0f7fc !important;
       margin-top: 10px;
+      page-break-inside: avoid;
     }
-    .seal-text { font-size: 11px; color: #0369a1; font-weight: 800; }
-    .sign-box { text-align: right; border-top: 1.5px solid #0284c7; padding-top: 4px; min-width: 200px; }
-    .sign-title { font-weight: 900; font-size: 11px; color: #0f172a; }
-    .sign-sub { font-size: 9px; color: #64748b; }
+    .seal-text { font-size: 10.5px; color: #0369a1; font-weight: 800; }
+    .sign-box { text-align: right; border-top: 1.5px solid #0284c7; padding-top: 4px; min-width: 180px; }
+    .sign-title { font-weight: 900; font-size: 10.5px; color: #0f172a; }
+    .sign-sub { font-size: 8.5px; color: #64748b; }
   </style>
 </head>
 <body>
@@ -241,7 +333,7 @@ export const ParticularBidReportModal = ({ rateRequest, isOpen, onClose }) => {
     <div class="header-left">
       <img src="${SHALIMAR_LOGO_BASE64}" alt="Shalimar Logo" />
       <div>
-        <div class="header-title">${statementTypeLabel} COMPARATIVE FREIGHT RATE STATEMENT ${currentDateStr}</div>
+        <div class="header-title">${statementTypeLabel} COMPARATIVE FREIGHT & LIFTING STATEMENT ${currentDateStr}</div>
         <div class="header-sub">${companyInfo.name} | Logistics Procurement Division</div>
         <div class="header-addr">${companyInfo.reg_office} • GSTIN: ${companyInfo.gstin}</div>
       </div>
@@ -252,6 +344,7 @@ export const ParticularBidReportModal = ({ rateRequest, isOpen, onClose }) => {
     </div>
   </div>
 
+  <div style="font-size: 11px; font-weight: 900; color: #0369a1; margin-bottom: 6px;">📊 SECTION 1: COMPARATIVE FREIGHT RATE MATRIX (TRANSPORTER QUOTES)</div>
   <table>
     <thead>
       <tr>
@@ -268,8 +361,10 @@ export const ParticularBidReportModal = ({ rateRequest, isOpen, onClose }) => {
     </tbody>
   </table>
 
+  ${dispatchSectionHtml}
+
   <div class="footer-box">
-    <div class="seal-text">🛡️ OFFICIAL ${companyInfo.name.toUpperCase()} BATCH COMPARATIVE FREIGHT STATEMENT</div>
+    <div class="seal-text">🛡️ OFFICIAL ${companyInfo.name.toUpperCase()} COMPARATIVE FREIGHT & LIFTING STATEMENT</div>
     <div class="sign-box">
       <div class="sign-title">Authorized Procurement Head</div>
       <div class="sign-sub">${companyInfo.name}</div>
@@ -296,6 +391,60 @@ export const ParticularBidReportModal = ({ rateRequest, isOpen, onClose }) => {
     } catch (err) {
       console.warn('Iframe print failed, falling back to window.print', err);
       window.print();
+    }
+  };
+
+  // 📥 1-CLICK DIRECT HIGH-RES PDF DOWNLOAD (ZERO CUTOFFS)
+  const handleDownloadPDF = async () => {
+    try {
+      setIsDownloadingPDF(true);
+      const targetEl = printableAreaRef.current;
+      if (!targetEl) throw new Error('Printable element not found');
+
+      const html2canvasModule = await import('html2canvas');
+      const html2canvas = html2canvasModule.default || html2canvasModule;
+      const { jsPDF } = await import('jspdf');
+
+      const canvas = await html2canvas(targetEl, {
+        scale: 2,
+        useCORS: true,
+        logging: false,
+        backgroundColor: '#ffffff'
+      });
+
+      const imgData = canvas.toDataURL('image/jpeg', 0.98);
+      const pdf = new jsPDF({
+        orientation: 'landscape',
+        unit: 'mm',
+        format: 'a4'
+      });
+
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = pdf.internal.pageSize.getHeight();
+      const imgProps = pdf.getImageProperties(imgData);
+      const renderHeight = (imgProps.height * pdfWidth) / imgProps.width;
+
+      if (renderHeight > pdfHeight) {
+        let heightLeft = renderHeight;
+        let position = 0;
+        pdf.addImage(imgData, 'JPEG', 0, position, pdfWidth, renderHeight);
+        heightLeft -= pdfHeight;
+        while (heightLeft > 0) {
+          position = heightLeft - renderHeight;
+          pdf.addPage();
+          pdf.addImage(imgData, 'JPEG', 0, position, pdfWidth, renderHeight);
+          heightLeft -= pdfHeight;
+        }
+      } else {
+        pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, renderHeight);
+      }
+
+      pdf.save(`Comparative_Statement_${String(reqNoStr).replace(/[\/\\]/g, '_')}.pdf`);
+    } catch (err) {
+      console.error('PDF download error:', err);
+      handlePrint();
+    } finally {
+      setIsDownloadingPDF(false);
     }
   };
 
@@ -365,24 +514,6 @@ export const ParticularBidReportModal = ({ rateRequest, isOpen, onClose }) => {
     link.click();
     document.body.removeChild(link);
   };
-
-  // 🚚 DISPATCH & LIFTING CHRONICLE CALCULATIONS ("Pehle vs Baad me vs Remaining")
-  const relevantDispatches = (db?.truck_dispatches || []).filter((d) => {
-    if (!d) return false;
-    const matchReqId = String(d.requirement_id || '') === String(rateRequest.id);
-    const matchReqNo = reqNoStr && (
-      String(d.req_no || '') === String(reqNoStr) ||
-      String(d.sub_indent_no || '').startsWith(String(reqNoStr)) ||
-      String(d.requirement_id || '') === String(reqNoStr)
-    );
-    return matchReqId || matchReqNo;
-  }).sort((a, b) => new Date(a.dispatched_at || 0) - new Date(b.dispatched_at || 0));
-
-  const totalDispatchedQty = relevantDispatches.reduce(
-    (acc, d) => acc + (Number(d.loaded_quantity_mt ?? d.dispatched_qty ?? d.loaded_qty) || 0),
-    0
-  );
-  const remainingBalanceQty = Math.max(0, totalVolumeMT - totalDispatchedQty);
 
   // 📥 1-CLICK EXECUTIVE EXCEL WORKBOOK EXPORT (.xlsx)
   const handleExportExcel = async () => {
@@ -505,13 +636,38 @@ export const ParticularBidReportModal = ({ rateRequest, isOpen, onClose }) => {
             </button>
             <button
               type="button"
-              onClick={handlePrint}
+              onClick={handleDownloadPDF}
+              disabled={isDownloadingPDF}
               className="btn"
               style={{
-                background: '#0284c7',
+                background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)',
                 color: '#ffffff',
                 border: 'none',
                 padding: '9px 18px',
+                fontSize: '0.82rem',
+                fontWeight: '800',
+                borderRadius: '8px',
+                cursor: isDownloadingPDF ? 'wait' : 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                boxShadow: '0 2px 6px rgba(2, 132, 199, 0.35)',
+                opacity: isDownloadingPDF ? 0.7 : 1
+              }}
+              title="Download High-Resolution Full Statement PDF"
+            >
+              <Download size={16} />
+              {isDownloadingPDF ? 'Generating PDF...' : 'Download Statement PDF 📄'}
+            </button>
+            <button
+              type="button"
+              onClick={handlePrint}
+              className="btn"
+              style={{
+                background: '#475569',
+                color: '#ffffff',
+                border: 'none',
+                padding: '9px 16px',
                 fontSize: '0.82rem',
                 fontWeight: '800',
                 borderRadius: '8px',
@@ -519,10 +675,10 @@ export const ParticularBidReportModal = ({ rateRequest, isOpen, onClose }) => {
                 display: 'flex',
                 alignItems: 'center',
                 gap: '6px',
-                boxShadow: '0 2px 6px rgba(2, 132, 199, 0.3)'
+                boxShadow: '0 2px 6px rgba(71, 85, 105, 0.3)'
               }}
             >
-              <Printer size={16} /> Print Batch PDF
+              <Printer size={16} /> Print Statement 🖨️
             </button>
             <button
               type="button"
@@ -549,7 +705,7 @@ export const ParticularBidReportModal = ({ rateRequest, isOpen, onClose }) => {
         {/* ----------------------------------------------------
            📊 CLEAN BATCH FREIGHT STATEMENT SHEET
         ---------------------------------------------------- */}
-        <div style={{ padding: '4px' }}>
+        <div ref={printableAreaRef} style={{ padding: '8px', background: '#ffffff' }}>
           
           {/* Header Corporate Title Card */}
           <div
