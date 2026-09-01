@@ -205,6 +205,16 @@ export const CreateRequirementModal = ({ isOpen, onClose }) => {
   const handleSubmit = (e) => {
     e.preventDefault();
 
+    if (!selectedPickupOrigin || selectedPickupOrigin.includes('-- Select') || selectedPickupOrigin.includes('-- No')) {
+      alert('🛑 MISSING PICKUP ORIGIN: Please select a valid Pickup Origin before creating the requirement.');
+      return;
+    }
+
+    if (!currentCityName || currentCityName.includes('-- Select') || currentCityName.includes('-- No')) {
+      alert('🛑 MISSING DESTINATION CITY: Please select a Destination City before creating the requirement.');
+      return;
+    }
+
     const selectedMaster = titleMasters.find((t) => t.id === selectedMasterId);
     const finalTitle = currentTitle || selectedMaster?.title || `Shalimar Transport Requirement to ${currentCityName}`;
 
@@ -219,7 +229,7 @@ export const CreateRequirementModal = ({ isOpen, onClose }) => {
       id: newReqId,
       request_no: newReqNo,
       title: finalTitle,
-      origin_city: selectedPickupOrigin || pickupOpts[0] || 'yenva',
+      origin_city: selectedPickupOrigin.trim(),
       origin_pin: '440028',
       dest_city: currentCityName,
       dest_pin: currentPinCode,

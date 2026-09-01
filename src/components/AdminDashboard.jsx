@@ -1412,8 +1412,10 @@ export const AdminDashboard = () => {
   };
 
   // ⚡ BULK RATE REQUEST CREATOR STATE (UP TO 50 REQUESTS AT ONCE)
-  const [masterPickupCity, setMasterPickupCity] = useState(() => (db.company_masters?.[0]?.name || db.city_masters?.[0]?.city || ''));
+  const [masterPickupCity, setMasterPickupCity] = useState('');
   const [openedBatchKey, setOpenedBatchKey] = useState(null);
+  const masterPickupRef = useRef(null);
+  const dropLocationRefs = useRef({});
 
   const toggleBatchExpand = (batchKey) => {
     setOpenedBatchKey((prev) => (prev === batchKey ? null : batchKey));
@@ -1461,7 +1463,6 @@ export const AdminDashboard = () => {
   };
 
   const [bulkReqRows, setBulkReqRows] = useState(() => [createSingleReqRow(0)]);
-  const dropLocationRefs = useRef({});
 
   const handleQtyKeyDown = (e, idx) => {
     if (e.key === 'Tab' && !e.shiftKey) {
@@ -1554,14 +1555,46 @@ export const AdminDashboard = () => {
       return;
     }
 
-    // 🛡️ STRICT VALIDATION: Check that all filled rows have Drop Location, Product Name, and valid Qty MT
+    // 🛡️ STRICT VALIDATION 1: Master Pickup Origin MUST be selected
+    const isMasterPickupSelected = masterPickupCity &&
+      !masterPickupCity.includes('-- Select') &&
+      !masterPickupCity.includes('-- No') &&
+      masterPickupCity.trim().length > 0;
+
+    if (!isMasterPickupSelected) {
+      alert('🛑 MISSING MASTER PICKUP ORIGIN: Please select Master Pickup Origin from the dropdown before broadcasting.');
+      if (masterPickupRef.current) {
+        masterPickupRef.current.focus();
+        masterPickupRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+      return;
+    }
+
+    // 🛡️ STRICT VALIDATION 2: Check that all filled rows have Drop Location, Product Name, and valid Qty MT
     for (let i = 0; i < bulkReqRows.length; i++) {
       const row = bulkReqRows[i];
       const rowNum = i + 1;
 
+      const effectiveOrigin = (row.origin_city || masterPickupCity || '').trim();
+      const hasValidOrigin = effectiveOrigin &&
+        !effectiveOrigin.includes('-- Select') &&
+        !effectiveOrigin.includes('-- No') &&
+        effectiveOrigin.length > 0;
+
+      if (!hasValidOrigin) {
+        alert(`🛑 MISSING PICKUP ORIGIN (Row #${rowNum}): Please select Master Pickup Origin before broadcasting.`);
+        if (masterPickupRef.current) {
+          masterPickupRef.current.focus();
+          masterPickupRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+        return;
+      }
+
       const hasDest = row.dest_city && !row.dest_city.includes('-- Select') && !row.dest_city.includes('-- No') && row.dest_city.trim().length > 0;
       if (!hasDest) {
         alert(`🛑 MISSING DROP LOCATION (Row #${rowNum}): Please select a Drop Location from the dropdown before broadcasting.`);
+        const destEl = dropLocationRefs.current[row.id];
+        if (destEl) destEl.focus();
         return;
       }
 
@@ -1578,7 +1611,7 @@ export const AdminDashboard = () => {
       }
     }
 
-    const defaultOrigin = masterPickupCity || db.company_masters?.[0]?.pickup_location_name || db.city_masters?.[0]?.city || 'Nagpur (MIDC)';
+    const defaultOrigin = masterPickupCity.trim();
 
     const batchItems = bulkReqRows.map((row, i) => {
       const prodVal = row.material_type.trim();
@@ -2585,33 +2618,54 @@ export const AdminDashboard = () => {
                   marginBottom: '22px'
                 }}>
                   {/* Master Pickup Origin */}
-                  <div style={{ background: 'rgba(2, 132, 199, 0.1)', border: '1px solid #0284c7', borderRadius: '12px', padding: '14px 18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px', flexWrap: 'wrap' }}>
+                  <div style={{
+                    background: !masterPickupCity ? 'rgba(239, 68, 68, 0.08)' : 'rgba(2, 132, 199, 0.1)',
+                    border: !masterPickupCity ? '1.5px solid #ef4444' : '1px solid #0284c7',
+                    borderRadius: '12px',
+                    padding: '14px 18px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: '16px',
+                    flexWrap: 'wrap',
+                    transition: 'all 0.2s ease'
+                  }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                      <div style={{ background: '#0284c7', padding: '8px', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <div style={{ background: !masterPickupCity ? '#ef4444' : '#0284c7', padding: '8px', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                         <MapPin size={22} color="#ffffff" />
                       </div>
                       <div>
                         <div style={{ fontSize: '0.92rem', fontWeight: '900', color: 'var(--text-main)', letterSpacing: '0.04em', display: 'flex', alignItems: 'center', gap: '8px' }}>
                           📍 MASTER PICKUP ORIGIN (APPLIES TO ALL 50 ROWS)
+                          <span style={{ color: '#ef4444', fontWeight: '900', fontSize: '1.2rem' }}>*</span>
+                          {!masterPickupCity && (
+                            <span style={{ fontSize: '0.72rem', background: '#fee2e2', color: '#b91c1c', border: '1px solid #fca5a5', padding: '2px 8px', borderRadius: '4px', fontWeight: '800' }}>
+                              ⚠️ REQUIRED
+                            </span>
+                          )}
                         </div>
-                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: '600' }}>
-                          Set default pickup location here to apply to all 50 bulk rows below ⬇️
+                        <div style={{ fontSize: '0.75rem', color: !masterPickupCity ? '#b91c1c' : 'var(--text-muted)', fontWeight: '700' }}>
+                          {!masterPickupCity
+                            ? '⚠️ Pickup location select karna anivarya (mandatory) hai tabhi bid broadcast hogi!'
+                            : 'Set default pickup location here to apply to all 50 bulk rows below ⬇️'}
                         </div>
                       </div>
                     </div>
 
                     <div style={{ flex: 1, maxWidth: '520px' }}>
                       <select
+                        ref={masterPickupRef}
                         className="form-control"
                         value={masterPickupCity}
                         onChange={(e) => handleMasterPickupChange(e.target.value)}
                         style={{
                           fontSize: '0.9rem',
                           height: '44px',
-                          border: '1.5px solid #0284c7',
+                          border: !masterPickupCity ? '2px solid #ef4444' : '1.5px solid #0284c7',
                           color: 'var(--text-main)',
                           fontWeight: '800',
-                          borderRadius: '8px'
+                          borderRadius: '8px',
+                          background: !masterPickupCity ? 'rgba(254, 226, 226, 0.4)' : 'var(--bg-card)'
                         }}
                       >
                         {(() => {
