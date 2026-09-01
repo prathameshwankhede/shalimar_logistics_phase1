@@ -323,16 +323,45 @@ export const AdminDashboard = () => {
 
   // Restore selected comparison request on refresh if present
   const [selectedRequestForComparison, setSelectedRequestForComparison] = useState(() => {
-    const savedReqId = localStorage.getItem('transflow_admin_comparison_id');
-    if (savedReqId && db?.rate_requests) {
-      return db.rate_requests.find(r => String(r.id) === String(savedReqId) || String(r.request_no) === String(savedReqId)) || null;
+    try {
+      const savedRaw = localStorage.getItem('transflow_admin_comparison_id');
+      if (!savedRaw || !db?.rate_requests) return null;
+      let targetReqId = savedRaw;
+      let targetItemId = null;
+      if (savedRaw.startsWith('{')) {
+        const parsed = JSON.parse(savedRaw);
+        targetReqId = parsed.id;
+        targetItemId = parsed.item_id;
+      }
+      const parent = db.rate_requests.find(r => String(r.id) === String(targetReqId) || String(r.request_no) === String(targetReqId));
+      if (!parent) return null;
+      if (targetItemId && Array.isArray(parent.items)) {
+        const item = parent.items.find(i => String(i.id) === String(targetItemId) || String(i.sub_indent_no) === String(targetItemId));
+        if (item) {
+          return {
+            ...parent,
+            item_id: item.id,
+            sub_indent_id: item.id,
+            sub_indent_no: item.sub_indent_no,
+            selectedItem: item,
+            required_qty: Number(item.quantity_mt || parent.required_qty),
+            title: `${item.sub_indent_no || ''} (${item.pickup_origin || parent.origin_city} ➔ ${item.drop_location || parent.dest_city})`
+          };
+        }
+      }
+      return parent;
+    } catch (e) {
+      return null;
     }
-    return null;
   });
 
   useEffect(() => {
     if (selectedRequestForComparison) {
-      localStorage.setItem('transflow_admin_comparison_id', selectedRequestForComparison.id || selectedRequestForComparison.request_no);
+      localStorage.setItem('transflow_admin_comparison_id', JSON.stringify({
+        id: selectedRequestForComparison.id || selectedRequestForComparison.request_no,
+        item_id: selectedRequestForComparison.item_id || null,
+        sub_indent_no: selectedRequestForComparison.sub_indent_no || null
+      }));
     } else {
       localStorage.removeItem('transflow_admin_comparison_id');
     }

@@ -1,7 +1,7 @@
 // src/components/RateComparisonView.jsx
 // Rate Comparison Dashboard with Counter-Offer Acceptance Locking 🛡️ (Contracts CANNOT be awarded until Transporter accepts Admin Counter-Offer)
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { CheckCircle2, TrendingDown, Clock, Sparkles, MessageSquare, Snowflake, Send, X, AlertCircle, Lock, FileText, Printer } from 'lucide-react';
 import { ParticularBidReportModal } from './ParticularBidReportModal';
@@ -41,6 +41,27 @@ export const RateComparisonView = ({ rateRequest, onBack }) => {
   const selectedItemId = rateRequest?.item_id || rateRequest?.sub_indent_id || rateRequest?.selectedItemId || rateRequest?.selectedItem?.id;
   const selectedSubNo = rateRequest?.sub_indent_no || rateRequest?.selectedItem?.sub_indent_no || rateRequest?.sub_code;
 
+  // Retrieve all child items/routes for this batch requirement
+  const childItems = useMemo(() => {
+    if (Array.isArray(rateRequest?.items) && rateRequest.items.length > 0) {
+      return rateRequest.items;
+    }
+    const reqId = rateRequest?.id || rateRequest?.req_no;
+    const reqNo = rateRequest?.request_no || rateRequest?.req_no;
+    return (db.transport_requirement_items || []).filter(
+      i => String(i.requirement_id) === String(reqId) || String(i.requirement_id) === String(reqNo)
+    );
+  }, [rateRequest, db.transport_requirement_items]);
+
+  // Active item tab filter ('ALL' or item.id)
+  const [activeItemFilter, setActiveItemFilter] = useState(() => selectedItemId || 'ALL');
+
+  useEffect(() => {
+    if (selectedItemId) {
+      setActiveItemFilter(selectedItemId);
+    }
+  }, [selectedItemId]);
+
   useEffect(() => {
     let isMounted = true;
     const loadRates = async () => {
@@ -48,8 +69,8 @@ export const RateComparisonView = ({ rateRequest, onBack }) => {
       try {
         setLoadingRates(true);
         const reqId = rateRequest.id || rateRequest.req_no;
-        const itemId = selectedItemId || selectedSubNo;
-        const res = await getRequirementRates(reqId, itemId);
+        const targetItemId = activeItemFilter !== 'ALL' ? activeItemFilter : null;
+        const res = await getRequirementRates(reqId, targetItemId);
         if (res && res.success && Array.isArray(res.rates) && isMounted) {
           setLiveRates(res.rates);
         }
@@ -60,27 +81,52 @@ export const RateComparisonView = ({ rateRequest, onBack }) => {
       }
     };
     loadRates();
-  }, [rateRequest?.id, rateRequest?.req_no, selectedItemId, selectedSubNo]);
+  }, [rateRequest?.id, rateRequest?.req_no, activeItemFilter]);
 
   // Fetch all submissions for this rate request (MySQL Live + Local Fallback 🛡️)
   const rawSubmissions = liveRates.length > 0 ? liveRates : (db.rate_submissions || []);
-  const submissions = rawSubmissions.filter((s) => {
-    const matchesReq =
-      String(s.rate_request_id) === String(rateRequest?.id) ||
-      String(s.rate_request_id) === String(rateRequest?.request_no) ||
-      String(s.rate_request_id) === String(rateRequest?.req_no) ||
-      String(s.requirement_id) === String(rateRequest?.id) ||
-      String(s.requirement_id) === String(rateRequest?.request_no) ||
-      String(s.requirement_id) === String(rateRequest?.req_no);
-    if (!matchesReq) return false;
-    if (selectedItemId || selectedSubNo) {
-      return (
-        String(s.item_id) === String(selectedItemId) ||
-        String(s.item_id) === String(selectedSubNo)
-      );
-    }
-    return true;
-  });
+  const submissions = useMemo(() => {
+    const matching = rawSubmissions.filter((s) => {
+      const matchesReq =
+        String(s.rate_request_id) === String(rateRequest?.id) ||
+        String(s.rate_request_id) === String(rateRequest?.request_no) ||
+        String(s.rate_request_id) === String(rateRequest?.req_no) ||
+        String(s.requirement_id) === String(rateRequest?.id) ||
+        String(s.requirement_id) === String(rateRequest?.request_no) ||
+        String(s.requirement_id) === String(rateRequest?.req_no);
+      if (!matchesReq) return false;
+      if (activeItemFilter !== 'ALL') {
+        return (
+          String(s.item_id) === String(activeItemFilter) ||
+          String(s.item_id) === String(selectedSubNo)
+        );
+      }
+      return true;
+    });
+
+    // Deduplicate: If the same transporter submitted multiple quotes on the same item, keep only the latest quote!
+    const latestMap = new Map();
+    matching.forEach(sub => {
+      const itmKey = sub.item_id || 'MAIN';
+      const key = `${itmKey}_${sub.transporter_id}`;
+      const existing = latestMap.get(key);
+      if (!existing) {
+        latestMap.set(key, sub);
+      } else {
+        const existingTime = new Date(existing.submitted_at || existing.created_at || 0).getTime();
+        const currentTime = new Date(sub.submitted_at || sub.created_at || 0).getTime();
+        if (currentTime >= existingTime) {
+          latestMap.set(key, sub);
+        }
+      }
+    });
+
+    return Array.from(latestMap.values()).sort((a, b) => {
+      const rateA = parseFloat(a.rate_per_mt || a.rate_per_unit || 0);
+      const rateB = parseFloat(b.rate_per_mt || b.rate_per_unit || 0);
+      return rateA - rateB;
+    });
+  }, [rawSubmissions, rateRequest, activeItemFilter, selectedSubNo]);
 
   // Calculate unique transporter count for current sub-indent
   const uniqueTransporters = new Set(submissions.map((s) => s.transporter_id).filter(Boolean));
@@ -415,167 +461,273 @@ export const RateComparisonView = ({ rateRequest, onBack }) => {
           <TrendingDown size={18} color="#38bdf8" /> Transporter Quotes & Counter-Offer Matrix
         </h3>
 
+        {/* 📑 SUB-INDENT / ROUTE SELECTOR TABS (WHEN MULTIPLE ITEMS EXIST) */}
+        {childItems.length > 1 && (
+          <div style={{
+            display: 'flex',
+            gap: '8px',
+            marginBottom: '18px',
+            flexWrap: 'wrap',
+            background: 'rgba(15, 23, 42, 0.5)',
+            padding: '8px 12px',
+            borderRadius: '12px',
+            border: '1px solid var(--border-color)'
+          }}>
+            <button
+              type="button"
+              onClick={() => setActiveItemFilter('ALL')}
+              className="btn"
+              style={{
+                padding: '6px 14px',
+                fontSize: '0.82rem',
+                borderRadius: '8px',
+                fontWeight: activeItemFilter === 'ALL' ? '900' : '700',
+                background: activeItemFilter === 'ALL' ? 'linear-gradient(135deg, #0284c7 0%, #38bdf8 100%)' : 'rgba(255,255,255,0.06)',
+                color: '#ffffff',
+                border: activeItemFilter === 'ALL' ? '1.5px solid #7dd3fc' : '1px solid rgba(255,255,255,0.1)',
+                cursor: 'pointer'
+              }}
+            >
+              📑 All Items Combined ({childItems.length})
+            </button>
+            {childItems.map((item, idx) => {
+              const subNo = item.sub_indent_no || `#${idx + 1}`;
+              const isCurActive = activeItemFilter === item.id || activeItemFilter === subNo;
+              return (
+                <button
+                  key={item.id || idx}
+                  type="button"
+                  onClick={() => setActiveItemFilter(item.id)}
+                  className="btn"
+                  style={{
+                    padding: '6px 14px',
+                    fontSize: '0.82rem',
+                    borderRadius: '8px',
+                    fontWeight: isCurActive ? '900' : '700',
+                    background: isCurActive ? 'linear-gradient(135deg, #0284c7 0%, #38bdf8 100%)' : 'rgba(255,255,255,0.06)',
+                    color: '#ffffff',
+                    border: isCurActive ? '1.5px solid #7dd3fc' : '1px solid rgba(255,255,255,0.1)',
+                    cursor: 'pointer'
+                  }}
+                >
+                  📍 {subNo}: {item.drop_location || 'Destination'} ({item.quantity_mt || 0} {item.unit || 'MT'})
+                </button>
+              );
+            })}
+          </div>
+        )}
+
         <div className="custom-table-container">
           <table className="custom-table">
             <thead>
               <tr>
+                {childItems.length > 1 && <th>Sub-Indent / Route</th>}
                 <th>Transporter</th>
                 <th>Quote Rate / MT</th>
                 <th>Admin Counter-Offer</th>
-                <th>Total Value ({rateRequest?.required_qty} MT)</th>
+                <th>
+                  {activeItemFilter !== 'ALL'
+                    ? `Total Value (${childItems.find(i => String(i.id) === String(activeItemFilter))?.quantity_mt || rateRequest?.required_qty} MT)`
+                    : 'Total Value'}
+                </th>
                 <th>Status & L1 Flag</th>
                 <th>Remarks / Negotiation Note</th>
               </tr>
             </thead>
             <tbody>
-              {submissions.map((sub) => {
-                const transporter = (db.transporters || []).find(
-                  (t) =>
-                    String(t.id) === String(sub.transporter_id) ||
-                    String(t.code) === String(sub.transporter_id) ||
-                    String(t.username) === String(sub.transporter_id) ||
-                    (t.company_name && sub.transporter_id && String(t.company_name).toLowerCase().includes(String(sub.transporter_id).toLowerCase()))
-                );
-                const isL1 = sub.rate_per_unit === lowestRate;
-                const isSelected = sub.status === 'Selected' || sub.bid_status === 'FINALIZED';
-                const isFrozen = isBidFrozen(sub);
-                const isNegotiating = (sub.status === 'Negotiating' || sub.bid_status === 'COUNTER_OFFERED' || sub.counter_offer_status === 'PENDING') && !isFrozen;
+              {submissions.length === 0 ? (
+                <tr>
+                  <td colSpan={childItems.length > 1 ? 7 : 6} style={{ textAlign: 'center', padding: '30px', color: 'var(--text-muted)' }}>
+                    No quotes submitted yet for this route.
+                  </td>
+                </tr>
+              ) : (
+                submissions.map((sub) => {
+                  const transporter = (db.transporters || []).find(
+                    (t) =>
+                      String(t.id) === String(sub.transporter_id) ||
+                      String(t.code) === String(sub.transporter_id) ||
+                      String(t.username) === String(sub.transporter_id) ||
+                      (t.company_name && sub.transporter_id && String(t.company_name).toLowerCase().includes(String(sub.transporter_id).toLowerCase()))
+                  );
+                  const isL1 = sub.rate_per_unit === lowestRate;
+                  const isSelected = sub.status === 'Selected' || sub.bid_status === 'FINALIZED';
+                  const isFrozen = isBidFrozen(sub);
+                  const isNegotiating = (sub.status === 'Negotiating' || sub.bid_status === 'COUNTER_OFFERED' || sub.counter_offer_status === 'PENDING') && !isFrozen;
 
-                return (
-                  <tr
-                    key={sub.id}
-                    style={{
-                      background: isFrozen ? 'rgba(56, 189, 248, 0.1)' : isL1 ? 'rgba(16, 185, 129, 0.08)' : 'transparent',
-                      borderLeft: isFrozen ? '4px solid #38bdf8' : isL1 ? '4px solid #10b981' : 'none'
-                    }}
-                  >
-                    <td>
-                      <div style={{ fontWeight: '700', color: 'var(--text-main)', fontSize: '0.95rem' }}>
-                        {transporter?.company_name || 'Transporter'}
-                      </div>
-                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                        Contact: {transporter?.contact_person} ({transporter?.mobile})
-                        {sub.submitted_at && (
-                          <span style={{ marginLeft: '6px', color: '#38bdf8', fontWeight: '600' }}>
-                            • Quoted: {new Date(sub.submitted_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-                          </span>
-                        )}
-                      </div>
-                    </td>
+                  return (
+                    <tr
+                      key={sub.id}
+                      style={{
+                        background: isFrozen ? 'rgba(56, 189, 248, 0.1)' : isL1 ? 'rgba(16, 185, 129, 0.08)' : 'transparent',
+                        borderLeft: isFrozen ? '4px solid #38bdf8' : isL1 ? '4px solid #10b981' : 'none'
+                      }}
+                    >
+                      {childItems.length > 1 && (
+                        <td style={{ padding: '12px 14px' }}>
+                          {(() => {
+                            const itm = childItems.find(i => String(i.id) === String(sub.item_id) || String(i.sub_indent_no) === String(sub.item_id));
+                            const routeNo = itm?.sub_indent_no || sub.item_id || 'MAIN';
+                            const dropCity = itm?.drop_location || rateRequest?.dest_city || 'Destination';
+                            const originCity = itm?.pickup_origin || rateRequest?.origin_city || 'Origin';
+                            const itemQty = itm?.quantity_mt || rateRequest?.required_qty || 0;
+                            return (
+                              <div>
+                                <span style={{ fontWeight: '900', color: '#0284c7', fontSize: '0.86rem' }}>
+                                  {routeNo}
+                                </span>
+                                <div style={{ fontSize: '0.78rem', color: 'var(--text-main)', fontWeight: '700', marginTop: '2px' }}>
+                                  📍 {originCity} ➔ 🎯 <span style={{ color: '#c2410c', fontWeight: '900' }}>{dropCity}</span>
+                                </div>
+                                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: '600' }}>
+                                  {itemQty} MT • {itm?.product_name || 'Goods'}
+                                </div>
+                              </div>
+                            );
+                          })()}
+                        </td>
+                      )}
 
-                    <td>
-                      <div style={{ fontSize: '1.15rem', fontWeight: '800', color: isL1 ? '#34d399' : 'var(--text-main)' }}>
-                        ₹{(Number(sub?.rate_per_unit) || 0).toLocaleString()}
-                        <span style={{ fontSize: '0.75rem', fontWeight: '500', color: 'var(--text-muted)' }}> / MT</span>
-                      </div>
-                    </td>
+                      <td>
+                        <div style={{ fontWeight: '700', color: 'var(--text-main)', fontSize: '0.95rem' }}>
+                          {transporter?.company_name || 'Transporter'}
+                        </div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                          Contact: {transporter?.contact_person} ({transporter?.mobile})
+                          {sub.submitted_at && (
+                            <span style={{ marginLeft: '6px', color: '#38bdf8', fontWeight: '600' }}>
+                              • Quoted: {new Date(sub.submitted_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                            </span>
+                          )}
+                        </div>
+                      </td>
 
-                    <td>
-                      {(() => {
-                        const isTransCounter = (sub.counter_offer_by === 'TRANSPORTER' || sub.bid_status === 'COUNTER_RESPONDED') && (sub.counter_offer_status === 'PENDING' || !sub.counter_offer_status) && !isFrozen;
-                        const hasCounter = sub.counter_offer_rate || sub.counter_rate;
+                      <td>
+                        <div style={{ fontSize: '1.15rem', fontWeight: '800', color: isL1 ? '#34d399' : 'var(--text-main)' }}>
+                          ₹{(Number(sub?.rate_per_unit) || 0).toLocaleString()}
+                          <span style={{ fontSize: '0.75rem', fontWeight: '500', color: 'var(--text-muted)' }}> / MT</span>
+                        </div>
+                      </td>
 
-                        if (isTransCounter && hasCounter) {
-                          return (
-                            <div style={{ background: 'rgba(59, 130, 246, 0.15)', padding: '8px 12px', borderRadius: '8px', border: '1.5px solid #3b82f6', display: 'flex', flexDirection: 'column', gap: '4px', minWidth: '180px' }}>
-                              <span style={{ fontSize: '0.72rem', color: '#60a5fa', fontWeight: '800', display: 'block' }}>
-                                🚚 TRANSPORTER COUNTER OFFER
-                              </span>
-                              <div style={{ fontSize: '0.74rem', color: '#94a3b8' }}>Original: ₹{sub.original_rate || sub.rate_per_unit || sub.rate_per_mt}/MT</div>
-                              <strong style={{ color: '#ffffff', fontSize: '1.05rem' }}>₹{sub.counter_offer_rate || sub.counter_rate}/MT</strong>
-                              {!existingAllocation && (
-                                <div style={{ display: 'flex', gap: '6px', marginTop: '4px', flexWrap: 'wrap' }}>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleAdminFinalizeBid(sub, sub.counter_offer_rate || sub.counter_rate)}
-                                    className="btn btn-success"
-                                    style={{ padding: '3px 8px', fontSize: '0.72rem', background: '#16a34a', color: '#ffffff', border: 'none', borderRadius: '4px', fontWeight: '800', cursor: 'pointer' }}
-                                  >
-                                    ✓ Accept ₹{sub.counter_offer_rate || sub.counter_rate}
-                                  </button>
+                      <td>
+                        {(() => {
+                          const isTransCounter = (sub.counter_offer_by === 'TRANSPORTER' || sub.bid_status === 'COUNTER_RESPONDED') && (sub.counter_offer_status === 'PENDING' || !sub.counter_offer_status) && !isFrozen;
+                          const hasCounter = sub.counter_offer_rate || sub.counter_rate;
+
+                          if (isTransCounter && hasCounter) {
+                            return (
+                              <div style={{ background: 'rgba(59, 130, 246, 0.15)', padding: '8px 12px', borderRadius: '8px', border: '1.5px solid #3b82f6', display: 'flex', flexDirection: 'column', gap: '4px', minWidth: '180px' }}>
+                                <span style={{ fontSize: '0.72rem', color: '#60a5fa', fontWeight: '800', display: 'block' }}>
+                                  🚚 TRANSPORTER COUNTER OFFER
+                                </span>
+                                <div style={{ fontSize: '0.74rem', color: '#94a3b8' }}>Original: ₹{sub.original_rate || sub.rate_per_unit || sub.rate_per_mt}/MT</div>
+                                <strong style={{ color: '#ffffff', fontSize: '1.05rem' }}>₹{sub.counter_offer_rate || sub.counter_rate}/MT</strong>
+                                {!existingAllocation && (
+                                  <div style={{ display: 'flex', gap: '6px', marginTop: '4px', flexWrap: 'wrap' }}>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleAdminFinalizeBid(sub, sub.counter_offer_rate || sub.counter_rate)}
+                                      className="btn btn-success"
+                                      style={{ padding: '3px 8px', fontSize: '0.72rem', background: '#16a34a', color: '#ffffff', border: 'none', borderRadius: '4px', fontWeight: '800', cursor: 'pointer' }}
+                                    >
+                                      ✓ Accept ₹{sub.counter_offer_rate || sub.counter_rate}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setActiveCounterSub(sub);
+                                        setCounterForm({ counter_rate: sub.counter_offer_rate || sub.counter_rate || '', note: '' });
+                                      }}
+                                      className="btn btn-primary"
+                                      style={{ padding: '3px 8px', fontSize: '0.72rem', background: '#0284c7', color: '#ffffff', border: 'none', borderRadius: '4px', fontWeight: '800', cursor: 'pointer' }}
+                                    >
+                                      ↔ Counter
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          }
+
+                          if (hasCounter) {
+                            return (
+                              <div style={{ background: isFrozen ? 'rgba(56, 189, 248, 0.15)' : 'rgba(245, 158, 11, 0.15)', padding: '6px 10px', borderRadius: '6px', border: isFrozen ? '1px solid #38bdf8' : '1px solid #f59e0b', display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+                                <div>
+                                  <span style={{ fontSize: '0.72rem', color: isFrozen ? '#38bdf8' : '#fbbf24', fontWeight: '700', display: 'block' }}>
+                                    {isFrozen ? '❄️ FINAL / ACCEPTED' : '💬 ADMIN COUNTER'}
+                                  </span>
+                                  <strong style={{ color: '#ffffff', fontSize: '1rem' }}>₹{sub.counter_offer_rate || sub.counter_rate}/MT</strong>
+                                </div>
+                                {!isFrozen && (
                                   <button
                                     type="button"
                                     onClick={() => {
                                       setActiveCounterSub(sub);
                                       setCounterForm({ counter_rate: sub.counter_offer_rate || sub.counter_rate || '', note: '' });
                                     }}
-                                    className="btn btn-primary"
-                                    style={{ padding: '3px 8px', fontSize: '0.72rem', background: '#0284c7', color: '#ffffff', border: 'none', borderRadius: '4px', fontWeight: '800', cursor: 'pointer' }}
+                                    className="btn btn-secondary"
+                                    style={{ padding: '2px 8px', fontSize: '0.72rem', border: '1px solid #f59e0b', color: '#fbbf24', borderRadius: '4px', cursor: 'pointer' }}
                                   >
-                                    ↔ Counter
+                                    ✏ Edit
                                   </button>
-                                </div>
-                              )}
-                            </div>
-                          );
-                        }
-
-                        if (hasCounter) {
-                          return (
-                            <div style={{ background: isFrozen ? 'rgba(56, 189, 248, 0.15)' : 'rgba(245, 158, 11, 0.15)', padding: '6px 10px', borderRadius: '6px', border: isFrozen ? '1px solid #38bdf8' : '1px solid #f59e0b', display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
-                              <div>
-                                <span style={{ fontSize: '0.72rem', color: isFrozen ? '#38bdf8' : '#fbbf24', fontWeight: '700', display: 'block' }}>
-                                  {isFrozen ? '❄️ FINAL / ACCEPTED' : '💬 ADMIN COUNTER'}
-                                </span>
-                                <strong style={{ color: '#ffffff', fontSize: '1rem' }}>₹{sub.counter_offer_rate || sub.counter_rate}/MT</strong>
+                                )}
                               </div>
-                              {!isFrozen && !existingAllocation && (
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setActiveCounterSub(sub);
-                                    setCounterForm({ counter_rate: sub.counter_offer_rate || sub.counter_rate || '', note: '' });
-                                  }}
-                                  className="btn btn-secondary"
-                                  style={{ padding: '2px 8px', fontSize: '0.72rem', border: '1px solid #f59e0b', color: '#fbbf24', borderRadius: '4px', cursor: 'pointer' }}
-                                >
-                                  ✏ Edit
-                                </button>
-                              )}
+                            );
+                          }
+
+                          if (existingAllocation) {
+                            return <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>None Sent</span>;
+                          }
+
+                          return (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setActiveCounterSub(sub);
+                                setCounterForm({ counter_rate: Math.round((sub.rate_per_unit || sub.rate_per_mt) * 0.92), note: '' });
+                              }}
+                              className="btn btn-primary"
+                              style={{
+                                padding: '6px 14px',
+                                fontSize: '0.8rem',
+                                fontWeight: '900',
+                                borderRadius: '6px',
+                                border: '1.5px solid #38bdf8',
+                                color: '#ffffff',
+                                background: 'linear-gradient(135deg, #0284c7 0%, #2563eb 100%)',
+                                boxShadow: '0 2px 6px rgba(2, 132, 199, 0.35)',
+                                cursor: 'pointer',
+                                whiteSpace: 'nowrap',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '6px'
+                              }}
+                              title="Send target counter rate to transporter"
+                            >
+                              <MessageSquare size={14} /> Counter Rate
+                            </button>
+                          );
+                        })()}
+                      </td>
+
+                      <td>
+                        {(() => {
+                          const itm = childItems.find(i => String(i.id) === String(sub.item_id) || String(i.sub_indent_no) === String(sub.item_id));
+                          const effectiveQty = Number(sub.quoted_quantity_mt || itm?.quantity_mt || rateRequest?.required_qty || 0);
+                          const rateVal = Number(sub.counter_rate_per_unit || sub.counter_offer_rate || sub.counter_rate || sub.rate_per_unit || sub.rate_per_mt || 0);
+                          const totalVal = Math.round(effectiveQty * rateVal);
+                          return (
+                            <div>
+                              <div style={{ fontWeight: '700', color: 'var(--text-main)', fontSize: '0.95rem' }}>
+                                ₹{totalVal.toLocaleString()}
+                              </div>
+                              <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                                ({effectiveQty} MT @ ₹{rateVal}/MT)
+                              </div>
                             </div>
                           );
-                        }
-
-                        if (existingAllocation) {
-                          return <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>None Sent</span>;
-                        }
-
-                        return (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setActiveCounterSub(sub);
-                              setCounterForm({ counter_rate: Math.round((sub.rate_per_unit || sub.rate_per_mt) * 0.92), note: '' });
-                            }}
-                            className="btn btn-primary"
-                            style={{
-                              padding: '6px 14px',
-                              fontSize: '0.8rem',
-                              fontWeight: '900',
-                              borderRadius: '6px',
-                              border: '1.5px solid #38bdf8',
-                              color: '#ffffff',
-                              background: 'linear-gradient(135deg, #0284c7 0%, #2563eb 100%)',
-                              boxShadow: '0 2px 6px rgba(2, 132, 199, 0.35)',
-                              cursor: 'pointer',
-                              whiteSpace: 'nowrap',
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '6px'
-                            }}
-                            title="Send target counter rate to transporter"
-                          >
-                            <MessageSquare size={14} /> Counter Rate
-                          </button>
-                        );
-                      })()}
-                    </td>
-
-                    <td>
-                      <div style={{ fontWeight: '700', color: 'var(--text-sub)' }}>
-                        ₹{((sub.counter_rate_per_unit || sub.rate_per_unit) * rateRequest.required_qty).toLocaleString()}
-                      </div>
-                    </td>
+                        })()}
+                      </td>
 
                     <td>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'flex-start' }}>
@@ -608,15 +760,7 @@ export const RateComparisonView = ({ rateRequest, onBack }) => {
                     </td>
                   </tr>
                 );
-              })}
-
-              {submissions.length === 0 && (
-                <tr>
-                  <td colSpan="6" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>
-                    No quotes submitted yet by transporters for this requirement.
-                  </td>
-                </tr>
-              )}
+              }))}
             </tbody>
           </table>
         </div>
