@@ -1709,6 +1709,20 @@ export const AdminDashboard = () => {
     setTimeout(() => setArchiveNotice(''), 5000);
   };
 
+  // ⌨️ SHORTCUT KEY: Ctrl + Enter / Cmd + Enter to Broadcast Rate Requests
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        if (activeTab === 'requirements' && !selectedRequestForComparison) {
+          e.preventDefault();
+          handleBulkBroadcastRequirements(e);
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [activeTab, selectedRequestForComparison, bulkReqRows, masterPickupCity]);
+
   // EDIT TRANSPORT REQUIREMENT STATE & HANDLER
   const [editingReq, setEditingReq] = useState(null);
 
@@ -2702,7 +2716,15 @@ export const AdminDashboard = () => {
                   </button>
                 </div>
 
-                <form onSubmit={handleBulkBroadcastRequirements}>
+                <form
+                  onSubmit={handleBulkBroadcastRequirements}
+                  onKeyDown={(e) => {
+                    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                      e.preventDefault();
+                      handleBulkBroadcastRequirements(e);
+                    }
+                  }}
+                >
                   {/* Rows Grid List (HIGH-TECH GLASS CARDS) */}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', marginBottom: '24px' }}>
                     {bulkReqRows.map((row, idx) => (
@@ -2873,7 +2895,7 @@ export const AdminDashboard = () => {
                         background: 'linear-gradient(135deg, #059669 0%, #10b981 100%)',
                         color: '#ffffff',
                         boxShadow: '0 0 25px rgba(16, 185, 129, 0.6), 0 0 50px rgba(16, 185, 129, 0.3)',
-                        padding: '14px 36px',
+                        padding: '14px 32px',
                         fontSize: '1.05rem',
                         fontWeight: '900',
                         borderRadius: '14px',
@@ -2885,9 +2907,26 @@ export const AdminDashboard = () => {
                         transform: 'scale(1.02)',
                         transition: 'all 0.25s ease'
                       }}
-                      title="Click here to save & broadcast these filled rate requests to Transporters"
+                      title="Click or press Ctrl + Enter to broadcast these rate requests"
                     >
                       <Plus size={22} /> 🚀 Broadcast All {bulkReqRows.length} Rate Requests (1-Click)
+                      <span
+                        style={{
+                          background: 'rgba(0, 0, 0, 0.3)',
+                          border: '1px solid rgba(255, 255, 255, 0.4)',
+                          borderRadius: '6px',
+                          padding: '3px 9px',
+                          fontSize: '0.74rem',
+                          fontWeight: '800',
+                          marginLeft: '6px',
+                          letterSpacing: '0.04em',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.2)'
+                        }}
+                      >
+                        Ctrl + Enter
+                      </span>
                     </button>
                   </div>
                 </form>
