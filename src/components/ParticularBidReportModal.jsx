@@ -91,10 +91,38 @@ export const ParticularBidReportModal = ({ rateRequest, isOpen, onClose }) => {
 
   const currentDateStr = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' });
 
-  // Print PDF Statement
+  // Print PDF Statement with print-mode class
   const handlePrint = () => {
-    window.print();
+    document.body.classList.add('printing-report');
+    setTimeout(() => {
+      window.print();
+      setTimeout(() => {
+        document.body.classList.remove('printing-report');
+      }, 500);
+    }, 60);
   };
+
+  // Keyboard shortcut Ctrl+P / browser print listener
+  React.useEffect(() => {
+    if (!isOpen) return;
+
+    const handleBeforePrint = () => {
+      document.body.classList.add('printing-report');
+    };
+
+    const handleAfterPrint = () => {
+      document.body.classList.remove('printing-report');
+    };
+
+    window.addEventListener('beforeprint', handleBeforePrint);
+    window.addEventListener('afterprint', handleAfterPrint);
+
+    return () => {
+      document.body.classList.remove('printing-report');
+      window.removeEventListener('beforeprint', handleBeforePrint);
+      window.removeEventListener('afterprint', handleAfterPrint);
+    };
+  }, [isOpen]);
 
   // Export CSV for the clean batch statement
   const handleExportCSV = () => {

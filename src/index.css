@@ -808,79 +808,108 @@ body {
    🖨️ 100% BULLETPROOF HIGH-PRECISION PRINT & PDF STYLES
 ---------------------------------------------------- */
 @media print {
-  /* 1. Hide all non-printable UI elements */
-  body * {
-    visibility: hidden !important;
-  }
-  
-  .no-print,
-  .no-print *,
-  header,
-  footer,
-  nav,
-  aside,
-  button,
-  .modal-overlay:not(:has(.printable-area)) {
-    display: none !important;
-    visibility: hidden !important;
+  /* 1. Reset Root and Page Context to A4 Landscape */
+  @page {
+    size: A4 landscape;
+    margin: 8mm 10mm 8mm 10mm;
   }
 
-  /* 2. Force page, root, and body to pure white background */
-  html, body, #root, .modal-overlay, .modal-content {
+  html, body {
     background: #ffffff !important;
     background-color: #ffffff !important;
-    background-image: none !important;
     color: #000000 !important;
-    box-shadow: none !important;
-    border: none !important;
     margin: 0 !important;
     padding: 0 !important;
     width: 100% !important;
     height: auto !important;
+    min-height: auto !important;
     overflow: visible !important;
+  }
+
+  /* 2. Hide all background navigation, buttons, and dashboard chrome */
+  #root > div > nav,
+  #root > div > footer,
+  header,
+  nav,
+  aside,
+  button,
+  .no-print,
+  .no-print * {
+    display: none !important;
+    visibility: hidden !important;
+  }
+
+  /* When printing, hide all main dashboard content except modal */
+  body.printing-report #root > div > main > *:not(.modal-overlay),
+  main > *:not(.modal-overlay) {
+    display: none !important;
+  }
+
+  /* 3. Strip overlay wrappers completely so printable area sits right at the top of Page 1 */
+  .modal-overlay {
     position: static !important;
+    background: transparent !important;
+    background-color: transparent !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    width: 100% !important;
+    height: auto !important;
+    display: block !important;
+    overflow: visible !important;
+    z-index: auto !important;
   }
 
-  /* 3. Render printable area centered & 100% full-width A4 page */
-  .printable-area,
-  .printable-area * {
-    visibility: visible !important;
-  }
-
+  .modal-content,
   .printable-area {
-    position: absolute !important;
-    left: 0 !important;
-    top: 0 !important;
+    position: static !important;
+    display: block !important;
     width: 100% !important;
     max-width: 100% !important;
     margin: 0 !important;
-    padding: 8px !important;
+    padding: 0 !important;
     background: #ffffff !important;
+    background-color: #ffffff !important;
     color: #000000 !important;
     border: none !important;
     box-shadow: none !important;
+    border-radius: 0 !important;
+    overflow: visible !important;
+    max-height: none !important;
+    animation: none !important;
+    transform: none !important;
   }
 
-  /* 4. Force high-contrast text and crisp black borders for print */
-  .printable-area table,
-  .printable-area div,
-  .printable-area td,
+  /* 4. Force crisp print tables and exact color reproduction */
+  .printable-area table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    page-break-inside: auto;
+  }
+
+  .printable-area tr {
+    page-break-inside: avoid;
+    page-break-after: auto;
+  }
+
   .printable-area th,
-  .printable-area p,
-  .printable-area span,
-  .printable-area strong,
-  .printable-area h1,
-  .printable-area h2,
-  .printable-area h3 {
-    color: #000000 !important;
+  .printable-area td {
+    border: 1px solid #94a3b8 !important;
+    padding: 8px 10px !important;
+    font-size: 11px !important;
+    color: #0f172a !important;
+  }
+
+  .printable-area th {
+    background-color: #f1f5f9 !important;
+    font-weight: 900 !important;
+  }
+
+  /* Force background colors and borders in Chrome / Safari / Edge PDF engine */
+  * {
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
-  }
-
-  /* 5. A4 Page Margins setup */
-  @page {
-    size: A4 portrait;
-    margin: 6mm 8mm 6mm 8mm;
   }
 }
 
