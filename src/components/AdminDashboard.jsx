@@ -366,6 +366,7 @@ export const AdminDashboard = () => {
   const [isSendingCounter, setIsSendingCounter] = useState({});
   const [editingCounterKeys, setEditingCounterKeys] = useState({});
   const [isSendingBatchCounter, setIsSendingBatchCounter] = useState(false);
+  const submitAllBtnRef = useRef(null);
 
   const [counterModalState, setCounterModalState] = useState({
     isOpen: false,
@@ -604,7 +605,7 @@ export const AdminDashboard = () => {
     }
   };
 
-  const renderCounterOfferCell = (reqId, itemId, itemBids, lowestRate, reqCode) => {
+  const renderCounterOfferCell = (reqId, itemId, itemBids, lowestRate, reqCode, rowIndex = 0, totalRows = 1) => {
     const quoteCount = itemBids ? itemBids.length : 0;
     const targetItemId = itemId || 'MAIN';
     const cellKey = `${reqId}_${targetItemId}`;
@@ -638,20 +639,57 @@ export const AdminDashboard = () => {
               step="0.01"
               placeholder={lowestRate ? `${lowestRate}` : "Rate"}
               value={currentValue}
+              className="batch-counter-rate-input"
+              data-index={rowIndex}
               onChange={(e) => {
                 const val = e.target.value;
                 setAdminCounterInputs(prev => ({ ...prev, [cellKey]: val }));
               }}
               onKeyDown={(e) => {
-                if (e.key === 'Enter') {
+                if (e.key === 'Tab') {
+                  if (!e.shiftKey) {
+                    if (rowIndex < totalRows - 1) {
+                      const nextInput = document.querySelector(`.batch-counter-rate-input[data-index="${rowIndex + 1}"]`);
+                      if (nextInput) {
+                        e.preventDefault();
+                        nextInput.focus();
+                        if (typeof nextInput.select === 'function') nextInput.select();
+                      }
+                    } else if (rowIndex >= totalRows - 1) {
+                      if (submitAllBtnRef.current) {
+                        e.preventDefault();
+                        submitAllBtnRef.current.focus();
+                      }
+                    }
+                  } else if (e.shiftKey) {
+                    if (rowIndex > 0) {
+                      const prevInput = document.querySelector(`.batch-counter-rate-input[data-index="${rowIndex - 1}"]`);
+                      if (prevInput) {
+                        e.preventDefault();
+                        prevInput.focus();
+                        if (typeof prevInput.select === 'function') prevInput.select();
+                      }
+                    }
+                  }
+                } else if (e.key === 'Enter') {
                   e.preventDefault();
-                  handleSendInlineCounter(reqId, targetItemId, reqCode, itemBids);
+                  if (rowIndex < totalRows - 1) {
+                    const nextInput = document.querySelector(`.batch-counter-rate-input[data-index="${rowIndex + 1}"]`);
+                    if (nextInput) {
+                      nextInput.focus();
+                      if (typeof nextInput.select === 'function') nextInput.select();
+                    }
+                  } else if (rowIndex >= totalRows - 1) {
+                    if (submitAllBtnRef.current) {
+                      submitAllBtnRef.current.focus();
+                    }
+                  }
                 }
               }}
               style={{
                 width: '100%',
                 padding: '5px 6px 5px 18px',
-                fontSize: '0.8rem',
+                fontSize: '0.85rem',
                 fontWeight: '800',
                 borderRadius: '6px',
                 border: '1.5px solid #38bdf8',
@@ -660,11 +698,12 @@ export const AdminDashboard = () => {
                 outline: 'none',
                 minWidth: '70px'
               }}
-              title="Type counter rate (₹ / MT) and press Enter or click Send"
+              title="Type counter rate (₹ / MT) and press Tab to go to next row or Submit All"
             />
           </div>
           <button
             type="button"
+            tabIndex={-1}
             onClick={() => handleSendInlineCounter(reqId, targetItemId, reqCode, itemBids)}
             disabled={isSendingCounter[cellKey]}
             className="btn btn-primary"
@@ -3218,7 +3257,7 @@ export const AdminDashboard = () => {
 
                                     {/* 💬 COUNTER OFFER */}
                                     <td className="counter-offer-cell" style={{ padding: '14px 16px' }}>
-                                      {renderCounterOfferCell(openedReq.id || reqNoStr, item.id || subCode, bids, lowestRate, subCode)}
+                                      {renderCounterOfferCell(openedReq.id || reqNoStr, item.id || subCode, bids, lowestRate, subCode, subIdx, childItems.length)}
                                     </td>
 
                                     <td style={{ padding: '14px 16px' }}>
@@ -3258,6 +3297,7 @@ export const AdminDashboard = () => {
                                     <td style={{ padding: '14px 16px', textAlign: 'center' }}>
                                       <button
                                         type="button"
+                                        tabIndex={-1}
                                         onClick={() => setSelectedRequestForComparison({
                                           ...openedReq,
                                           item_id: item.id,
@@ -3293,6 +3333,7 @@ export const AdminDashboard = () => {
                                           <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', justifyContent: 'center' }}>
                                             <button
                                               type="button"
+                                              tabIndex={-1}
                                               onClick={() => handleContinueWithTransporter(subCode)}
                                               className="btn btn-secondary"
                                               style={{ padding: '4px 8px', fontSize: '0.72rem', fontWeight: '800', borderRadius: '6px', border: '1px solid #38bdf8', color: '#38bdf8' }}
@@ -3302,6 +3343,7 @@ export const AdminDashboard = () => {
                                             </button>
                                             <button
                                               type="button"
+                                              tabIndex={-1}
                                               onClick={() => handleOpenReleaseRequoteModal(openedReq, item, totalItemQty, itemDispatchedQty, itemRemainingQty)}
                                               className="btn btn-warning"
                                               style={{ padding: '4px 8px', fontSize: '0.72rem', fontWeight: '900', borderRadius: '6px', background: 'rgba(245, 158, 11, 0.25)', border: '1px solid #f59e0b', color: '#fbbf24' }}
@@ -3322,6 +3364,7 @@ export const AdminDashboard = () => {
                                       ) : (
                                         <button
                                           type="button"
+                                          tabIndex={-1}
                                           className="finalize-rate-btn btn btn-primary"
                                           onClick={() => handleFinalizeRateForItem(openedReq, item, subCode, bids)}
                                           disabled={isFinalizingKey === `${openedReq.id || reqNoStr}_${item.id || subCode}` || bidsCount === 0}
@@ -3366,16 +3409,19 @@ export const AdminDashboard = () => {
                           }}
                         >
                           <button
+                            ref={submitAllBtnRef}
+                            id="batch-submit-all-btn"
                             type="button"
+                            tabIndex={0}
                             onClick={() => handleSendAllBatchCounters(openedReq, childItems)}
                             disabled={isSendingBatchCounter}
                             className="btn"
                             style={{
                               background: isSendingBatchCounter ? '#0284c7' : 'linear-gradient(135deg, #0284c7 0%, #2563eb 100%)',
                               color: '#ffffff',
-                              border: '1.5px solid #38bdf8',
-                              padding: '12px 32px',
-                              fontSize: '0.96rem',
+                              border: '2px solid #38bdf8',
+                              padding: '12px 34px',
+                              fontSize: '0.98rem',
                               fontWeight: '900',
                               borderRadius: '10px',
                               cursor: isSendingBatchCounter ? 'wait' : 'pointer',
@@ -3384,13 +3430,22 @@ export const AdminDashboard = () => {
                               gap: '10px',
                               boxShadow: '0 4px 20px rgba(37, 99, 235, 0.45)',
                               opacity: isSendingBatchCounter ? 0.75 : 1,
-                              transition: 'all 0.2s ease'
+                              transition: 'all 0.2s ease',
+                              outline: 'none'
                             }}
-                            title="Click to send counter offers for all filled rows via API"
+                            onFocus={(e) => {
+                              e.currentTarget.style.boxShadow = '0 0 0 3px #38bdf8, 0 0 25px rgba(56, 189, 248, 0.8)';
+                              e.currentTarget.style.transform = 'scale(1.03)';
+                            }}
+                            onBlur={(e) => {
+                              e.currentTarget.style.boxShadow = '0 4px 20px rgba(37, 99, 235, 0.45)';
+                              e.currentTarget.style.transform = 'scale(1)';
+                            }}
+                            title="Press Enter or Space to submit all counter offers via API"
                           >
                             <Send size={18} />
                             <span>
-                              {isSendingBatchCounter ? '⏳ Sending All Counter Offers (API)...' : `💬 Send All (${childItems.length} Items)`}
+                              {isSendingBatchCounter ? '⏳ Submitting All Counter Offers (API)...' : `🚀 Submit All (${childItems.length} Items)`}
                             </span>
                           </button>
                         </div>
