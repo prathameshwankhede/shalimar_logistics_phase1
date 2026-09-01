@@ -1,27 +1,29 @@
 // src/components/TruckDispatchSlipModal.jsx
-// 100% Automated Truck Dispatch Slip & Lorry Receipt (LR) PDF Generator 🚛📄🖨️
+// 100% Automated Truck Dispatch Slip & Lorry Receipt (LR) PDF Generator & Downloader 🚛📄🖨️📥
 
-import React from 'react';
+import React, { useRef, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { Printer, X, ShieldCheck, Truck, CheckCircle2 } from 'lucide-react';
+import { Printer, Download, X, ShieldCheck, Truck, CheckCircle2 } from 'lucide-react';
 import { SHALIMAR_LOGO_BASE64 } from '../assets/logoBase64';
 
 export const TruckDispatchSlipModal = ({ dispatch, onClose }) => {
   const { db } = useAuth();
+  const [isDownloading, setIsDownloading] = useState(false);
+  const slipRef = useRef(null);
 
   if (!dispatch) return null;
 
   // Find allocation, rate request, transporter, and contract related to this dispatch
-  const allocation = (db.allocations || []).find((a) => a.id === dispatch.allocation_id);
+  const allocation = (db?.allocations || []).find((a) => a.id === dispatch.allocation_id);
   const rateRequest = allocation
-    ? (db.rate_requests || []).find((r) => r.id === allocation.rate_request_id)
-    : (db.rate_requests || []).find((r) => r.id === (dispatch.requirement_id || dispatch.rate_request_id));
-  const transporter = (db.transporters || []).find((t) => t.id === dispatch.transporter_id);
+    ? (db?.rate_requests || []).find((r) => r.id === allocation.rate_request_id)
+    : (db?.rate_requests || []).find((r) => r.id === (dispatch.requirement_id || dispatch.rate_request_id));
+  const transporter = (db?.transporters || []).find((t) => t.id === dispatch.transporter_id);
   const contract = allocation
-    ? (db.contracts || []).find((c) => c.allocation_id === allocation.id)
+    ? (db?.contracts || []).find((c) => c.allocation_id === allocation.id)
     : null;
 
-  const company = db.company || {
+  const company = db?.company || {
     name: 'Shalimar Nutrients Pvt Ltd',
     gstin: '27AAPCS1419M1ZV',
     reg_office: 'Plot No. 12, Industrial Area, MIDC, Nagpur, Maharashtra - 440028'
@@ -55,19 +57,8 @@ export const TruckDispatchSlipModal = ({ dispatch, onClose }) => {
   const transporterGst = dispatch.gst_pan || (transporter ? transporter.gst_pan : '27AAPCS1419M1ZV');
   const reqNoStr = dispatch.sub_indent_no || dispatch.req_no || (rateRequest ? (rateRequest.sub_indent_no || rateRequest.request_no) : 'SNPL/26-27/REQ-01');
 
-  // Print PDF Slip via Bulletproof Standalone Print Engine (Guaranteed Clean A4 Print)
-  const handlePrint = () => {
-    try {
-      const printFrame = document.createElement('iframe');
-      printFrame.style.position = 'fixed';
-      printFrame.style.right = '0';
-      printFrame.style.bottom = '0';
-      printFrame.style.width = '0';
-      printFrame.style.height = '0';
-      printFrame.style.border = '0';
-      document.body.appendChild(printFrame);
-
-      const printHtml = `
+  // Helper to get standalone slip HTML for fallback or printing
+  const getSlipHtml = () => `
 <!DOCTYPE html>
 <html>
 <head>
@@ -237,11 +228,69 @@ export const TruckDispatchSlipModal = ({ dispatch, onClose }) => {
   </div>
 </body>
 </html>
-      `;
+  `;
+
+  // 1-Click Direct PDF File Download (LR_CHALLAN_...pdf)
+  const handleDownloadPDF = async () => {
+    try {
+      setIsDownloading(true);
+      const slipEl = slipRef.current;
+      if (!slipEl) throw new Error('Slip container element not found');
+
+      // Dynamically import html2canvas and jspdf
+      const html2canvasModule = await import('html2canvas');
+      const html2canvas = html2canvasModule.default || html2canvasModule;
+      const { jsPDF } = await import('jspdf');
+
+      const canvas = await html2canvas(slipEl, {
+        scale: 2.5,
+        useCORS: true,
+        logging: false,
+        backgroundColor: '#ffffff'
+      });
+
+      const imgData = canvas.toDataURL('image/png');
+      const pdf = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4'
+      });
+
+      const imgWidth = 190;
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+      pdf.addImage(imgData, 'PNG', 10, 15, imgWidth, imgHeight);
+      pdf.save(`LR_CHALLAN_${String(lrNumber).replace(/[\/\\]/g, '_')}.pdf`);
+    } catch (err) {
+      console.warn('Direct PDF canvas generation error, falling back to standalone HTML slip download:', err);
+      // Fallback: download standalone offline HTML file
+      const element = document.createElement('a');
+      const file = new Blob([getSlipHtml()], { type: 'text/html;charset=utf-8' });
+      element.href = URL.createObjectURL(file);
+      element.download = `LR_CHALLAN_${String(lrNumber).replace(/[\/\\]/g, '_')}.html`;
+      document.body.appendChild(element);
+      element.click();
+      document.body.removeChild(element);
+    } finally {
+      setIsDownloading(false);
+    }
+  };
+
+  // Print PDF Slip via Bulletproof Standalone Print Engine (Guaranteed Clean A4 Print)
+  const handlePrint = () => {
+    try {
+      const printFrame = document.createElement('iframe');
+      printFrame.style.position = 'fixed';
+      printFrame.style.right = '0';
+      printFrame.style.bottom = '0';
+      printFrame.style.width = '0';
+      printFrame.style.height = '0';
+      printFrame.style.border = '0';
+      document.body.appendChild(printFrame);
 
       const frameDoc = printFrame.contentWindow.document;
       frameDoc.open();
-      frameDoc.write(printHtml);
+      frameDoc.write(getSlipHtml());
       frameDoc.close();
 
       setTimeout(() => {
@@ -278,7 +327,7 @@ export const TruckDispatchSlipModal = ({ dispatch, onClose }) => {
         }}
       >
         {/* Top Controls Bar (Hidden in Print PDF) */}
-        <div className="no-print" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '2px solid #cbd5e1', paddingBottom: '14px' }}>
+        <div className="no-print" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '2px solid #cbd5e1', paddingBottom: '14px', flexWrap: 'wrap', gap: '10px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <span style={{ fontSize: '0.8rem', fontWeight: '800', color: '#0284c7', background: '#e0f2fe', border: '1px solid #7dd3fc', padding: '4px 12px', borderRadius: '6px' }}>
               🎉 TRUCK DISPATCH SUCCESSFUL — GENERATED SLIP
@@ -286,10 +335,57 @@ export const TruckDispatchSlipModal = ({ dispatch, onClose }) => {
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <button onClick={handlePrint} className="btn" style={{ background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)', color: '#ffffff', border: 'none', padding: '9px 18px', fontSize: '0.82rem', fontWeight: '800', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', boxShadow: '0 4px 14px rgba(2, 132, 199, 0.35)' }}>
+            <button
+              type="button"
+              onClick={handleDownloadPDF}
+              disabled={isDownloading}
+              className="btn"
+              style={{
+                background: '#059669',
+                color: '#ffffff',
+                border: 'none',
+                padding: '9px 18px',
+                fontSize: '0.82rem',
+                fontWeight: '800',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                boxShadow: '0 4px 14px rgba(5, 150, 105, 0.35)',
+                opacity: isDownloading ? 0.7 : 1
+              }}
+              title="Download LR Slip directly as PDF File"
+            >
+              <Download size={16} /> {isDownloading ? 'Downloading...' : 'Download Slip PDF'}
+            </button>
+            <button
+              type="button"
+              onClick={handlePrint}
+              className="btn"
+              style={{
+                background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)',
+                color: '#ffffff',
+                border: 'none',
+                padding: '9px 18px',
+                fontSize: '0.82rem',
+                fontWeight: '800',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                boxShadow: '0 4px 14px rgba(2, 132, 199, 0.35)'
+              }}
+              title="Print Dispatch Slip PDF"
+            >
               <Printer size={16} /> Print Dispatch Slip PDF (A4)
             </button>
-            <button onClick={onClose} style={{ background: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '8px 12px', cursor: 'pointer', color: '#475569', fontWeight: '800' }}>
+            <button
+              type="button"
+              onClick={onClose}
+              style={{ background: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '8px 12px', cursor: 'pointer', color: '#475569', fontWeight: '800' }}
+            >
               <X size={18} />
             </button>
           </div>
@@ -298,7 +394,7 @@ export const TruckDispatchSlipModal = ({ dispatch, onClose }) => {
         {/* ----------------------------------------------------
            📄 OFFICIAL TRUCK DISPATCH CHALLAN & LR SLIP
         ---------------------------------------------------- */}
-        <div style={{ border: '2px solid #000000', padding: '20px', background: '#ffffff' }}>
+        <div ref={slipRef} style={{ border: '2px solid #000000', padding: '20px', background: '#ffffff' }}>
           
           {/* Header Title Bar */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid #000000', paddingBottom: '12px', marginBottom: '16px' }}>
