@@ -55,9 +55,208 @@ export const TruckDispatchSlipModal = ({ dispatch, onClose }) => {
   const transporterGst = dispatch.gst_pan || (transporter ? transporter.gst_pan : '27AAPCS1419M1ZV');
   const reqNoStr = dispatch.sub_indent_no || dispatch.req_no || (rateRequest ? (rateRequest.sub_indent_no || rateRequest.request_no) : 'SNPL/26-27/REQ-01');
 
-  // Print PDF Slip
+  // Print PDF Slip via Bulletproof Standalone Print Engine (Guaranteed Clean A4 Print)
   const handlePrint = () => {
-    window.print();
+    try {
+      const printFrame = document.createElement('iframe');
+      printFrame.style.position = 'fixed';
+      printFrame.style.right = '0';
+      printFrame.style.bottom = '0';
+      printFrame.style.width = '0';
+      printFrame.style.height = '0';
+      printFrame.style.border = '0';
+      document.body.appendChild(printFrame);
+
+      const printHtml = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Truck Dispatch Challan - ${lrNumber}</title>
+  <style>
+    @page { size: A4 portrait; margin: 12mm 15mm; }
+    * { box-sizing: border-box; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 0;
+      color: #000000;
+      background: #ffffff !important;
+      font-size: 12px;
+    }
+    .slip-container {
+      border: 2px solid #000000;
+      padding: 20px;
+      background: #ffffff;
+    }
+    .header-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 2px solid #000000;
+      padding-bottom: 12px;
+      margin-bottom: 16px;
+    }
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .header-left img {
+      height: 52px;
+      width: auto;
+      object-fit: contain;
+    }
+    .company-title {
+      font-size: 17px;
+      font-weight: 900;
+      text-transform: uppercase;
+      margin: 0;
+    }
+    .slip-title {
+      font-size: 11px;
+      font-weight: bold;
+      margin-top: 2px;
+    }
+    .company-sub {
+      font-size: 10px;
+      color: #333333;
+    }
+    .lr-badge {
+      border: 1.5px solid #000000;
+      padding: 6px 12px;
+      border-radius: 4px;
+      text-align: right;
+    }
+    .lr-badge-label {
+      font-size: 9px;
+      font-weight: bold;
+    }
+    .lr-badge-no {
+      font-size: 13px;
+      font-weight: 900;
+      font-family: monospace;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+      border: 1px solid #000000;
+    }
+    td {
+      padding: 8px 12px;
+      border: 1px solid #000000;
+      vertical-align: middle;
+    }
+    .meta-footer {
+      margin-top: 16px;
+      display: flex;
+      justify-content: space-between;
+      font-size: 11px;
+      border-top: 1px solid #000000;
+      padding-top: 10px;
+    }
+    .sign-section {
+      margin-top: 36px;
+      display: flex;
+      justify-content: space-between;
+      font-size: 11px;
+    }
+    .sign-box {
+      text-align: center;
+      border-top: 1px solid #000000;
+      width: 170px;
+      padding-top: 4px;
+    }
+  </style>
+</head>
+<body>
+  <div class="slip-container">
+    <div class="header-bar">
+      <div class="header-left">
+        <img src="${SHALIMAR_LOGO_BASE64}" alt="Shalimar Logo" />
+        <div>
+          <div class="company-title">${company.name}</div>
+          <div class="slip-title">TRUCK DISPATCH CHALLAN & LORRY RECEIPT (LR)</div>
+          <div class="company-sub">${company.reg_office} | GSTIN: ${company.gstin}</div>
+        </div>
+      </div>
+      <div class="lr-badge">
+        <div class="lr-badge-label">DISPATCH REF / LR NO</div>
+        <div class="lr-badge-no">${lrNumber}</div>
+      </div>
+    </div>
+
+    <table>
+      <tbody>
+        <tr>
+          <td style="width: 50%;"><strong>Order Date:</strong> <span style="font-family: monospace; font-weight: bold;">${orderDateStr}</span></td>
+          <td style="width: 50%;"><strong>Reporting Date:</strong> ______________________</td>
+        </tr>
+        <tr>
+          <td><strong>Sr. No. / LR No.:</strong> <span style="font-family: monospace; font-weight: bold;">${lrNumber}</span></td>
+          <td><strong>Sr. No. (Plant Entry):</strong> ______________________</td>
+        </tr>
+        <tr>
+          <td colspan="2"><strong>Truck / Vehicle No.:</strong> <span style="font-family: monospace; font-size: 14px; font-weight: 900;">${truckNumber}</span></td>
+        </tr>
+        <tr>
+          <td colspan="2"><strong>Driver Name:</strong> <span style="font-weight: bold; font-size: 13px;">${driverName}</span></td>
+        </tr>
+        <tr>
+          <td><strong>License No.:</strong> <span style="font-family: monospace; font-weight: bold;">${driverLicense}</span></td>
+          <td><strong>Mobile No.:</strong> <span style="font-family: monospace; font-weight: bold;">${driverMobile}</span></td>
+        </tr>
+        <tr>
+          <td><strong>Location:</strong> <span style="font-weight: bold;">${routeLocation}</span></td>
+          <td><strong>Qty:</strong> <span style="font-weight: 900; font-size: 14px;">${loadedQty} MT</span></td>
+        </tr>
+        <tr>
+          <td><strong>Freight Rate:</strong> <span style="font-weight: bold;">₹${freightRate} / MT</span></td>
+          <td><strong>Atom Name / Cargo:</strong> <span style="font-weight: bold;">${cargoName}</span></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="meta-footer">
+      <div>
+        <strong>Transporter Company:</strong> ${transporterName}<br />
+        <strong>Transporter Code:</strong> ${transporterCode} | <strong>GST:</strong> ${transporterGst}
+      </div>
+      <div style="text-align: right;">
+        <strong>ERP Contract PO:</strong> ${contract ? contract.erp_po_number : 'SAP-PO-459821'}<br />
+        <strong>Indent Ref Code:</strong> ${reqNoStr}
+      </div>
+    </div>
+
+    <div class="sign-section">
+      <div class="sign-box"><strong>Plant Security / Weighbridge</strong></div>
+      <div class="sign-box"><strong>Driver Signature</strong></div>
+      <div class="sign-box"><strong>Transporter Authorized Sign</strong></div>
+    </div>
+  </div>
+</body>
+</html>
+      `;
+
+      const frameDoc = printFrame.contentWindow.document;
+      frameDoc.open();
+      frameDoc.write(printHtml);
+      frameDoc.close();
+
+      setTimeout(() => {
+        printFrame.contentWindow.focus();
+        printFrame.contentWindow.print();
+        setTimeout(() => {
+          try {
+            document.body.removeChild(printFrame);
+          } catch (e) {}
+        }, 4000);
+      }, 250);
+    } catch (err) {
+      console.warn('Iframe print failed, falling back to window.print', err);
+      window.print();
+    }
   };
 
   return (
