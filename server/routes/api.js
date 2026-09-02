@@ -619,7 +619,8 @@ export async function ensureRateSubmissionsTableExists() {
       { name: 'counter_message', def: 'TEXT DEFAULT NULL' },
       { name: 'final_rate', def: 'DECIMAL(12,2) DEFAULT NULL' },
       { name: 'finalized_at', def: 'DATETIME DEFAULT NULL' },
-      { name: 'bid_status', def: "VARCHAR(50) DEFAULT 'Submitted'" }
+      { name: 'bid_status', def: "VARCHAR(50) DEFAULT 'Submitted'" },
+      { name: 'is_previous_cycle', def: 'TINYINT(1) DEFAULT 0' }
     ];
     for (const { name, def } of cols) {
       await ensureColumnExists('rate_submissions', name, def);
@@ -1406,7 +1407,6 @@ async function handleCreateRateSubmission(req, res) {
        is_finalized = 0,
        final_rate = NULL,
        finalized_rate = NULL,
-       is_previous_cycle = 0,
        updated_at = NOW()`,
       [subId, actualReqId, actualItemId, actualTransId, rateVal, rateVal, qtyVal, totalAmount, rem]
     );
@@ -1640,7 +1640,6 @@ async function handleCreateBatchRateSubmissions(req, res) {
          is_finalized = 0,
          final_rate = NULL,
          finalized_rate = NULL,
-         is_previous_cycle = 0,
          updated_at = NOW()`,
         [subId, actualReqId, actualItemId, actualTransId, orgId, rateVal, rateVal, qtyVal, totalAmount, rem]
       );
@@ -3600,7 +3599,7 @@ async function handleReleaseRemainingForRequote(req, res) {
     // 9. Mark previous winning bid cycle as PREVIOUS_CYCLE so fresh bids can be submitted and finalized on the remaining quantity
     await conn.query(
       `UPDATE rate_submissions
-       SET is_previous_cycle = 1,
+       SET is_finalized = 0,
            bid_status = 'PREVIOUS_CYCLE'
        WHERE requirement_id = ? AND (item_id = ? OR item_id = 'MAIN') AND is_finalized = 1`,
       [actualReqId, actualItemId]
