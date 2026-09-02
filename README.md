@@ -1,16 +1,30 @@
-# React + Vite
+# TransFlow Logistics — Transport Procurement Portal
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+Enterprise Transport Procurement & Reverse Logistics Portal developed for **Shalimar Nutrients Pvt Ltd**.
 
-Currently, two official plugins are available:
+---
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Overview
 
-## React Compiler
+TransFlow Logistics is a web-based transport procurement and dispatch tracking portal designed for bulk agricultural cargo, edible oil tankers, and freight logistics management. The system provides:
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+* Real-time freight requirement publishing & multi-item sub-indents
+* Dynamic reverse bidding & transparent quote comparison matrix
+* Single & bulk rate submissions with atomic database transactions
+* Counter-rate negotiation & allocation locks
+* In-place re-quoting for remaining capacity balances
+* Multi-truck dispatch logging, Lorry Receipt (LR) tracking, and gate pass management
+* Executive Excel & PDF export for comparative statements and month-end billing
+* Multi-transporter collaboration and dispatch authorization workflows
 
-## Expanding the Oxlint configuration
+---
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and Oxlint's TypeScript related rules in your project.
+# Intellectual Property & Licensing
+
+* The application contains proprietary project-specific software including original source code, frontend and backend implementation, database schemas, and business workflows.
+* Copyright ownership is identified in [`LICENSE`](./LICENSE).
+* Third-party dependencies remain under their respective licenses.
+* Third-party license information is documented in [`THIRD_PARTY_LICENSES.md`](./THIRD_PARTY_LICENSES.md).
+* Client-supplied logos, trademarks, data, and materials remain subject to the client's rights.
+* Commercial ownership, assignment, licensing, confidentiality, and usage rights are governed by the executed commercial agreement between the parties.
+* For a detailed scope breakdown of proprietary deliverables versus third-party and client assets, refer to [`IP_OWNERSHIP.md`](./IP_OWNERSHIP.md).
