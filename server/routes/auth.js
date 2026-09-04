@@ -80,7 +80,7 @@ router.post('/login', async (req, res) => {
     if (!foundUser) {
       try {
         const [userRows] = await pool.query(
-          'SELECT id, username, password_hash, password, name, role, transporter_id, status FROM users WHERE LOWER(username) = ?',
+          'SELECT id, username, password_hash, name, role, transporter_id, status FROM users WHERE LOWER(username) = ?',
           [cleanUser]
         );
         if (userRows.length > 0) {
@@ -89,7 +89,9 @@ router.post('/login', async (req, res) => {
             _sourceTable: 'users'
           };
         }
-      } catch (dbErr) {}
+      } catch (dbErr) {
+        console.warn('Error querying users table:', dbErr.message);
+      }
     }
 
     // 3. Fallback to seed admin ONLY if users table is empty/unseeded
@@ -147,12 +149,11 @@ router.post('/login', async (req, res) => {
           await pool.query('UPDATE transporters SET password_hash = ? WHERE id = ?', [upgradedHash, foundUser.id]).catch(() => {});
         }
         if (foundUser._sourceTable === 'users') {
-          await pool.query('UPDATE users SET password_hash = ?, password = NULL WHERE id = ? OR username = ?', [upgradedHash, foundUser.id, foundUser.username]).catch(async () => {
+          await pool.query('UPDATE users SET password_hash = ? WHERE id = ? OR username = ?', [upgradedHash, foundUser.id, foundUser.username]).catch(async () => {
             await pool.query('UPDATE users SET password_hash = ? WHERE id = ?', [upgradedHash, foundUser.id]).catch(() => {});
           });
         }
         foundUser.password_hash = upgradedHash;
-        delete foundUser.password;
 
         await pool.query(
           `INSERT INTO security_audit_logs (id, action, username, role, ip, status, timestamp)
@@ -301,9 +302,9 @@ router.post('/verify-password', authenticateToken, async (req, res) => {
     const username = req.user.username;
 
     let storedHash = null;
-    const [userRows] = await pool.query('SELECT password_hash, password FROM users WHERE id = ? OR username = ? LIMIT 1', [userId, username]).catch(() => [[]]);
+    const [userRows] = await pool.query('SELECT password_hash FROM users WHERE id = ? OR username = ? LIMIT 1', [userId, username]).catch(() => [[]]);
     if (userRows.length > 0) {
-      storedHash = userRows[0].password_hash || userRows[0].password;
+      storedHash = userRows[0].password_hash;
     } else {
       const [transRows] = await pool.query('SELECT password_hash FROM transporters WHERE id = ? OR username = ? LIMIT 1', [userId, username]).catch(() => [[]]);
       if (transRows.length > 0) {
@@ -327,7 +328,7 @@ router.post('/verify-password', authenticateToken, async (req, res) => {
       if (isValid) {
         // Upgrade legacy plaintext to bcrypt
         const upgraded = await bcrypt.hash(cleanPass, 10);
-        await pool.query('UPDATE users SET password_hash = ?, password = NULL WHERE id = ? OR username = ?', [upgraded, userId, username]).catch(() => {});
+        await pool.query('UPDATE users SET password_hash = ? WHERE id = ? OR username = ?', [upgraded, userId, username]).catch(() => {});
       }
     }
 
