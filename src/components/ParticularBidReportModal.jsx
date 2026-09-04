@@ -1,15 +1,39 @@
-import React, { useState, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { X, Printer, Download, ShieldCheck, FileSpreadsheet, Building2, MapPin, Truck, CheckCircle2, Clock, Sparkles, TrendingDown, MessageSquare, AlertCircle, ArrowRight } from 'lucide-react';
 import { SHALIMAR_LOGO_BASE64 } from '../assets/logoBase64';
 import { exportComparativeStatementExcel } from '../utils/exportComparativeStatementExcel';
+import { getRequirementRates } from '../api/rateSubmissionApi';
 
 export const ParticularBidReportModal = ({ rateRequest, isOpen, onClose, initialMode = 'STANDARD' }) => {
   const { db } = useAuth();
   const [reportMode, setReportMode] = useState(initialMode); // 'STANDARD' | 'COUNTER'
+  const [liveSubmissions, setLiveSubmissions] = useState([]);
   const [isExportingExcel, setIsExportingExcel] = useState(false);
   const [isDownloadingPDF, setIsDownloadingPDF] = useState(false);
   const printableAreaRef = useRef(null);
+
+  // Fetch live rate submissions directly from MySQL on mount
+  useEffect(() => {
+    let isMounted = true;
+    const fetchLiveRates = async () => {
+      if (!rateRequest?.id && !rateRequest?.req_no) return;
+      try {
+        const reqId = rateRequest.id || rateRequest.req_no;
+        const res = await getRequirementRates(reqId);
+        if (res && res.success && Array.isArray(res.rates) && isMounted) {
+          setLiveSubmissions(res.rates);
+        }
+      } catch (err) {
+        console.warn('Live rates fetch for statement modal notice:', err.message);
+      }
+    };
+    fetchLiveRates();
+    return () => { isMounted = false; };
+  }, [rateRequest?.id, rateRequest?.req_no]);
+
+  // Combine live rates with db fallback
+  const allSubmissions = liveSubmissions.length > 0 ? liveSubmissions : (db?.rate_submissions || []);
 
   if (!isOpen || !rateRequest) return null;
 
@@ -33,7 +57,7 @@ export const ParticularBidReportModal = ({ rateRequest, isOpen, onClose, initial
     ? childItems.reduce((sum, item) => sum + (Number(item.quantity_mt || item.required_qty) || 0), 0)
     : Number(rateRequest.total_quantity_mt || rateRequest.quantity_mt || rateRequest.required_qty || 0);
 
-  // 1. Build route rows list for ALL items in this requirement/batch
+  // 1. Build route rows list for ALL items in this requirement/batch with robust counter rate detection
   const routeRows = childItems.length > 0
     ? childItems.map((item, idx) => {
         const origin = item.pickup_origin || rateRequest.pickup_origin || rateRequest.origin_city || 'Origin Plant';
@@ -41,7 +65,24 @@ export const ParticularBidReportModal = ({ rateRequest, isOpen, onClose, initial
         const product = item.product_name || item.material_type || rateRequest.product_name || 'Agri Commodity';
         const qty = Number(item.quantity_mt || item.required_qty || 0);
         const subIndent = item.sub_indent_no || `${reqNoStr}/${(idx + 1).toString().padStart(2, '0')}`;
-        const adminCounterRate = Number(item.admin_counter_rate || item.counter_offer_rate || rateRequest.admin_counter_rate || 0);
+
+        // Find counter rate from submissions for this specific item
+        const matchingSubs = allSubmissions.filter((s) => {
+          const matchReq = String(s.requirement_id) === String(rateRequest.id) ||
+                           String(s.rate_request_id) === String(rateRequest.id) ||
+                           String(s.requirement_id) === String(reqNoStr);
+          const matchItem = !s.item_id || s.item_id === 'MAIN' ||
+                            String(s.item_id) === String(item.id) ||
+                            String(s.item_id) === String(subIndent);
+          return matchReq && matchItem;
+        });
+
+        const subCounter = matchingSubs.find(s => Number(s.counter_offer_rate ?? s.counter_rate ?? s.counter_rate_per_unit) > 0);
+        const subCounterVal = subCounter ? Number(subCounter.counter_offer_rate ?? subCounter.counter_rate ?? subCounter.counter_rate_per_unit) : null;
+
+        const rawCounter = item.admin_counter_rate || item.counter_offer_rate || item.remaining_finalized_rate || subCounterVal || rateRequest.admin_counter_rate || rateRequest.counter_offer_rate || rateRequest.remaining_finalized_rate || 0;
+        const adminCounterRate = Number(rawCounter) > 0 ? Number(rawCounter) : null;
+
         return {
           id: item.id,
           subIndentNo: subIndent,
@@ -50,7 +91,7 @@ export const ParticularBidReportModal = ({ rateRequest, isOpen, onClose, initial
           product,
           locationName: `${dest} (${origin} ➔ ${dest})`,
           qty,
-          adminCounterRate: adminCounterRate > 0 ? adminCounterRate : null,
+          adminCounterRate,
           itemObj: item
         };
       })
@@ -62,13 +103,24 @@ export const ParticularBidReportModal = ({ rateRequest, isOpen, onClose, initial
         product: rateRequest.product_name || rateRequest.material_type || 'Agri Commodity',
         locationName: `${rateRequest.drop_location || rateRequest.dest_city || 'Plant'} (${rateRequest.pickup_origin || 'Origin'} ➔ ${rateRequest.drop_location || 'Plant'})`,
         qty: Number(rateRequest.total_quantity_mt || rateRequest.quantity_mt || rateRequest.required_qty || 0),
-        adminCounterRate: Number(rateRequest.admin_counter_rate || rateRequest.counter_offer_rate || 0) > 0 ? Number(rateRequest.admin_counter_rate || rateRequest.counter_offer_rate) : null,
+        adminCounterRate: (() => {
+          const matchingSubs = allSubmissions.filter((s) => {
+            const matchReq = String(s.requirement_id) === String(rateRequest.id) ||
+                             String(s.rate_request_id) === String(rateRequest.id) ||
+                             String(s.requirement_id) === String(reqNoStr);
+            return matchReq;
+          });
+          const subCounter = matchingSubs.find(s => Number(s.counter_offer_rate ?? s.counter_rate ?? s.counter_rate_per_unit) > 0);
+          const subCounterVal = subCounter ? Number(subCounter.counter_offer_rate ?? subCounter.counter_rate ?? subCounter.counter_rate_per_unit) : null;
+          const rawCounter = rateRequest.admin_counter_rate || rateRequest.counter_offer_rate || rateRequest.remaining_finalized_rate || subCounterVal || 0;
+          return Number(rawCounter) > 0 ? Number(rawCounter) : null;
+        })(),
         itemObj: rateRequest
       }];
 
   // Check if any counter rate exists across the requirement or its items or submissions
   const hasCounterRate = routeRows.some((r) => r.adminCounterRate !== null) ||
-    (db?.rate_submissions || []).some((s) => {
+    allSubmissions.some((s) => {
       const matchReq = String(s.requirement_id) === String(rateRequest.id) ||
                        String(s.rate_request_id) === String(rateRequest.id) ||
                        String(s.requirement_id) === String(reqNoStr);
@@ -129,7 +181,7 @@ export const ParticularBidReportModal = ({ rateRequest, isOpen, onClose, initial
   let totalCounterSavings = 0;
 
   routeRows.forEach((r) => {
-    const itemSubs = (db?.rate_submissions || []).filter((s) => {
+    const itemSubs = allSubmissions.filter((s) => {
       const matchReq = String(s.requirement_id) === String(rateRequest.id) ||
                        String(s.rate_request_id) === String(rateRequest.id) ||
                        String(s.requirement_id) === String(reqNoStr);
@@ -143,7 +195,10 @@ export const ParticularBidReportModal = ({ rateRequest, isOpen, onClose, initial
       .map((s) => Number(s.rate_per_mt ?? s.rate_per_unit ?? s.final_rate ?? s.original_rate))
       .filter((rate) => !isNaN(rate) && rate > 0);
     const minRate = validRates.length > 0 ? Math.min(...validRates) : 0;
-    const counterRate = r.adminCounterRate || (minRate > 0 ? minRate : 0);
+
+    const subWithCounter = itemSubs.find(s => Number(s.counter_offer_rate ?? s.counter_rate ?? s.counter_rate_per_unit) > 0);
+    const subCounterVal = subWithCounter ? Number(subWithCounter.counter_offer_rate ?? subWithCounter.counter_rate ?? subWithCounter.counter_rate_per_unit) : null;
+    const counterRate = r.adminCounterRate || subCounterVal || (minRate > 0 ? minRate : 0);
 
     const alloc = (db?.allocations || []).find((a) =>
       (String(a.rate_request_id) === String(rateRequest.id) || String(a.requirement_id) === String(rateRequest.id)) &&
@@ -187,7 +242,7 @@ export const ParticularBidReportModal = ({ rateRequest, isOpen, onClose, initial
       `).join('');
 
       const tableRowsHtml = routeRows.map((rowObj, rIdx) => {
-        const itemSubs = (db?.rate_submissions || []).filter((s) => {
+        const itemSubs = allSubmissions.filter((s) => {
           const matchReq = String(s.requirement_id) === String(rateRequest.id) ||
                            String(s.rate_request_id) === String(rateRequest.id) ||
                            String(s.requirement_id) === String(reqNoStr);
@@ -201,7 +256,10 @@ export const ParticularBidReportModal = ({ rateRequest, isOpen, onClose, initial
           .map((s) => Number(s.rate_per_mt ?? s.rate_per_unit ?? s.final_rate ?? s.original_rate))
           .filter((r) => !isNaN(r) && r > 0);
         const minRate = validRates.length > 0 ? Math.min(...validRates) : 0;
-        const counterRate = rowObj.adminCounterRate;
+
+        const subWithCounter = itemSubs.find(s => Number(s.counter_offer_rate ?? s.counter_rate ?? s.counter_rate_per_unit) > 0);
+        const subCounterVal = subWithCounter ? Number(subWithCounter.counter_offer_rate ?? subWithCounter.counter_rate ?? subWithCounter.counter_rate_per_unit) : null;
+        const counterRate = rowObj.adminCounterRate || subCounterVal || (rateRequest.counter_offer_rate ? Number(rateRequest.counter_offer_rate) : null) || (rateRequest.admin_counter_rate ? Number(rateRequest.admin_counter_rate) : null);
 
         const alloc = (db?.allocations || []).find((a) =>
           (String(a.rate_request_id) === String(rateRequest.id) || String(a.requirement_id) === String(rateRequest.id)) &&
@@ -517,7 +575,7 @@ export const ParticularBidReportModal = ({ rateRequest, isOpen, onClose, initial
         rateRequest,
         routeRows,
         transporterColumns,
-        submissions: db?.rate_submissions || [],
+        submissions: allSubmissions,
         allocations: db?.allocations || [],
         dispatches: db?.truck_dispatches || [],
         company: companyInfo,
@@ -951,7 +1009,7 @@ export const ParticularBidReportModal = ({ rateRequest, isOpen, onClose, initial
               </thead>
               <tbody>
                 {routeRows.map((rowObj, rIdx) => {
-                  const itemSubs = (db?.rate_submissions || []).filter((s) => {
+                  const itemSubs = allSubmissions.filter((s) => {
                     const matchReq = String(s.requirement_id) === String(rateRequest.id) ||
                                      String(s.rate_request_id) === String(rateRequest.id) ||
                                      String(s.requirement_id) === String(reqNoStr);
@@ -965,7 +1023,11 @@ export const ParticularBidReportModal = ({ rateRequest, isOpen, onClose, initial
                     .map((s) => Number(s.rate_per_mt ?? s.rate_per_unit ?? s.final_rate ?? s.original_rate))
                     .filter((r) => !isNaN(r) && r > 0);
                   const minRate = validRates.length > 0 ? Math.min(...validRates) : 0;
-                  const counterRate = rowObj.adminCounterRate;
+
+                  // Robust counter rate resolution from all sources
+                  const subWithCounter = itemSubs.find(s => Number(s.counter_offer_rate ?? s.counter_rate ?? s.counter_rate_per_unit) > 0);
+                  const subCounterVal = subWithCounter ? Number(subWithCounter.counter_offer_rate ?? subWithCounter.counter_rate ?? subWithCounter.counter_rate_per_unit) : null;
+                  const counterRate = rowObj.adminCounterRate || subCounterVal || (rateRequest.counter_offer_rate ? Number(rateRequest.counter_offer_rate) : null) || (rateRequest.admin_counter_rate ? Number(rateRequest.admin_counter_rate) : null);
 
                   const alloc = (db?.allocations || []).find((a) =>
                     (String(a.rate_request_id) === String(rateRequest.id) || String(a.requirement_id) === String(rateRequest.id)) &&
@@ -1164,7 +1226,7 @@ export const ParticularBidReportModal = ({ rateRequest, isOpen, onClose, initial
                           </div>
                         ) : minRate > 0 ? (
                           <span style={{ color: '#059669', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                            <CheckCircle2 size={13} /> Lowest Quote: ₹{minRate}/MT
+                            <CheckCircle2 size={13} /> Lowest Quote: ₹${minRate}/MT
                           </span>
                         ) : (
                           <span style={{ color: '#94a3b8' }}>
