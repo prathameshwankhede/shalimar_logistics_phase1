@@ -16,6 +16,7 @@ import { RateComparisonView } from './RateComparisonView';
 import { ContractModal } from './ContractModal';
 import { ERPPaymentModal } from './ERPPaymentModal';
 import { ParticularBidReportModal } from './ParticularBidReportModal';
+import { exportMonthlyProcurementExcel } from '../utils/exportMonthlyProcurementExcel';
 import { WhatsAppBroadcastModal } from './WhatsAppBroadcastModal';
 import { TransporterDispatchesFolderDirectory } from './TransporterDispatchesFolderDirectory';
 import { sendWhatsAppAlert } from '../utils/whatsappEngine';
@@ -98,6 +99,25 @@ export const AdminDashboard = () => {
   const [selectedTransporterFolder, setSelectedTransporterFolder] = useState('ALL');
   const [expandedFolders, setExpandedFolders] = useState({}); // { [transporterId]: boolean }
   const [dispatchSearchQuery, setDispatchSearchQuery] = useState('');
+  const [isExportingMonthlyExcel, setIsExportingMonthlyExcel] = useState(false);
+
+  const handleExportMonthlyReportExcel = async () => {
+    try {
+      setIsExportingMonthlyExcel(true);
+      await exportMonthlyProcurementExcel({
+        requirements: db?.rate_requests || [],
+        dispatches: allLiveDispatches?.length ? allLiveDispatches : (db?.truck_dispatches || []),
+        transporters: db?.transporters || [],
+        company: db?.company_info || {},
+        reportPeriodLabel: 'MONTHLY TRANSPORT PROCUREMENT & DISPATCH MIS'
+      });
+    } catch (err) {
+      console.error('Failed to export Monthly Procurement Excel:', err);
+      alert('Failed to export Monthly Procurement Excel: ' + (err.message || 'Unknown error'));
+    } finally {
+      setIsExportingMonthlyExcel(false);
+    }
+  };
 
   const refreshAllDispatches = async () => {
     try {
@@ -3601,31 +3621,59 @@ export const AdminDashboard = () => {
                       </span>
                     </div>
 
-                    {/* Sub-Tab Filter Switcher Bar */}
-                    <div style={{ display: 'flex', background: 'rgba(15, 23, 42, 0.6)', padding: '4px', borderRadius: '24px', border: '1px solid var(--border-color)', gap: '4px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                      {/* Sub-Tab Filter Switcher Bar */}
+                      <div style={{ display: 'flex', background: 'rgba(15, 23, 42, 0.6)', padding: '4px', borderRadius: '24px', border: '1px solid var(--border-color)', gap: '4px' }}>
+                        <button
+                          type="button"
+                          onClick={() => setReqFilterTab('open')}
+                          className={`btn ${reqFilterTab === 'open' ? 'btn-primary' : 'btn-secondary'}`}
+                          style={{ padding: '6px 16px', fontSize: '0.8rem', borderRadius: '20px', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '6px' }}
+                        >
+                          🟢 Active Open Indents ({(db.rate_requests || []).filter((r) => !isRequirement100PercentCompleted(r, db)).length})
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setReqFilterTab('done')}
+                          className={`btn ${reqFilterTab === 'done' ? 'btn-success' : 'btn-secondary'}`}
+                          style={{ padding: '6px 16px', fontSize: '0.8rem', borderRadius: '20px', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '6px' }}
+                        >
+                          ✅ Awarded & Done ({(db.rate_requests || []).filter((r) => isRequirement100PercentCompleted(r, db)).length})
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setReqFilterTab('all')}
+                          className={`btn ${reqFilterTab === 'all' ? 'btn-primary' : 'btn-secondary'}`}
+                          style={{ padding: '6px 16px', fontSize: '0.8rem', borderRadius: '20px', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '6px' }}
+                        >
+                          📂 All Indents ({(db.rate_requests || []).length})
+                        </button>
+                      </div>
+
+                      {/* 📊 Download Full Month / Period Procurement Excel MIS Button */}
                       <button
                         type="button"
-                        onClick={() => setReqFilterTab('open')}
-                        className={`btn ${reqFilterTab === 'open' ? 'btn-primary' : 'btn-secondary'}`}
-                        style={{ padding: '6px 16px', fontSize: '0.8rem', borderRadius: '20px', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '6px' }}
+                        onClick={handleExportMonthlyReportExcel}
+                        disabled={isExportingMonthlyExcel}
+                        className="btn"
+                        style={{
+                          background: 'linear-gradient(135deg, #047857 0%, #065f46 100%)',
+                          color: '#ffffff',
+                          border: '1px solid #10b981',
+                          padding: '6px 16px',
+                          borderRadius: '20px',
+                          fontSize: '0.8rem',
+                          fontWeight: '800',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          boxShadow: '0 4px 12px rgba(4, 120, 87, 0.35)',
+                          cursor: isExportingMonthlyExcel ? 'not-allowed' : 'pointer'
+                        }}
+                        title="Download Complete Monthly Transport Procurement & Dispatch Statement in Excel (.xlsx)"
                       >
-                        🟢 Active Open Indents ({(db.rate_requests || []).filter((r) => !isRequirement100PercentCompleted(r, db)).length})
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setReqFilterTab('done')}
-                        className={`btn ${reqFilterTab === 'done' ? 'btn-success' : 'btn-secondary'}`}
-                        style={{ padding: '6px 16px', fontSize: '0.8rem', borderRadius: '20px', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '6px' }}
-                      >
-                        ✅ Awarded & Done ({(db.rate_requests || []).filter((r) => isRequirement100PercentCompleted(r, db)).length})
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setReqFilterTab('all')}
-                        className={`btn ${reqFilterTab === 'all' ? 'btn-primary' : 'btn-secondary'}`}
-                        style={{ padding: '6px 16px', fontSize: '0.8rem', borderRadius: '20px', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '6px' }}
-                      >
-                        📂 All Indents ({(db.rate_requests || []).length})
+                        <Download size={14} />
+                        {isExportingMonthlyExcel ? 'Exporting...' : '📊 Monthly Procurement MIS (.xlsx)'}
                       </button>
                     </div>
                   </div>
