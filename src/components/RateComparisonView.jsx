@@ -25,6 +25,7 @@ export const RateComparisonView = ({ rateRequest, onBack }) => {
   };
 
   const [showParticularReportModal, setShowParticularReportModal] = useState(false);
+  const [particularReportInitialMode, setParticularReportInitialMode] = useState('STANDARD');
   const [selectedHistorySub, setSelectedHistorySub] = useState(null);
   const [liveRates, setLiveRates] = useState([]);
   const [loadingRates, setLoadingRates] = useState(true);
@@ -343,25 +344,53 @@ export const RateComparisonView = ({ rateRequest, onBack }) => {
           </div>
 
           <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '8px' }}>
-            <button
-              type="button"
-              onClick={() => setShowParticularReportModal(true)}
-              className="btn btn-primary"
-              style={{
-                background: 'linear-gradient(135deg, #0284c7 0%, #059669 100%)',
-                color: '#ffffff',
-                fontWeight: '800',
-                padding: '8px 14px',
-                fontSize: '0.82rem',
-                borderRadius: '8px',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                boxShadow: '0 4px 14px rgba(2, 132, 199, 0.3)'
-              }}
-            >
-              <Printer size={15} /> 📄 Particular Bid Audit Report
-            </button>
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+              <button
+                type="button"
+                onClick={() => {
+                  setParticularReportInitialMode('STANDARD');
+                  setShowParticularReportModal(true);
+                }}
+                className="btn btn-primary"
+                style={{
+                  background: 'linear-gradient(135deg, #0284c7 0%, #059669 100%)',
+                  color: '#ffffff',
+                  fontWeight: '800',
+                  padding: '8px 14px',
+                  fontSize: '0.82rem',
+                  borderRadius: '8px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  boxShadow: '0 4px 14px rgba(2, 132, 199, 0.3)'
+                }}
+              >
+                <Printer size={15} /> 📄 Particular Bid Audit Report
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setParticularReportInitialMode('COUNTER');
+                  setShowParticularReportModal(true);
+                }}
+                className="btn"
+                style={{
+                  background: 'linear-gradient(135deg, #ea580c 0%, #c2410c 100%)',
+                  color: '#ffffff',
+                  fontWeight: '800',
+                  padding: '8px 14px',
+                  fontSize: '0.82rem',
+                  borderRadius: '8px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  boxShadow: '0 4px 14px rgba(234, 88, 12, 0.35)'
+                }}
+              >
+                <Sparkles size={15} /> 📢 Counter Statement & Savings Report
+              </button>
+            </div>
             <div>
               <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Total Requirement</div>
               <div style={{ fontSize: '1.6rem', fontWeight: '800', color: '#0284c7' }}>
@@ -828,7 +857,11 @@ export const RateComparisonView = ({ rateRequest, onBack }) => {
         <ParticularBidReportModal
           rateRequest={rateRequest}
           isOpen={showParticularReportModal}
-          onClose={() => setShowParticularReportModal(false)}
+          onClose={() => {
+            setShowParticularReportModal(false);
+            setParticularReportInitialMode('STANDARD');
+          }}
+          initialMode={particularReportInitialMode}
         />
       )}
 

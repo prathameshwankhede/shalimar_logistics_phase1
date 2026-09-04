@@ -369,6 +369,7 @@ export const AdminDashboard = () => {
     }
   }, [selectedRequestForComparison]);
   const [selectedRequestForParticularReport, setSelectedRequestForParticularReport] = useState(null);
+  const [particularReportMode, setParticularReportMode] = useState('STANDARD');
   const [whatsappModalData, setWhatsappModalData] = useState({ isOpen: false, data: null });
   
   const [isReqModalOpen, setIsReqModalOpen] = useState(false);
@@ -3854,7 +3855,10 @@ export const AdminDashboard = () => {
                                     </button>
                                     <button
                                       type="button"
-                                      onClick={() => setSelectedRequestForParticularReport(req)}
+                                      onClick={() => {
+                                        setParticularReportMode('STANDARD');
+                                        setSelectedRequestForParticularReport(req);
+                                      }}
                                       className="btn"
                                       style={{
                                         padding: '6px 12px',
@@ -3872,6 +3876,31 @@ export const AdminDashboard = () => {
                                     >
                                       <FileText size={14} /> Particular Report
                                     </button>
+                                    {Boolean(req.admin_counter_rate || (childItems && childItems.some(i => i.admin_counter_rate))) && (
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setParticularReportMode('COUNTER');
+                                          setSelectedRequestForParticularReport(req);
+                                        }}
+                                        className="btn"
+                                        style={{
+                                          padding: '6px 12px',
+                                          fontSize: '0.78rem',
+                                          fontWeight: '800',
+                                          borderRadius: '8px',
+                                          border: '1.5px solid #ea580c',
+                                          color: '#ea580c',
+                                          background: 'rgba(234, 88, 12, 0.12)',
+                                          display: 'inline-flex',
+                                          alignItems: 'center',
+                                          gap: '4px'
+                                        }}
+                                        title="Open Counter Rate Negotiation & Savings Report"
+                                      >
+                                        <Sparkles size={14} color="#ea580c" /> Counter Report 📢
+                                      </button>
+                                    )}
                                     {!isBatch && (
                                       <button
                                         type="button"
@@ -5548,7 +5577,11 @@ export const AdminDashboard = () => {
         <ParticularBidReportModal
           rateRequest={selectedRequestForParticularReport}
           isOpen={Boolean(selectedRequestForParticularReport)}
-          onClose={() => setSelectedRequestForParticularReport(null)}
+          onClose={() => {
+            setSelectedRequestForParticularReport(null);
+            setParticularReportMode('STANDARD');
+          }}
+          initialMode={particularReportMode}
         />
       )}
 
