@@ -77,13 +77,12 @@ export const LoginModal = () => {
   };
 
   return (
-    <div className="modal-overlay" style={{ background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+    <div className="modal-overlay" style={{ background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <div 
-        className="glass-panel" 
+        className="glass-panel login-card" 
         style={{ 
           maxWidth: '440px', 
           width: '100%', 
-          padding: '40px 36px', 
           borderRadius: '24px',
           background: 'rgba(30, 41, 59, 0.85)',
           backdropFilter: 'blur(20px)',

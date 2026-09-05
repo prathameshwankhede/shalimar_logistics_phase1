@@ -39,7 +39,7 @@ function MainApp() {
 
   // 3. Render Final Authenticated Application with Smooth Top Shimmer when hydrating
   return (
-    <div style={{ width: '100%', maxWidth: '100%', margin: '0', padding: '0 20px 40px 20px', position: 'relative' }}>
+    <div className="app-container" style={{ width: '100%', maxWidth: '100%', margin: '0', position: 'relative' }}>
       {isDataBootstrapping && (
         <div
           style={{

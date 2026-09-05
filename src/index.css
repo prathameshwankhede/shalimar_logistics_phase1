@@ -1,9 +1,32 @@
 /* src/index.css - Design System & Modern Enterprise Aesthetics */
 @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
 
-html {
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  min-height: 100%;
+  overflow-x: hidden;
   font-size: 15px;
   -webkit-text-size-adjust: 100%;
+  font-family: 'Plus Jakarta Sans', 'Outfit', system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.app-container {
+  padding: 0 20px 40px 20px;
+  box-sizing: border-box;
+  width: 100%;
+}
+
+.login-card {
+  padding: 40px 36px;
+  box-sizing: border-box;
 }
 
 :root {
@@ -951,6 +974,16 @@ html, body {
     padding: 8px 6px !important;
     max-width: 100vw !important;
     overflow-x: hidden;
+  }
+  
+  .app-container {
+    padding: 0 6px 20px 6px !important;
+  }
+
+  .login-card {
+    padding: 24px 16px !important;
+    max-width: 95vw !important;
+    border-radius: 18px !important;
   }
   
   .glass-panel {
