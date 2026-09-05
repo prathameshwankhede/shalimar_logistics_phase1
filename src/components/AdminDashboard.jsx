@@ -2874,7 +2874,7 @@ export const AdminDashboard = () => {
                     {bulkReqRows.map((row, idx) => (
                       <div
                         key={row.id}
-                        className="glass-panel-subtle"
+                        className="glass-panel-subtle bulk-creator-row"
                         style={{
                           borderLeft: '4px solid #0284c7',
                           borderRadius: '14px',
